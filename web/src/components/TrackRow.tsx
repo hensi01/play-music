@@ -30,10 +30,17 @@ export default function TrackRow({ song, index, onPlay, showAlbum = true, showAr
       onMouseLeave={() => setHover(false)}
     >
       <div className="flex items-center justify-center text-sm tabular-nums text-subtext">
-        {hover && onPlay ? (
-          <button onClick={() => onPlay(song, index ?? 0)} className="text-white" aria-label="Tocar">
+        {onPlay ? (
+          <>
+          <button
+            onClick={() => onPlay(song, index ?? 0)}
+            className={`text-white ${hover ? '' : 'sm:hidden'}`}
+            aria-label="Tocar"
+          >
             <Play size={16} fill="currentColor" />
           </button>
+          {!hover && <span className="hidden sm:inline">{(index ?? 0) + 1}</span>}
+          </>
         ) : (
           <span>{(index ?? 0) + 1}</span>
         )}
@@ -56,7 +63,7 @@ export default function TrackRow({ song, index, onPlay, showAlbum = true, showAr
       <div className="flex items-center justify-end gap-3">
         <button
           onClick={toggleLike}
-          className={`p-1 ${liked ? 'text-accent' : 'text-subtext opacity-0 group-hover:opacity-100 hover:text-white'}`}
+          className={`p-1 ${liked ? 'text-accent' : 'text-subtext hover:text-white sm:opacity-0 sm:group-hover:opacity-100'}`}
           aria-label={liked ? 'Descurtir' : 'Curtir'}
           aria-pressed={liked}
         >

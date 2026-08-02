@@ -71,7 +71,7 @@ export default function Playlist() {
                 </div>
                 <button
                   onClick={() => remove(ps.entryId)}
-                  className="p-2 text-subtext opacity-0 hover:text-red-400 group-hover:opacity-100"
+                  className="p-2 text-subtext hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100"
                   aria-label="Remover da playlist"
                 >
                   <Trash2 size={16} />
