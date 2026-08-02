@@ -37,6 +37,12 @@ func (u *MockedUserRepo) Put(usr *model.User) error {
 	if usr.ID == "" {
 		usr.ID = base64.StdEncoding.EncodeToString([]byte(usr.UserName))
 	}
+	// Match the SQL repository behavior when an existing user's username changes.
+	for key, existing := range u.Data {
+		if existing.ID == usr.ID && key != strings.ToLower(usr.UserName) {
+			delete(u.Data, key)
+		}
+	}
 	usr.Password = usr.NewPassword
 	u.Data[strings.ToLower(usr.UserName)] = usr
 	return nil

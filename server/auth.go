@@ -149,7 +149,7 @@ func createAdminUser(ctx context.Context, ds model.DataStore, username, password
 	if err != nil {
 		log.Error(ctx, "Could not create initial user", "user", initialUser, err)
 	}
-	return nil
+	return err
 }
 
 func validateLogin(userRepo model.UserRepository, userName, password string) (*model.User, error) {

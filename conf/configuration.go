@@ -20,12 +20,12 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/go-viper/encoding/ini"
 	"github.com/go-viper/mapstructure/v2"
-	"github.com/kr/pretty"
 	"github.com/hensi01/play-music/consts"
 	"github.com/hensi01/play-music/log"
 	"github.com/hensi01/play-music/scheduler"
 	"github.com/hensi01/play-music/utils/run"
 	"github.com/hensi01/play-music/utils/slice"
+	"github.com/kr/pretty"
 	"github.com/spf13/viper"
 )
 
@@ -129,6 +129,8 @@ type configOptions struct {
 	EnableScrobbleHistory           bool
 	Tags                            map[string]TagConf `json:",omitempty"`
 	Agents                          string
+	AdminUsername                   string
+	AdminPassword                   string
 
 	// DevFlags. These are used to enable/disable debugging and incomplete features
 	DevLogLevels                      map[string]string `json:",omitempty"`
@@ -1100,6 +1102,8 @@ func setViperDefaults() {
 	viper.SetDefault("plugins.cachesize", "200MB")
 	viper.SetDefault("plugins.autoreload", false)
 	viper.SetDefault("plugins.loglevel", "")
+	viper.SetDefault("adminusername", "")
+	viper.SetDefault("adminpassword", "")
 
 	// DevFlags. These are used to enable/disable debugging and incomplete features
 	viper.SetDefault("devlogsourceline", false)

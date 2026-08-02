@@ -7,7 +7,7 @@
 #   docker compose -f docker-compose.dev.yml logs -f navidrome
 #
 # Depois do primeiro "up", envie suas músicas para o MinIO:
-#   mc alias set local http://localhost:9000 minioadmin minioadmin
+#   mc alias set local http://localhost:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
 #   mc mb local/navidrome-music
 #   mc cp -r /sua/pasta/musicas/* local/navidrome-music/
 #
@@ -19,8 +19,8 @@ services:
     container_name: playmusic-minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: "${MINIO_ACCESS_KEY}"
+      MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY}"
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -38,12 +38,16 @@ services:
     container_name: playmusic-minio-init
     depends_on:
       - minio
+    environment:
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY}"
+      MINIO_BUCKET: "${MINIO_BUCKET}"
     entrypoint: >
       /bin/sh -c "
-      until (/usr/bin/mc alias set local http://minio:9000 minioadmin minioadmin) do
+      until (/usr/bin/mc alias set local http://minio:9000 $$MINIO_ACCESS_KEY $$MINIO_SECRET_KEY) do
         echo 'aguardando MinIO...'; sleep 2;
       done;
-      /usr/bin/mc mb --ignore-existing local/navidrome-music;
+      /usr/bin/mc mb --ignore-existing local/$$MINIO_BUCKET;
       /usr/bin/mc mb --ignore-existing local/navidrome-transcode;
       exit 0;
       "
@@ -74,22 +78,24 @@ services:
       ND_LOGLEVEL: info
       ND_PORT: 4533
       ND_DEFAULTLANGUAGE: pt-BR
+      ND_ADMINUSERNAME: "${ND_ADMINUSERNAME}"
+      ND_ADMINPASSWORD: "${ND_ADMINPASSWORD}"
       # Biblioteca no MinIO (S3 origin do Bunny CDN)
-      ND_MUSICFOLDER: "s3://navidrome-music?endpoint=minio:9000&accessKey=minioadmin&secretKey=minioadmin&secure=false"
+      ND_MUSICFOLDER: "s3://${MINIO_BUCKET}?endpoint=minio:9000&accessKey=${MINIO_ACCESS_KEY}&secretKey=${MINIO_SECRET_KEY}&secure=false"
       # MinIO (usado pelo backend S3 e pelo cache de transcoding)
       ND_S3_ENDPOINT: minio:9000
-      ND_S3_ACCESSKEY: minioadmin
-      ND_S3_SECRETKEY: minioadmin
-      ND_S3_BUCKET: navidrome-music
+      ND_S3_ACCESSKEY: "${MINIO_ACCESS_KEY}"
+      ND_S3_SECRETKEY: "${MINIO_SECRET_KEY}"
+      ND_S3_BUCKET: "${MINIO_BUCKET}"
       ND_S3_SECURE: "false"
       # Redis
       ND_REDIS_ENABLED: "true"
       ND_REDIS_URL: "redis://redis:6379/0"
       # Bunny CDN (Pull Zone -> MinIO). Desligado no dev local.
       ND_CDN_ENABLED: "false"
-      ND_CDN_BASEURL: "https://music.centralcursoss.com.br"
-      ND_CDN_TOKENAUTHKEY: "TROQUE_PELA_CHAVE_REAL"
-      ND_CDN_TOKENTTL: "24h"
+      ND_CDN_BASEURL: "${ND_CDN_BASEURL}"
+      ND_CDN_TOKENAUTHKEY: "${ND_CDN_TOKENAUTHKEY}"
+      ND_CDN_TOKENTTL: "${ND_CDN_TOKENTTL}"
       ND_ENABLEINSIGHTSCOLLECTOR: "false"
     volumes:
       - navidrome-data:/data

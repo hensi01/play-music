@@ -33,6 +33,7 @@ var redacted = &Hook{
 		"(MetricsPath:[\\s]*\")[^\"]*",
 		"(DevAutoCreateAdminPassword:[\\s]*\")[^\"]*",
 		"(DevAutoLoginUsername:[\\s]*\")[^\"]*",
+		"(AdminPassword:[\\s]*\")[^\"]*",
 
 		// UI appConfig
 		"(subsonicToken:)[\\w]+(\\s)",

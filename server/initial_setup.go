@@ -2,21 +2,23 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/hensi01/play-music/conf"
 	"github.com/hensi01/play-music/consts"
 	"github.com/hensi01/play-music/core/ffmpeg"
 	"github.com/hensi01/play-music/log"
 	"github.com/hensi01/play-music/model"
-	"github.com/hensi01/play-music/model/id"
 )
 
 func initialSetup(ds model.DataStore) {
 	ctx := context.TODO()
 	_ = ds.WithTx(func(tx model.DataStore) error {
+		if err := syncManagedAdmin(tx); err != nil {
+			return err
+		}
 		if err := tx.Library(ctx).StoreMusicFolder(); err != nil {
 			return err
 		}
@@ -27,42 +29,42 @@ func initialSetup(ds model.DataStore) {
 			return nil
 		}
 		log.Info("Running initial setup")
-		if conf.Server.DevAutoCreateAdminPassword != "" {
-			if err = createInitialAdminUser(tx, conf.Server.DevAutoCreateAdminPassword); err != nil {
-				return err
-			}
-		}
-
 		err = properties.Put(consts.InitialSetupFlagKey, time.Now().String())
 		return err
 	}, "initial setup")
 }
 
-// If the Dev Admin user is not present, create it
-func createInitialAdminUser(ds model.DataStore, initialPassword string) error {
+// syncManagedAdmin creates or updates the administrator declared in the environment.
+// Keeping this on every startup makes the environment the source of truth for both credentials.
+func syncManagedAdmin(ds model.DataStore) error {
+	username := conf.Server.AdminUsername
+	password := conf.Server.AdminPassword
+	if username == "" && password == "" {
+		return nil
+	}
+	if username == "" || password == "" {
+		return errors.New("ND_ADMINUSERNAME and ND_ADMINPASSWORD must be configured together")
+	}
+
 	users := ds.User(context.TODO())
-	c, err := users.CountAll(model.QueryOptions{Filters: squirrel.Eq{"user_name": consts.DevInitialUserName}})
+	admin, err := users.FindFirstAdmin()
+	if errors.Is(err, model.ErrNotFound) {
+		log.Info("Creating environment-managed admin user", "user", username)
+		return createAdminUser(context.TODO(), ds, username, password)
+	}
 	if err != nil {
-		panic(fmt.Sprintf("Could not access User table: %s", err))
+		return fmt.Errorf("finding managed admin user: %w", err)
 	}
-	if c == 0 {
-		newID := id.NewRandom()
-		log.Warn("Creating initial admin user. This should only be used for development purposes!!",
-			"user", consts.DevInitialUserName, "password", initialPassword, "id", newID)
-		initialUser := model.User{
-			ID:          newID,
-			UserName:    consts.DevInitialUserName,
-			Name:        consts.DevInitialName,
-			Email:       "",
-			NewPassword: initialPassword,
-			IsAdmin:     true,
-		}
-		err := users.Put(&initialUser)
-		if err != nil {
-			log.Error("Could not create initial admin user", "user", initialUser, err)
-		}
+
+	admin.UserName = username
+	admin.Name = username
+	admin.NewPassword = password
+	admin.IsAdmin = true
+	if err := users.Put(admin); err != nil {
+		return fmt.Errorf("updating managed admin user: %w", err)
 	}
-	return err
+	log.Info("Synchronized environment-managed admin user", "user", username)
+	return nil
 }
 
 func checkFFmpegInstallation() {
