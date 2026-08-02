@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Music2 } from 'lucide-react'
 import { appConfig } from '../config'
 import { useAuth } from '../store/auth'
 
 export default function Login() {
   const { login, createAdmin } = useAuth()
+  const navigate = useNavigate()
   const firstTime = appConfig.firstTime
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -23,6 +25,7 @@ export default function Login() {
     try {
       if (firstTime) await createAdmin(username, password)
       else await login(username, password)
+      navigate('/', { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao entrar')
     } finally {

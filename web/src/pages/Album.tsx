@@ -74,12 +74,14 @@ export default function Album() {
           <div className="mt-4 flex items-center gap-4">
             <button
               onClick={() => player.playContext(album.songs, 0)}
+              disabled={album.songs.length === 0}
               className="flex items-center gap-2 rounded-full bg-accent px-6 py-2.5 text-sm font-bold text-white transition-transform hover:scale-105"
             >
               <Play size={18} fill="currentColor" /> Tocar
             </button>
             <button
               onClick={playShuffle}
+              disabled={album.songs.length === 0}
               className="rounded-full p-2.5 text-subtext hover:bg-hover hover:text-white"
               aria-label="Aleatório"
             >
@@ -88,7 +90,8 @@ export default function Album() {
             <button
               onClick={toggleLike}
               className={`rounded-full p-2.5 ${album.liked ? 'text-accent' : 'text-subtext hover:text-white'}`}
-              aria-label="Curtir álbum"
+              aria-label={album.liked ? 'Descurtir álbum' : 'Curtir álbum'}
+              aria-pressed={album.liked}
             >
               <Heart size={22} fill={album.liked ? 'currentColor' : 'none'} />
             </button>

@@ -53,6 +53,7 @@ export default function Artist() {
           <div className="mt-4 flex items-center justify-center gap-4 sm:justify-start">
             <button
               onClick={() => artist.topSongs.length > 0 && player.playContext(artist.topSongs, 0)}
+              disabled={artist.topSongs.length === 0}
               className="flex items-center gap-2 rounded-full bg-accent px-6 py-2.5 text-sm font-bold text-white transition-transform hover:scale-105"
             >
               <Play size={18} fill="currentColor" /> Tocar
@@ -60,7 +61,8 @@ export default function Artist() {
             <button
               onClick={toggleLike}
               className={`rounded-full p-2.5 ${artist.liked ? 'text-accent' : 'text-subtext hover:text-white'}`}
-              aria-label="Seguir"
+              aria-label={artist.liked ? 'Deixar de seguir' : 'Seguir'}
+              aria-pressed={artist.liked}
             >
               <Heart size={22} fill={artist.liked ? 'currentColor' : 'none'} />
             </button>

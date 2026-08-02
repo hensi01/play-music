@@ -22,7 +22,10 @@ export default function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   const navigate = useNavigate()
 
   useEffect(() => {
-    endpoints.playlists().then(setPlaylists).catch(() => undefined)
+    const loadPlaylists = () => endpoints.playlists().then(setPlaylists).catch(() => undefined)
+    void loadPlaylists()
+    window.addEventListener('pm:playlists-changed', loadPlaylists)
+    return () => window.removeEventListener('pm:playlists-changed', loadPlaylists)
   }, [])
 
   const content = (

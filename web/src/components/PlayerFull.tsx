@@ -78,7 +78,8 @@ export default function PlayerFull() {
           <button
             onClick={toggleLike}
             className={`shrink-0 p-2 ${current.liked ? 'text-accent' : 'text-subtext hover:text-white'}`}
-            aria-label="Curtir"
+            aria-label={current.liked ? 'Descurtir' : 'Curtir'}
+            aria-pressed={current.liked}
           >
             <Heart size={26} fill={current.liked ? 'currentColor' : 'none'} />
           </button>

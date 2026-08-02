@@ -14,12 +14,13 @@ interface TrackRowProps {
 
 export default function TrackRow({ song, index, onPlay, showAlbum = true, showArtist = true }: TrackRowProps) {
   const [hover, setHover] = useState(false)
+  const [liked, setLiked] = useState(song.liked)
 
   const toggleLike = () => {
-    const next = !song.liked
-    song.liked = next
-    if (next) void endpoints.like(song.id)
-    else void endpoints.unlike(song.id)
+    const next = !liked
+    setLiked(next)
+    const request = next ? endpoints.like(song.id) : endpoints.unlike(song.id)
+    void request.catch(() => setLiked(!next))
   }
 
   return (
@@ -55,10 +56,11 @@ export default function TrackRow({ song, index, onPlay, showAlbum = true, showAr
       <div className="flex items-center justify-end gap-3">
         <button
           onClick={toggleLike}
-          className={`p-1 ${song.liked ? 'text-accent' : 'text-subtext opacity-0 group-hover:opacity-100 hover:text-white'}`}
-          aria-label="Curtir"
+          className={`p-1 ${liked ? 'text-accent' : 'text-subtext opacity-0 group-hover:opacity-100 hover:text-white'}`}
+          aria-label={liked ? 'Descurtir' : 'Curtir'}
+          aria-pressed={liked}
         >
-          <Heart size={16} fill={song.liked ? 'currentColor' : 'none'} />
+          <Heart size={16} fill={liked ? 'currentColor' : 'none'} />
         </button>
         <span className="w-10 text-right text-xs tabular-nums text-subtext">{formatDuration(song.duration)}</span>
       </div>

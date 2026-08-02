@@ -19,7 +19,10 @@ export default function Settings() {
     if (!name?.trim()) return
     endpoints
       .createPlaylist(name.trim(), [])
-      .then(() => setMessage(`Playlist “${name}” criada!`))
+      .then(() => {
+        setMessage(`Playlist “${name}” criada!`)
+        window.dispatchEvent(new Event('pm:playlists-changed'))
+      })
       .catch((err) => setMessage(err.message))
   }
 

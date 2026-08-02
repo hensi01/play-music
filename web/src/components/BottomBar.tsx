@@ -89,7 +89,8 @@ export default function BottomBar() {
         <button
           onClick={toggleLike}
           className={`ml-1 shrink-0 p-1 ${current.liked ? 'text-accent' : 'text-subtext hover:text-white'}`}
-          aria-label="Curtir"
+          aria-label={current.liked ? 'Descurtir' : 'Curtir'}
+          aria-pressed={current.liked}
         >
           <Heart size={18} fill={current.liked ? 'currentColor' : 'none'} />
         </button>

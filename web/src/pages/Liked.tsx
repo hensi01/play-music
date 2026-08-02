@@ -37,7 +37,8 @@ export default function Liked() {
           <p className="mt-2 text-sm text-subtext">{musicas(songs.length)}</p>
           <button
             onClick={() => songs.length > 0 && player.playContext(songs, 0)}
-            className="mt-4 flex items-center gap-2 rounded-full bg-accent px-6 py-2.5 text-sm font-bold text-white transition-transform hover:scale-105"
+            disabled={songs.length === 0}
+            className="mt-4 flex items-center gap-2 rounded-full bg-accent px-6 py-2.5 text-sm font-bold text-white transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
           >
             <Play size={18} fill="currentColor" /> Tocar
           </button>

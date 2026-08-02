@@ -49,7 +49,8 @@ export default function Playlist() {
           </p>
           <button
             onClick={playAll}
-            className="mt-4 flex items-center gap-2 rounded-full bg-accent px-6 py-2.5 text-sm font-bold text-white transition-transform hover:scale-105"
+            disabled={songs.length === 0}
+            className="mt-4 flex items-center gap-2 rounded-full bg-accent px-6 py-2.5 text-sm font-bold text-white transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
           >
             <Play size={18} fill="currentColor" /> Tocar
           </button>
