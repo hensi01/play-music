@@ -144,6 +144,29 @@ export default function BottomBar() {
           </div>
           <span className="w-10">{formatDuration(totalDuration)}</span>
         </div>
+        <div className="flex items-center justify-center gap-5 md:hidden">
+          <button
+            onClick={() => navigate('/queue')}
+            className="p-1 text-subtext hover:text-white"
+            aria-label="Fila"
+          >
+            <ListMusic size={17} />
+          </button>
+          <button
+            onClick={() => navigate('/lyrics')}
+            className="p-1 text-xs font-bold text-subtext hover:text-white"
+            aria-label="Letras"
+          >
+            LYR
+          </button>
+          <button
+            onClick={() => player.setFullScreen(true)}
+            className="p-1 text-subtext hover:text-white"
+            aria-label="Tela cheia"
+          >
+            <Maximize2 size={17} />
+          </button>
+        </div>
       </div>
 
       {/* Right: volume + extra */}
