@@ -136,6 +136,12 @@ func (s *s3FS) Open(name string) (fs.File, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
 	}
+	// The root directory always exists: it maps to the configured prefix (or
+	// the bucket root), and the bucket reachability was already verified when
+	// the FS was created. An empty bucket is a valid (empty) library.
+	if name == "." {
+		return s.openDir(name)
+	}
 	key := s.storage.key(name)
 
 	// Try to open as a file first.
@@ -151,9 +157,7 @@ func (s *s3FS) Open(name string) (fs.File, error) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: err}
 	}
 
-	// Not a file. Check if it is a directory prefix. The root (".") always
-	// exists: it maps to the configured prefix (or the bucket root), and the
-	// bucket reachability was already verified when the FS was created.
+	// Not a file. Check if it is a directory prefix.
 	dirPrefix := s.dirPrefix(name, key)
 	if s.storage.pathExists(dirPrefix) {
 		return s.openDir(name)

@@ -175,6 +175,47 @@ func TestS3StorageFS(t *testing.T) {
 		}
 	})
 
+	t.Run("EmptyBucketRootIsValid", func(t *testing.T) {
+		emptyBucket := "navidrome-test-empty"
+		exists, err := client.BucketExists(ctx, emptyBucket)
+		if err != nil {
+			t.Fatalf("bucket check error: %v", err)
+		}
+		if !exists {
+			if err := client.MakeBucket(ctx, emptyBucket, minio.MakeBucketOptions{}); err != nil {
+				t.Fatalf("error creating empty bucket: %v", err)
+			}
+		}
+		stEmpty, err := storage.For("s3://" + emptyBucket + "?endpoint=" + endpoint + "&accessKey=" + accessKey + "&secretKey=" + secretKey + "&secure=false")
+		if err != nil {
+			t.Fatalf("storage.For error: %v", err)
+		}
+		mfsEmpty, err := stEmpty.FS()
+		if err != nil {
+			t.Fatalf("FS error: %v", err)
+		}
+		// The root of an empty bucket must open as an empty directory.
+		f, err := mfsEmpty.Open(".")
+		if err != nil {
+			t.Fatalf("Open root of empty bucket error: %v", err)
+		}
+		defer f.Close()
+		dir, ok := f.(fs.ReadDirFile)
+		if !ok {
+			t.Fatalf("root is not a ReadDirFile")
+		}
+		entries, err := dir.ReadDir(-1)
+		if err != nil {
+			t.Fatalf("ReadDir empty bucket error: %v", err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("expected empty bucket to list 0 entries, got %d", len(entries))
+		}
+		if _, err := fs.Stat(mfsEmpty, "."); err != nil {
+			t.Fatalf("Stat root of empty bucket error: %v", err)
+		}
+	})
+
 	t.Run("ReadTags", func(t *testing.T) {
 		infos, err := mfs.ReadTags("Artist/Album 1/01 Track.mp3")
 		if err != nil {
