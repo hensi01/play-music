@@ -27,6 +27,10 @@ import (
 	_ "github.com/navidrome/navidrome/adapters/gotaglib"
 	_ "github.com/navidrome/navidrome/adapters/lastfm"
 	_ "github.com/navidrome/navidrome/adapters/listenbrainz"
+
+	// Import storage backends to register them
+	_ "github.com/navidrome/navidrome/core/storage/local"
+	_ "github.com/navidrome/navidrome/core/storage/s3"
 )
 
 var (

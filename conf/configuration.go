@@ -123,6 +123,9 @@ type configOptions struct {
 	Deezer                          deezerOptions       `json:",omitzero"`
 	ListenBrainz                    listenBrainzOptions `json:",omitzero"`
 	Jellyfin                        jellyfinOptions     `json:",omitzero"`
+	S3                              s3Options           `json:",omitzero"`
+	Redis                           redisOptions        `json:",omitzero"`
+	CDN                             cdnOptions          `json:",omitzero"`
 	EnableScrobbleHistory           bool
 	Tags                            map[string]TagConf `json:",omitempty"`
 	Agents                          string
@@ -234,6 +237,34 @@ type jellyfinOptions struct {
 	// cursor — and its pooled connection — for the whole client-paced response, so without a bound
 	// enough slow clients would take the entire pool and stall the scanner, scrobbles and the UI.
 	MaxConcurrentStreams int
+}
+
+// s3Options configures the S3/MinIO storage backend used for the music library.
+type s3Options struct {
+	Endpoint  string
+	AccessKey string //nolint:gosec
+	SecretKey string //nolint:gosec
+	Bucket    string
+	Region    string
+	Secure    bool
+	Prefix    string
+}
+
+// redisOptions configures the Redis cache/state backend.
+type redisOptions struct {
+	Enabled  bool
+	URL      string
+	Password string //nolint:gosec
+}
+
+// cdnOptions configures the Bunny CDN delivery for audio streams.
+type cdnOptions struct {
+	Enabled      bool
+	BaseURL      string
+	TokenAuthKey string //nolint:gosec
+	TokenTTL     time.Duration
+	PathPrefix   string
+	AdvancedAuth bool
 }
 
 type httpHeaderOptions struct {
@@ -968,7 +999,7 @@ func setViperDefaults() {
 	viper.SetDefault("enablestarrating", true)
 	viper.SetDefault("enableuserediting", true)
 	viper.SetDefault("defaulttheme", "Dark")
-	viper.SetDefault("defaultlanguage", "")
+	viper.SetDefault("defaultlanguage", "pt-BR")
 	viper.SetDefault("defaultuivolume", consts.DefaultUIVolume)
 	viper.SetDefault("uisearchdebouncems", consts.DefaultUISearchDebounceMs)
 	viper.SetDefault("uicoverartsize", consts.DefaultUICoverArtSize)
@@ -1018,6 +1049,22 @@ func setViperDefaults() {
 	viper.SetDefault("subsonic.enableaveragerating", true)
 	viper.SetDefault("subsonic.legacyclients", "DSub")
 	viper.SetDefault("subsonic.minimalclients", "SubMusic")
+	viper.SetDefault("s3.endpoint", "")
+	viper.SetDefault("s3.accesskey", "")
+	viper.SetDefault("s3.secretkey", "")
+	viper.SetDefault("s3.bucket", "")
+	viper.SetDefault("s3.region", "us-east-1")
+	viper.SetDefault("s3.secure", false)
+	viper.SetDefault("s3.prefix", "")
+	viper.SetDefault("redis.enabled", false)
+	viper.SetDefault("redis.url", "")
+	viper.SetDefault("redis.password", "")
+	viper.SetDefault("cdn.enabled", false)
+	viper.SetDefault("cdn.baseurl", "")
+	viper.SetDefault("cdn.tokenauthkey", "")
+	viper.SetDefault("cdn.tokenttl", 24*time.Hour)
+	viper.SetDefault("cdn.pathprefix", "")
+	viper.SetDefault("cdn.advancedauth", false)
 	viper.SetDefault("transcoding.maxconcurrent", 0)
 	viper.SetDefault("transcoding.maxconcurrentperuser", 0)
 	viper.SetDefault("transcoding.enablecancellation", false)

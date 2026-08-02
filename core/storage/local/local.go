@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/djherbis/times"
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/storage"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model/metadata"
@@ -27,16 +25,7 @@ type localStorage struct {
 }
 
 func newLocalStorage(u url.URL) storage.Storage {
-	newExtractor, ok := extractors[conf.Server.Scanner.Extractor]
-	if !ok || newExtractor == nil {
-		if conf.Server.Scanner.Extractor != consts.DefaultScannerExtractor {
-			log.Warn("Extractor not found, using default", "extractor", conf.Server.Scanner.Extractor, "default", consts.DefaultScannerExtractor)
-		}
-		newExtractor = extractors[consts.DefaultScannerExtractor]
-		if newExtractor == nil {
-			log.Fatal("Default extractor not registered", "extractor", consts.DefaultScannerExtractor)
-		}
-	}
+	extractor := NewExtractor(os.DirFS(u.Path), u.Path)
 	isWindowsPath := filepath.VolumeName(u.Host) != ""
 	if u.Scheme == storage.LocalSchemaID && isWindowsPath {
 		u.Path = filepath.Join(u.Host, u.Path)
@@ -46,7 +35,7 @@ func newLocalStorage(u url.URL) storage.Storage {
 		log.Warn("Error resolving path", "path", u.Path, "err", err)
 		resolvedPath = u.Path
 	}
-	return &localStorage{u: u, extractor: newExtractor(os.DirFS(u.Path), u.Path), resolvedPath: resolvedPath}
+	return &localStorage{u: u, extractor: extractor, resolvedPath: resolvedPath}
 }
 
 func (s *localStorage) FS() (storage.MusicFS, error) {
