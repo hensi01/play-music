@@ -11,7 +11,7 @@ import {
   SkipForward,
 } from 'lucide-react'
 import { artworkUrl, endpoints } from '../api'
-import { usePlayer } from '../store/player'
+import { resolveDuration, usePlayer } from '../store/player'
 import { formatDuration } from '../lib/format'
 
 export default function PlayerFull() {
@@ -19,6 +19,12 @@ export default function PlayerFull() {
   const navigate = useNavigate()
   const { current } = player
   if (!current) return null
+
+  const totalDuration = resolveDuration(player.duration, current.duration)
+  const safeProgress = Number.isFinite(player.progress)
+    ? Math.min(Math.max(player.progress, 0), totalDuration)
+    : 0
+  const progressPercent = totalDuration > 0 ? (safeProgress / totalDuration) * 100 : 0
 
   const toggleLike = () => {
     const next = !current.liked
@@ -29,8 +35,9 @@ export default function PlayerFull() {
 
   const seekTo = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
+    if (rect.width === 0 || totalDuration === 0) return
     const ratio = (e.clientX - rect.left) / rect.width
-    player.seek(ratio * (player.duration || current.duration))
+    player.seek(ratio * totalDuration)
   }
 
   return (
@@ -83,17 +90,17 @@ export default function PlayerFull() {
             onClick={seekTo}
             role="slider"
             aria-valuemin={0}
-            aria-valuemax={player.duration}
-            aria-valuenow={player.progress}
+            aria-valuemax={totalDuration}
+            aria-valuenow={safeProgress}
           >
             <div
               className="absolute inset-y-0 left-0 rounded-full bg-white group-hover:bg-accent"
-              style={{ width: `${player.duration ? (player.progress / player.duration) * 100 : 0}%` }}
+              style={{ width: `${progressPercent}%` }}
             />
           </div>
           <div className="mt-1.5 flex justify-between text-xs tabular-nums text-subtext">
-            <span>{formatDuration(player.progress)}</span>
-            <span>{formatDuration(player.duration || current.duration)}</span>
+            <span>{formatDuration(safeProgress)}</span>
+            <span>{formatDuration(totalDuration)}</span>
           </div>
         </div>
 

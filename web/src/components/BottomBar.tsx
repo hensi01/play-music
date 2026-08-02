@@ -14,7 +14,7 @@ import {
   VolumeX,
 } from 'lucide-react'
 import { artworkUrl, endpoints } from '../api'
-import { usePlayer } from '../store/player'
+import { resolveDuration, usePlayer } from '../store/player'
 import { formatDuration } from '../lib/format'
 
 export default function BottomBar() {
@@ -53,6 +53,10 @@ export default function BottomBar() {
     )
   }
 
+  const totalDuration = resolveDuration(duration, current.duration)
+  const safeProgress = Number.isFinite(progress) ? Math.min(Math.max(progress, 0), totalDuration) : 0
+  const progressPercent = totalDuration > 0 ? (safeProgress / totalDuration) * 100 : 0
+
   const toggleLike = () => {
     const next = !current.liked
     player.setLiked(next)
@@ -62,8 +66,9 @@ export default function BottomBar() {
 
   const seekTo = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
+    if (rect.width === 0 || totalDuration === 0) return
     const ratio = (e.clientX - rect.left) / rect.width
-    player.seek(ratio * (duration || current.duration))
+    player.seek(ratio * totalDuration)
   }
 
   return (
@@ -126,21 +131,21 @@ export default function BottomBar() {
           </button>
         </div>
         <div className="flex w-full max-w-xl items-center gap-2 text-[11px] tabular-nums text-subtext">
-          <span className="w-10 text-right">{formatDuration(progress)}</span>
+          <span className="w-10 text-right">{formatDuration(safeProgress)}</span>
           <div
             className="group relative h-1 flex-1 cursor-pointer rounded-full bg-grid"
             onClick={seekTo}
             role="slider"
             aria-valuemin={0}
-            aria-valuemax={duration}
-            aria-valuenow={progress}
+            aria-valuemax={totalDuration}
+            aria-valuenow={safeProgress}
           >
             <div
               className="absolute inset-y-0 left-0 rounded-full bg-white group-hover:bg-accent"
-              style={{ width: `${duration ? (progress / duration) * 100 : 0}%` }}
+              style={{ width: `${progressPercent}%` }}
             />
           </div>
-          <span className="w-10">{formatDuration(duration || current.duration)}</span>
+          <span className="w-10">{formatDuration(totalDuration)}</span>
         </div>
       </div>
 

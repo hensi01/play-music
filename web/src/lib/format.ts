@@ -1,5 +1,5 @@
 export function formatDuration(seconds: number): string {
-  if (!seconds || seconds < 0) return '0:00'
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0:00'
   const s = Math.floor(seconds % 60)
   const m = Math.floor(seconds / 60)
   if (m < 60) return `${m}:${s.toString().padStart(2, '0')}`
@@ -8,7 +8,7 @@ export function formatDuration(seconds: number): string {
 }
 
 export function formatDurationLong(seconds: number): string {
-  if (!seconds || seconds < 0) return '0 min'
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0 min'
   const m = Math.max(1, Math.round(seconds / 60))
   if (m < 60) return `${m} min`
   const h = Math.floor(m / 60)

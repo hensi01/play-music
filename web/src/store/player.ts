@@ -32,13 +32,24 @@ audio.preload = 'auto'
 
 let fallbackUsed = false
 
+export function resolveDuration(...candidates: number[]): number {
+  return candidates.find((value) => Number.isFinite(value) && value > 0) ?? 0
+}
+
+function resolvedTrackDuration(): number {
+  const current = usePlayer.getState().current
+  return resolveDuration(audio.duration, current?.duration ?? 0)
+}
+
 function bindAudio() {
   audio.addEventListener('timeupdate', () => {
-    usePlayer.setState({ progress: audio.currentTime })
+    if (Number.isFinite(audio.currentTime) && audio.currentTime >= 0) {
+      usePlayer.setState({ progress: audio.currentTime })
+    }
   })
-  audio.addEventListener('durationchange', () => {
-    usePlayer.setState({ duration: audio.duration || 0 })
-  })
+  const updateDuration = () => usePlayer.setState({ duration: resolvedTrackDuration() })
+  audio.addEventListener('loadedmetadata', updateDuration)
+  audio.addEventListener('durationchange', updateDuration)
   audio.addEventListener('play', () => usePlayer.setState({ playing: true }))
   audio.addEventListener('pause', () => usePlayer.setState({ playing: false }))
   audio.addEventListener('ended', () => {
@@ -67,6 +78,7 @@ bindAudio()
 
 function loadAndPlay(song: Song) {
   fallbackUsed = false
+  usePlayer.setState({ progress: 0, duration: resolveDuration(song.duration) })
   audio.src = streamUrl(song)
   void audio.play()
   // Report the play so play counts and history update.
@@ -139,8 +151,11 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   },
 
   seek: (seconds) => {
-    audio.currentTime = seconds
-    set({ progress: seconds })
+    const duration = resolveDuration(audio.duration, get().duration, get().current?.duration ?? 0)
+    if (duration === 0 || !Number.isFinite(seconds)) return
+    const target = Math.min(Math.max(seconds, 0), duration)
+    audio.currentTime = target
+    set({ progress: target })
   },
 
   setVolume: (v) => {
