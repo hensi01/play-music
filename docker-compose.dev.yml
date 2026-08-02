@@ -1,0 +1,106 @@
+# Ambiente de desenvolvimento local: Navidrome (modificado) + MinIO + Redis.
+# Os serviços MinIO e Redis são provisionados aqui para testes; em produção
+# eles já existem no servidor Coolify.
+#
+# Uso:
+#   docker compose -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml logs -f navidrome
+#
+# Depois do primeiro "up", envie suas músicas para o MinIO:
+#   mc alias set local http://localhost:9000 minioadmin minioadmin
+#   mc mb local/navidrome-music
+#   mc cp -r /sua/pasta/musicas/* local/navidrome-music/
+#
+# A UI estará em http://localhost:4533 (criação do admin no primeiro acesso).
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: playmusic-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: playmusic-minio-init
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set local http://minio:9000 minioadmin minioadmin) do
+        echo 'aguardando MinIO...'; sleep 2;
+      done;
+      /usr/bin/mc mb --ignore-existing local/navidrome-music;
+      /usr/bin/mc mb --ignore-existing local/navidrome-transcode;
+      exit 0;
+      "
+    restart: "no"
+
+  redis:
+    image: redis:7-alpine
+    container_name: playmusic-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  navidrome:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: playmusic-navidrome
+    ports:
+      - "4533:4533"
+    environment:
+      ND_LOGLEVEL: info
+      ND_PORT: 4533
+      ND_DEFAULTLANGUAGE: pt-BR
+      # Biblioteca no MinIO (S3 origin do Bunny CDN)
+      ND_MUSICFOLDER: "s3://navidrome-music?endpoint=minio:9000&accessKey=minioadmin&secretKey=minioadmin&secure=false"
+      # MinIO (usado pelo backend S3 e pelo cache de transcoding)
+      ND_S3_ENDPOINT: minio:9000
+      ND_S3_ACCESSKEY: minioadmin
+      ND_S3_SECRETKEY: minioadmin
+      ND_S3_BUCKET: navidrome-music
+      ND_S3_SECURE: "false"
+      # Redis
+      ND_REDIS_ENABLED: "true"
+      ND_REDIS_URL: "redis://redis:6379/0"
+      # Bunny CDN (Pull Zone -> MinIO). Desligado no dev local.
+      ND_CDN_ENABLED: "false"
+      ND_CDN_BASEURL: "https://music.centralcursoss.com.br"
+      ND_CDN_TOKENAUTHKEY: "TROQUE_PELA_CHAVE_REAL"
+      ND_CDN_TOKENTTL: "24h"
+      ND_ENABLEINSIGHTSCOLLECTOR: "false"
+    volumes:
+      - navidrome-data:/data
+    depends_on:
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  minio-data:
+  redis-data:
+  navidrome-data:
