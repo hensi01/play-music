@@ -101,7 +101,7 @@ func serveIndex(ds model.DataStore, fs fs.FS, shareInfo *model.Share) http.Handl
 			version = "v" + version
 		}
 		data := map[string]any{
-			"AppConfig": string(appConfigJson),
+			"AppConfig": template.JS(string(appConfigJson)),
 			"Version":   version,
 		}
 		addShareData(r, data, shareInfo)

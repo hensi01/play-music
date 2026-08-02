@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -243,8 +244,28 @@ func (s *Server) frontendAssetsHandler() http.Handler {
 	r := chi.NewRouter()
 
 	r.Handle("/", Index(s.ds, web.BuildAssets()))
-	r.Handle("/*", http.StripPrefix(s.appRoot, http.FileServer(http.FS(web.BuildAssets()))))
+	r.Handle("/*", spaHandler(s.ds, web.BuildAssets(), s.appRoot))
 	return r
+}
+
+// spaHandler serves the built frontend assets and falls back to the app shell
+// (index.html) for any unknown path, so client-side routes keep working on
+// hard refresh or deep links.
+func spaHandler(ds model.DataStore, assets fs.FS, appRoot string) http.Handler {
+	fileServer := http.StripPrefix(appRoot, http.FileServer(http.FS(assets)))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := strings.TrimPrefix(r.URL.Path, appRoot)
+		p = strings.TrimPrefix(p, "/")
+		if p == "" || p == "index.html" {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		if _, err := assets.Open(p); err == nil {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		Index(ds, assets)(w, r)
+	})
 }
 
 // validateTLSCertificates validates the TLS certificate and key files before starting the server.

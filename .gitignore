@@ -43,3 +43,9 @@ go.work*
 
 # Playwright MCP artifacts
 .playwright-mcp/
+
+# Frontend (web/)
+node_modules/
+web/dist/*
+!web/dist/
+!web/dist/.gitkeep
