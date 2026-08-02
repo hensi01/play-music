@@ -210,7 +210,8 @@
         "songCount": "Músicas",
         "comment": "Comentário",
         "sync": "Auto-importar",
-        "path": "Importar de"
+        "path": "Importar de",
+        "starred": "Favorita"
       },
       "actions": {
         "selectPlaylist": "Selecione a playlist:",
@@ -606,6 +607,7 @@
     "settings": "Configurações",
     "version": "Versão",
     "theme": "Tema",
+    "onlyFavourites": "Mostrar apenas favoritos",
     "personal": {
       "name": "Pessoal",
       "options": {

@@ -319,17 +319,17 @@ func mapToSubsonicError(err error) subError {
 func sendError(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, stream.ErrTooManyTranscodes) {
 		w.Header().Set("Retry-After", strconv.Itoa(stream.RetryAfterSeconds))
-		sendResponseWithStatus(w, r, errorResponse(err), http.StatusTooManyRequests)
+		sendResponseWithStatus(w, r, errorResponse(r, err), http.StatusTooManyRequests)
 		return
 	}
-	sendResponse(w, r, errorResponse(err))
+	sendResponse(w, r, errorResponse(r, err))
 }
 
-func errorResponse(err error) *responses.Subsonic {
+func errorResponse(r *http.Request, err error) *responses.Subsonic {
 	subErr := mapToSubsonicError(err)
 	response := newResponse()
 	response.Status = responses.StatusFailed
-	response.Error = &responses.Error{Code: subErr.code, Message: subErr.Error()}
+	response.Error = &responses.Error{Code: subErr.code, Message: subErr.localizedMessage(r)}
 	return response
 }
 
