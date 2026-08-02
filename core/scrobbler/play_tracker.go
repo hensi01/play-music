@@ -2,6 +2,7 @@ package scrobbler
 
 import (
 	"context"
+	"encoding/json"
 	"maps"
 	"slices"
 	"sync"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/redis"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -140,6 +142,7 @@ func newPlayTracker(ds model.DataStore, broker events.Broker, pluginManager Plug
 		if enableNowPlaying {
 			broker.SendBroadcastMessage(context.Background(), &events.NowPlayingCount{Count: m.Len()})
 		}
+		p.unpublishFromRedis(context.Background(), info.PlayerId)
 		ctx := request.WithUser(context.Background(), model.User{ID: info.UserId, UserName: info.Username})
 		if info.State != StateStopped {
 			log.Trace("Enqueueing PlaybackReport for expired session", "session", info)
@@ -265,6 +268,36 @@ func remainingTTL(durationSec float32, positionMs int64, rate float64) time.Dura
 	return time.Duration(remainingSec+5) * time.Second
 }
 
+// nowPlayingRedisKey returns the Redis key storing a session for clientId.
+func nowPlayingRedisKey(clientId string) string {
+	return "navidrome:nowplaying:" + clientId
+}
+
+// publishToRedis mirrors a playback session to Redis so other Navidrome
+// instances can see what each user is listening to. No-op when Redis is
+// disabled.
+func (p *playTracker) publishToRedis(ctx context.Context, clientId string, info PlaybackSession, ttl time.Duration) {
+	if !redis.Enabled() {
+		return
+	}
+	b, err := json.Marshal(info)
+	if err != nil {
+		log.Warn(ctx, "Error encoding playback session for Redis", "clientId", clientId, "err", err)
+		return
+	}
+	redis.Set(ctx, nowPlayingRedisKey(clientId), string(b), ttl)
+	redis.SAdd(ctx, redis.KeyNowPlaying, clientId)
+}
+
+// unpublishFromRedis removes a playback session from Redis.
+func (p *playTracker) unpublishFromRedis(ctx context.Context, clientId string) {
+	if !redis.Enabled() {
+		return
+	}
+	redis.SRem(ctx, redis.KeyNowPlaying, clientId)
+	redis.Del(ctx, nowPlayingRedisKey(clientId))
+}
+
 func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackParams) error {
 	player, _ := request.PlayerFrom(ctx)
 	user, _ := request.UserFrom(ctx)
@@ -309,6 +342,7 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 		if err != nil {
 			log.Warn(ctx, "Error adding PlaybackSession to cache", "clientId", clientId, "mediaId", params.MediaId, "state", params.State, err)
 		}
+		p.publishToRedis(ctx, clientId, info, remainingTTL(mf.Duration, params.PositionMs, params.PlaybackRate))
 		p.enqueuePlaybackReport(ctx, info)
 
 	case StatePlaying, StatePaused:
@@ -342,6 +376,7 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 		if err != nil {
 			log.Warn(ctx, "Error updating PlaybackSession in cache", "clientId", clientId, "mediaId", params.MediaId, "state", params.State, err)
 		}
+		p.publishToRedis(ctx, clientId, info, ttl)
 		p.enqueuePlaybackReport(ctx, info)
 
 	case StateStopped:
@@ -373,6 +408,7 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 		}
 		p.playMap.Remove(clientId)
 		p.sessionsMu.Unlock()
+		p.unpublishFromRedis(ctx, clientId)
 		stoppedInfo := PlaybackSession{
 			UserId:       user.ID,
 			Username:     user.UserName,
@@ -423,6 +459,26 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 
 func (p *playTracker) GetNowPlaying(_ context.Context) ([]PlaybackSession, error) {
 	res := p.playMap.Values()
+	localIDs := make(map[string]bool, len(res))
+	for _, s := range res {
+		localIDs[s.PlayerId] = true
+	}
+
+	// Merge sessions published by other Navidrome instances (via Redis).
+	if redis.Enabled() {
+		for _, clientId := range redis.SMembers(context.Background(), redis.KeyNowPlaying) {
+			if localIDs[clientId] {
+				continue
+			}
+			if v, ok := redis.Get(context.Background(), nowPlayingRedisKey(clientId)); ok {
+				var s PlaybackSession
+				if err := json.Unmarshal([]byte(v), &s); err == nil {
+					res = append(res, s)
+				}
+			}
+		}
+	}
+
 	slices.SortFunc(res, func(a, b PlaybackSession) int {
 		return b.Start.Compare(a.Start)
 	})

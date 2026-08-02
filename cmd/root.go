@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/redis"
 	"github.com/navidrome/navidrome/db"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -71,6 +72,7 @@ func preRun() {
 		println(resources.Banner())
 	}
 	conf.Load(noBanner)
+	redis.Init()
 }
 
 func postRun() {

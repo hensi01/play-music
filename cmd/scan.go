@@ -84,6 +84,12 @@ func runScanner(ctx context.Context) {
 	ds := persistence.New(sqlDB)
 	pls := playlists.NewPlaylists(ds, core.NewImageUploadService())
 
+	// When running as an external scanner subprocess, skip the distributed
+	// (Redis) scan lock: the parent server process already holds it.
+	if subprocess {
+		ctx = scanner.WithSubprocessScan(ctx)
+	}
+
 	// Parse targets from command line or file
 	var scanTargets []model.ScanTarget
 	var err error

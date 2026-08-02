@@ -73,7 +73,12 @@ func CreateToken(u *model.User) (string, error) {
 		return "", err
 	}
 
-	return TouchToken(token)
+	newToken, err := TouchToken(token)
+	if err == nil {
+		// Track the session in Redis (no-op when Redis is disabled).
+		RecordSession(context.TODO(), newToken, u.ID)
+	}
+	return newToken, err
 }
 
 func TouchToken(token jwt.Token) (string, error) {

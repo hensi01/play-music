@@ -15,6 +15,7 @@ import (
 	"github.com/navidrome/navidrome/core/auth"
 	"github.com/navidrome/navidrome/core/metrics"
 	"github.com/navidrome/navidrome/core/playlists"
+	"github.com/navidrome/navidrome/core/redis"
 	"github.com/navidrome/navidrome/db"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -27,6 +28,17 @@ import (
 var (
 	ErrAlreadyScanning = errors.New("already scanning")
 )
+
+// ctxScanSubprocess marks a scan context as running inside an external scanner
+// subprocess. Subprocess scans must not acquire the distributed (Redis) lock:
+// the parent server process already holds it for the whole scan.
+type ctxScanSubprocess struct{}
+
+// WithSubprocessScan returns a context that tells lockScan to skip the
+// distributed lock.
+func WithSubprocessScan(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxScanSubprocess{}, true)
+}
 
 func New(rootCtx context.Context, ds model.DataStore, cw artwork.CacheWarmer, broker events.Broker,
 	pls playlists.Playlists, m metrics.Metrics) model.Scanner {
@@ -288,7 +300,25 @@ func lockScan(ctx context.Context) (func(), error) {
 		return func() {}, ErrAlreadyScanning
 	}
 	scanMaintenanceMux.Lock()
+
+	// Distributed lock via Redis (when enabled): guarantees only one instance
+	// scans the library at a time in multi-instance deployments. Subprocess
+	// scans skip this lock because the parent server process already holds it.
+	if redis.Enabled() && ctx.Value(ctxScanSubprocess{}) == nil {
+		if !redis.SetNX(ctx, redis.KeyScannerLock, "1", 2*time.Hour) {
+			scanMaintenanceMux.Unlock()
+			running.Store(false)
+			log.Debug(ctx, "Scanner already running on another instance, ignoring request")
+			return func() {}, ErrAlreadyScanning
+		}
+	}
+
 	return func() {
+		if redis.Enabled() && ctx.Value(ctxScanSubprocess{}) == nil {
+			// Use a context detached from the (possibly canceled) scan context so
+			// the lock is always released.
+			redis.Del(context.WithoutCancel(ctx), redis.KeyScannerLock)
+		}
 		scanMaintenanceMux.Unlock()
 		running.Store(false)
 	}, nil

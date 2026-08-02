@@ -22,6 +22,7 @@ import (
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/auth"
 	"github.com/navidrome/navidrome/core/metrics"
+	"github.com/navidrome/navidrome/core/redis"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/server/events"
@@ -209,7 +210,13 @@ func (s *Server) mountAuthenticationRoutes() chi.Router {
 			log.Info("Login rate limit set", "requestLimit", conf.Server.AuthRequestLimit,
 				"windowLength", conf.Server.AuthWindowLength)
 
-			rateLimiter := httprate.LimitByIP(conf.Server.AuthRequestLimit, conf.Server.AuthWindowLength)
+			var rateLimiter func(http.Handler) http.Handler
+			if redis.Enabled() {
+				// Share the login rate limit across instances via Redis.
+				rateLimiter = redisRateLimiter(conf.Server.AuthRequestLimit, conf.Server.AuthWindowLength)
+			} else {
+				rateLimiter = httprate.LimitByIP(conf.Server.AuthRequestLimit, conf.Server.AuthWindowLength)
+			}
 			r.With(rateLimiter).Post("/login", login(s.ds))
 		} else {
 			log.Warn("Login rate limit is disabled! Consider enabling it to be protected against brute-force attacks")
