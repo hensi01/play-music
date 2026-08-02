@@ -27,11 +27,12 @@ type TranscodeOptions struct {
 	Command    string // DB command template (used to detect custom vs default)
 	Format     string // Target format (mp3, opus, aac, flac)
 	FilePath   string
-	BitRate    int // kbps, 0 = codec default
-	SampleRate int // 0 = no constraint
-	Channels   int // 0 = no constraint
-	BitDepth   int // 0 = no constraint; valid values: 16, 24, 32
-	Offset     int // seconds
+	Input      io.Reader // Optional source stream (used instead of FilePath when set, e.g. S3-backed libraries)
+	BitRate    int       // kbps, 0 = codec default
+	SampleRate int       // 0 = no constraint
+	Channels   int       // 0 = no constraint
+	BitDepth   int       // 0 = no constraint; valid values: 16, 24, 32
+	Offset     int       // seconds
 }
 
 // AudioProbeResult contains authoritative audio stream properties from ffprobe.
@@ -76,6 +77,17 @@ type ffmpeg struct{}
 func (e *ffmpeg) Transcode(ctx context.Context, opts TranscodeOptions) (io.ReadCloser, error) {
 	if _, err := ffmpegCmd(); err != nil {
 		return nil, err
+	}
+	// When a source stream is provided (e.g. from an S3/MinIO library), feed it
+	// to ffmpeg through stdin ("-i pipe:0") instead of a local file path.
+	if opts.Input != nil {
+		var args []string
+		if isDefaultCommand(opts.Format, opts.Command) {
+			args = buildDynamicArgs(opts)
+		} else {
+			args = buildTemplateArgs(opts)
+		}
+		return e.start(ctx, args, opts.Input)
 	}
 	if err := fileExists(opts.FilePath); err != nil {
 		return nil, err
@@ -457,6 +469,15 @@ func isDefaultCommand(format, command string) bool {
 
 // buildDynamicArgs programmatically constructs ffmpeg arguments for known formats,
 // including all transcoding parameters (bitrate, sample rate, channels).
+// transcodeInputArg returns the ffmpeg "-i" argument: "pipe:0" when a source
+// stream is provided, otherwise the local file path.
+func transcodeInputArg(opts TranscodeOptions) string {
+	if opts.Input != nil {
+		return "pipe:0"
+	}
+	return opts.FilePath
+}
+
 func buildDynamicArgs(opts TranscodeOptions) []string {
 	cmdPath, _ := ffmpegCmd()
 	args := []string{cmdPath}
@@ -465,7 +486,7 @@ func buildDynamicArgs(opts TranscodeOptions) []string {
 		args = append(args, "-ss", strconv.Itoa(opts.Offset))
 	}
 
-	args = append(args, "-i", opts.FilePath)
+	args = append(args, "-i", transcodeInputArg(opts))
 	args = append(args, "-map", "0:a:0")
 
 	// Preserve source tags. -map_metadata 0 copies format-level tags (MP3/FLAC);
@@ -501,7 +522,7 @@ func buildDynamicArgs(opts TranscodeOptions) []string {
 // core/stream/codec.go codecMax* helpers), so injecting them unconditionally is safe —
 // ffmpeg honors the last occurrence of a duplicate flag.
 func buildTemplateArgs(opts TranscodeOptions) []string {
-	args := createFFmpegCommand(opts.Command, opts.FilePath, opts.BitRate, opts.Offset)
+	args := createFFmpegCommand(opts.Command, transcodeInputArg(opts), opts.BitRate, opts.Offset)
 	return injectDynamicAudioFlags(args, opts)
 }
 

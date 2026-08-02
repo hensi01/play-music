@@ -9,18 +9,42 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/ffmpeg"
+	"github.com/navidrome/navidrome/core/storage"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/utils/cache"
 	"github.com/navidrome/navidrome/utils/req"
 )
+
+// openMediaSource opens the underlying audio source for a media file. Local
+// libraries open the file directly; S3/MinIO-backed libraries stream from the
+// object store through the storage abstraction (returning a seekable reader).
+func openMediaSource(mf *model.MediaFile) (io.ReadCloser, error) {
+	if strings.HasPrefix(mf.LibraryPath, "s3://") {
+		store, err := storage.For(mf.LibraryPath)
+		if err != nil {
+			return nil, err
+		}
+		fsys, err := store.FS()
+		if err != nil {
+			return nil, err
+		}
+		f, err := fsys.Open(mf.Path)
+		if err != nil {
+			return nil, err
+		}
+		return f, nil
+	}
+	return os.Open(mf.AbsolutePath())
+}
 
 type MediaStreamer interface {
 	NewStream(ctx context.Context, mf *model.MediaFile, req Request) (*Stream, error)
@@ -88,12 +112,14 @@ func (ms *mediaStreamer) NewStream(ctx context.Context, mf *model.MediaFile, req
 			"requestBitrate", req.BitRate, "requestFormat", req.Format, "requestOffset", req.Offset,
 			"originalBitrate", mf.BitRate, "originalFormat", mf.Suffix,
 			"selectedBitrate", bitRate, "selectedFormat", format)
-		f, err := os.Open(filePath)
+		f, err := openMediaSource(mf)
 		if err != nil {
 			return nil, err
 		}
 		s.ReadCloser = f
-		s.Seeker = f
+		if rs, ok := f.(io.ReadSeeker); ok {
+			s.Seeker = rs
+		}
 		s.format = mf.Suffix
 		return s, nil
 	}
@@ -238,6 +264,21 @@ func NewTranscodingCache() TranscodingCache {
 				return nil, err
 			}
 
+			// For S3/MinIO-backed libraries, open the source object and stream
+			// it into ffmpeg via stdin instead of passing a local file path.
+			var source io.ReadCloser
+			var input io.Reader
+			if strings.HasPrefix(job.mf.LibraryPath, "s3://") {
+				src, err := openMediaSource(job.mf)
+				if err != nil {
+					release()
+					log.Error(ctx, "Error opening media source for transcoding", "id", job.mf.ID, err)
+					return nil, os.ErrInvalid
+				}
+				source = src
+				input = src
+			}
+
 			// Choose the context that drives the ffmpeg process.
 			//
 			// When the limiter is enabled, force the request context so a
@@ -261,6 +302,7 @@ func NewTranscodingCache() TranscodingCache {
 				Command:    command,
 				Format:     job.format,
 				FilePath:   job.filePath,
+				Input:      input,
 				BitRate:    job.bitRate,
 				SampleRate: job.sampleRate,
 				BitDepth:   job.bitDepth,
@@ -268,6 +310,9 @@ func NewTranscodingCache() TranscodingCache {
 				Offset:     job.offset,
 			})
 			if err != nil {
+				if source != nil {
+					_ = source.Close()
+				}
 				release()
 				log.Error(ctx, "Error starting transcoder", "id", job.mf.ID, err)
 				return nil, os.ErrInvalid
@@ -275,7 +320,7 @@ func NewTranscodingCache() TranscodingCache {
 			// Tie the slot to the ffmpeg process: copyAndClose calls Close
 			// on this reader after io.Copy returns, which is exactly when
 			// ffmpeg has exited (either EOF or context cancellation).
-			return &releasingReadCloser{ReadCloser: out, release: release}, nil
+			return &releasingReadCloser{ReadCloser: closeSourceWith(out, source), release: release}, nil
 		})
 }
 
@@ -286,6 +331,26 @@ func userName(ctx context.Context) string {
 	} else {
 		return user.UserName
 	}
+}
+
+// closeSourceWith returns a ReadCloser that also closes source when closed.
+// Used to tie an S3 source stream's lifetime to the ffmpeg transcode output.
+func closeSourceWith(rc io.ReadCloser, source io.Closer) io.ReadCloser {
+	if source == nil {
+		return rc
+	}
+	return &sourceClosingReadCloser{ReadCloser: rc, source: source}
+}
+
+type sourceClosingReadCloser struct {
+	io.ReadCloser
+	source io.Closer
+}
+
+func (s *sourceClosingReadCloser) Close() error {
+	err1 := s.ReadCloser.Close()
+	err2 := s.source.Close()
+	return errors.Join(err1, err2)
 }
 
 // limiterKey returns the per-user bucket key used by the transcode limiter.
