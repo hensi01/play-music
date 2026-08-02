@@ -8,6 +8,7 @@ import TrackRow from '../components/TrackRow'
 import Card from '../components/Card'
 import Section from '../components/Section'
 import Spinner from '../components/Spinner'
+import { albuns } from '../lib/format'
 
 export default function Search() {
   const [params] = useSearchParams()
@@ -97,7 +98,7 @@ export default function Search() {
                   key={ar.id}
                   image={artworkUrl(ar.id, 300)}
                   title={ar.name}
-                  subtitle={`${ar.albumCount} álbuns`}
+                  subtitle={albuns(ar.albumCount)}
                   onClick={() => navigate(`/artist/${ar.id}`)}
                   square={false}
                 />

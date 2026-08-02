@@ -4,6 +4,7 @@ import { endpoints, artworkUrl } from '../api'
 import type { Album, Artist, Playlist } from '../api/types'
 import Card from '../components/Card'
 import Spinner from '../components/Spinner'
+import { albuns, musicas } from '../lib/format'
 
 type Tab = 'albums' | 'artists' | 'playlists'
 
@@ -68,7 +69,7 @@ export default function Library() {
                 key={ar.id}
                 image={artworkUrl(ar.id, 300)}
                 title={ar.name}
-                subtitle={`${ar.albumCount} álbuns`}
+                subtitle={albuns(ar.albumCount)}
                 onClick={() => navigate(`/artist/${ar.id}`)}
                 square={false}
               />
@@ -79,7 +80,7 @@ export default function Library() {
                 key={p.id}
                 image={artworkUrl(p.id, 300)}
                 title={p.name}
-                subtitle={`${p.songCount} músicas`}
+                subtitle={musicas(p.songCount)}
                 onClick={() => navigate(`/playlist/${p.id}`)}
               />
             ))}

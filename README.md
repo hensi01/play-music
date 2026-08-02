@@ -1,89 +1,89 @@
-<a href="https://www.navidrome.org"><img src="resources/logo-192x192.png" alt="Navidrome logo" title="navidrome" align="right" height="60px" /></a>
+# Play Music
 
-# Navidrome Music Server &nbsp;[![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Tired%20of%20paying%20for%20music%20subscriptions%2C%20and%20not%20finding%20what%20you%20really%20like%3F%20Roll%20your%20own%20streaming%20service%21&url=https://navidrome.org&via=navidrome)
+Player web de música estilo Spotify, self-hosted. Toca **sua** biblioteca de música hospedada
+no MinIO/S3, servida via Bunny CDN com URLs assinadas, com transcoding via ffmpeg quando necessário.
 
-[![Last Release](https://img.shields.io/github/v/release/navidrome/navidrome?logo=github&label=latest&style=flat-square)](https://github.com/hensi01/play-music/releases)
-[![Build](https://img.shields.io/github/actions/workflow/status/navidrome/navidrome/pipeline.yml?branch=master&logo=github&style=flat-square)](https://nightly.link/navidrome/navidrome/workflows/pipeline/master)
-[![Downloads](https://img.shields.io/github/downloads/navidrome/navidrome/total?logo=github&style=flat-square)](https://github.com/hensi01/play-music/releases/latest)
-[![Docker Pulls](https://img.shields.io/docker/pulls/deluan/navidrome?logo=docker&label=pulls&style=flat-square)](https://hub.docker.com/r/deluan/navidrome)
-[![Dev Chat](https://img.shields.io/discord/671335427726114836?logo=discord&label=discord&style=flat-square)](https://discord.gg/xh7j7yF)
-[![Subreddit](https://img.shields.io/reddit/subreddit-subscribers/navidrome?logo=reddit&label=/r/navidrome&style=flat-square)](https://www.reddit.com/r/navidrome/)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.0-ff69b4.svg?style=flat-square)](CODE_OF_CONDUCT.md)
-[![Gurubase](https://img.shields.io/badge/Gurubase-Ask%20Navidrome%20Guru-006BFF?style=flat-square)](https://gurubase.io/g/navidrome)
+Baseado no [Navidrome](https://github.com/navidrome/navidrome), com UI nova (React/Vite/Tailwind)
+estilo Spotui/Spotify e API REST própria.
 
-Navidrome is an open source web-based music collection server and streamer. It gives you freedom to listen to your
-music collection from any browser or mobile device. It's like your personal Spotify!
+## Recursos
 
+- 🎨 UI estilo Spotify (sidebar, player inferior fixo, player em tela cheia, tema escuro)
+- 🗂️ Biblioteca em **MinIO/S3** (buckets, scanner automático)
+- 🎵 Streaming via **Bunny CDN** com tokens assinados (HMAC-SHA256 ou MD5)
+- 🔄 Transcoding via **ffmpeg** (lê do S3 via pipe) para formatos que o navegador não toca
+- 🧠 **Redis** para sessões, now-playing, rate-limit e lock do scanner
+- 💾 Postgres ou SQLite (sem `DATABASE_URL` usa SQLite em `/data`)
+- ❤️ Curtidas, playlists, histórico, busca, letras sincronizadas (LRC/embutidas)
+- 📝 Interface em português brasileiro
 
-**Note**: The `master` branch may be in an unstable or even broken state during development. 
-Please use [releases](https://github.com/hensi01/play-music/releases) instead of 
-the `master` branch in order to get a stable set of binaries.
+## Arquitetura
 
-## [Check out our Live Demo!](https://www.navidrome.org/demo/)
+```
+Browser → /app (UI) + /api (REST) + /auth/login (JWT)
+               │  stream nativo → 307 para URL assinada
+               ▼
+         Bunny CDN (Pull Zone → S3 origin)
+               ▼
+         MinIO — bucket play-music
+```
 
-__Any feedback is welcome!__ If you need/want a new feature, find a bug or think of any way to improve Navidrome, 
-please file a [GitHub issue](https://github.com/hensi01/play-music/issues) or join the discussion in our 
-[Subreddit](https://www.reddit.com/r/navidrome/). If you want to contribute to the project in any other way 
-([ui/backend dev](https://www.navidrome.org/docs/developers/), 
-[translations](https://www.navidrome.org/docs/developers/translations/), 
-[themes](https://www.navidrome.org/docs/developers/creating-themes)), please join the chat in our 
-[Discord server](https://discord.gg/xh7j7yF). 
+## Rotas da API
 
-## Installation
+| Rota | Função |
+|---|---|
+| `POST /auth/login` · `POST /auth/createAdmin` | Autenticação (JWT) |
+| `GET /api/me` · `GET /api/settings` | Perfil e configurações |
+| `GET /api/home` | Seções estilo Spotify (recentes, novos, mais tocados) |
+| `GET /api/search?q=` | Busca de músicas, álbuns, artistas e playlists |
+| `GET /api/albums` · `/api/albums/{id}` | Álbuns (lista e detalhe com faixas) |
+| `GET /api/artists` · `/api/artists/{id}` | Artistas (detalhe com top + álbuns) |
+| `GET /api/songs/{id}` | Faixa |
+| `CRUD /api/playlists` + tracks | Playlists (criar, adicionar, remover, reordenar) |
+| `GET/PUT/DELETE /api/me/liked` | Curtidas |
+| `GET /api/me/history` · `POST /api/me/history/{id}` | Histórico e contagem de plays |
+| `GET/PUT /api/queue` | Fila persistida |
+| `GET /api/stream/{id}` | 307 → CDN (formato nativo) ou ffmpeg (transcode) |
+| `GET /api/artwork/{id}` | Capas |
+| `GET /api/lyrics/{id}` | Letras sincronizadas |
 
-See instructions on the [project's website](https://www.navidrome.org/docs/installation/)
+## Desenvolvimento local
 
-## Cloud Hosting
+Backend (Go 1.26+):
 
-[PikaPods](https://www.pikapods.com) has partnered with us to offer you an 
-[officially supported, cloud-hosted solution](https://www.navidrome.org/docs/installation/managed/#pikapods). 
-A share of the revenue helps fund the development of Navidrome at no additional cost for you.
+```bash
+set CGO_ENABLED=1
+set CC=%USERPROFILE%\scoop\apps\gcc\current\bin\gcc.exe   # Windows com GCC
+go build -tags "netgo sqlite_fts5" -o playmusic.exe .
+$env:ND_MUSICFOLDER="caminho/para/sua/musica"; $env:ND_DATAFOLDER="tmp/data"; .\playmusic.exe
+```
 
-[![PikaPods](https://www.pikapods.com/static/run-button.svg)](https://www.pikapods.com/pods?run=navidrome)
+Frontend (`web/`), com proxy para o backend em `:4533`:
 
-## Features
- 
- - Handles very **large music collections**
- - Streams virtually **any audio format** available
- - Reads and uses all your beautifully curated **metadata**
- - Great support for **compilations** (Various Artists albums) and **box sets** (multi-disc albums)
- - **Multi-user**, each user has their own play counts, playlists, favourites, etc...
- - Very **low resource usage**
- - **Multi-platform**, runs on macOS, Linux and Windows. **Docker** images are also provided
- - Ready to use binaries for all major platforms, including **Raspberry Pi**
- - Automatically **monitors your library** for changes, importing new files and reloading new metadata 
- - Supports **lyrics** from sidecar .ttml, .yaml/.yml Lyricsfile, .elrc, .lrc, .srt, .txt files and embedded TTML, Enhanced LRC, LRC, SRT, and plain-text tags (via `lyricspriority`)
- - **Themeable**, modern and responsive **Web interface** based on [Material UI](https://material-ui.com)
- - **Compatible** with all Subsonic/Madsonic/Airsonic [clients](https://www.navidrome.org/docs/overview/#apps)
- - **Transcoding** on the fly. Can be set per user/player. **Opus encoding is supported**
- - Translated to **various languages**
+```bash
+cd web
+npm install
+npm run dev   # http://localhost:5173/app/
+```
 
-## Translations
+Build de produção (embutido no binário via `//go:embed`):
 
-Navidrome uses [POEditor](https://poeditor.com/) for translations, and we are always looking 
-for [more contributors](https://www.navidrome.org/docs/developers/translations/)
+```bash
+cd web && npm run build && cd ..
+go build -tags "netgo sqlite_fts5" -o playmusic.exe .
+```
 
-<a href="https://poeditor.com/"> 
-<img height="32" src="https://github.com/user-attachments/assets/c19b1d2b-01e1-4682-a007-12356c42147c">
-</a>
+## Deploy no Coolify
 
-## Documentation
-All documentation can be found in the project's website: https://www.navidrome.org/docs. 
-Here are some useful direct links:
+Veja [`deploy/COOLIFY.md`](deploy/COOLIFY.md) e [`deploy/coolify.env`](deploy/coolify.env).
 
-- [Overview](https://www.navidrome.org/docs/overview/)
-- [Installation](https://www.navidrome.org/docs/installation/)
-  - [Docker](https://www.navidrome.org/docs/installation/docker/)
-  - [Binaries](https://www.navidrome.org/docs/installation/pre-built-binaries/)
-  - [Build from source](https://www.navidrome.org/docs/installation/build-from-source/)
-- [Development](https://www.navidrome.org/docs/developers/)
-- [Subsonic API Compatibility](https://www.navidrome.org/docs/developers/subsonic-api/)
+## Configuração principal (variáveis `ND_*`)
 
-## Screenshots
-
-<p align="left">
-    <img height="550" src="https://raw.githubusercontent.com/navidrome/navidrome/master/.github/screenshots/ss-mobile-login.png">
-    <img height="550" src="https://raw.githubusercontent.com/navidrome/navidrome/master/.github/screenshots/ss-mobile-player.png">
-    <img height="550" src="https://raw.githubusercontent.com/navidrome/navidrome/master/.github/screenshots/ss-mobile-album-view.png">
-    <img width="550" src="https://raw.githubusercontent.com/navidrome/navidrome/master/.github/screenshots/ss-desktop-player.png">
-</p>
+- `ND_MUSICFOLDER` — URI S3 da biblioteca, ex.
+  `s3://play-music?endpoint=minios3.centralcursoss.com.br&accessKey=...&secretKey=...&secure=true`
+- `ND_S3_ENDPOINT`, `ND_S3_BUCKET`, `ND_S3_ACCESSKEY`, `ND_S3_SECRETKEY`, `ND_S3_SECURE`
+- `ND_REDIS_ENABLED`, `ND_REDIS_URL` — Redis para sessões/estado (opcional)
+- `ND_CDN_ENABLED`, `ND_CDN_BASEURL`, `ND_CDN_TOKENAUTHKEY`, `ND_CDN_TOKENTTL`,
+  `ND_CDN_ADVANCEDAUTH` — Bunny CDN (opcional)
+- `DATABASE_URL` — Postgres (opcional; sem isso usa SQLite em `/data`)
+- `ND_PORT`, `ND_ADDRESS`, `ND_LOGLEVEL`, `ND_SCANNER_SCHEDULE`

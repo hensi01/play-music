@@ -9,10 +9,18 @@ export function formatDuration(seconds: number): string {
 
 export function formatDurationLong(seconds: number): string {
   if (!seconds || seconds < 0) return '0 min'
-  const m = Math.round(seconds / 60)
+  const m = Math.max(1, Math.round(seconds / 60))
   if (m < 60) return `${m} min`
   const h = Math.floor(m / 60)
   return `${h} h ${m % 60} min`
+}
+
+export function musicas(n: number): string {
+  return `${n} ${n === 1 ? 'música' : 'músicas'}`
+}
+
+export function albuns(n: number): string {
+  return `${n} ${n === 1 ? 'álbum' : 'álbuns'}`
 }
 
 export function greeting(): string {

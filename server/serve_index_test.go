@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -324,11 +323,13 @@ func extractAppConfig(body string) map[string]any {
 	if match == nil {
 		return config
 	}
-	str, err := strconv.Unquote(match[1])
-	if err != nil {
-		panic(fmt.Sprintf("%s: %s", match[1], err))
+	raw := match[1]
+	// The config is injected as a raw JS object (template.JS). Accept the
+	// older quoted-JSON-string form too, for robustness.
+	if str, err := strconv.Unquote(raw); err == nil {
+		raw = str
 	}
-	if err := json.Unmarshal([]byte(str), &config); err != nil {
+	if err := json.Unmarshal([]byte(raw), &config); err != nil {
 		panic(err)
 	}
 	return config

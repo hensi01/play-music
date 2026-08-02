@@ -4,7 +4,7 @@ import { Clock, Heart, Play, Shuffle } from 'lucide-react'
 import { endpoints, artworkUrl } from '../api'
 import type { AlbumDetail } from '../api/types'
 import { usePlayer } from '../store/player'
-import { formatDurationLong } from '../lib/format'
+import { formatDurationLong, musicas } from '../lib/format'
 import TrackRow from '../components/TrackRow'
 import Spinner from '../components/Spinner'
 
@@ -67,7 +67,7 @@ export default function Album() {
               </>
             )}
             <span>•</span>
-            <span>{album.songCount} músicas</span>
+            <span>{musicas(album.songCount)}</span>
             <span>•</span>
             <span>{formatDurationLong(totalDuration)}</span>
           </div>

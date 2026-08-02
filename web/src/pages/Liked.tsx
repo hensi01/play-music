@@ -5,6 +5,7 @@ import type { Song } from '../api/types'
 import { usePlayer } from '../store/player'
 import TrackRow from '../components/TrackRow'
 import Spinner from '../components/Spinner'
+import { musicas } from '../lib/format'
 
 export default function Liked() {
   const [songs, setSongs] = useState<Song[] | null>(null)
@@ -33,7 +34,7 @@ export default function Liked() {
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-subtext">Playlist</p>
           <h1 className="mt-1 text-4xl font-bold sm:text-5xl">Curtidas</h1>
-          <p className="mt-2 text-sm text-subtext">{songs.length} músicas</p>
+          <p className="mt-2 text-sm text-subtext">{musicas(songs.length)}</p>
           <button
             onClick={() => songs.length > 0 && player.playContext(songs, 0)}
             className="mt-4 flex items-center gap-2 rounded-full bg-accent px-6 py-2.5 text-sm font-bold text-white transition-transform hover:scale-105"

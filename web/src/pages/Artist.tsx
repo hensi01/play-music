@@ -4,6 +4,7 @@ import { Heart, Play } from 'lucide-react'
 import { endpoints, artworkUrl } from '../api'
 import type { ArtistDetail } from '../api/types'
 import { usePlayer } from '../store/player'
+import { albuns, musicas } from '../lib/format'
 import TrackRow from '../components/TrackRow'
 import Card from '../components/Card'
 import Spinner from '../components/Spinner'
@@ -47,7 +48,7 @@ export default function Artist() {
           <p className="text-xs font-bold uppercase tracking-widest text-subtext">Artista</p>
           <h1 className="mt-1 text-4xl font-bold sm:text-5xl">{artist.name}</h1>
           <p className="mt-2 text-sm text-subtext">
-            {artist.albumCount} álbuns • {artist.songCount} músicas
+            {albuns(artist.albumCount)} • {musicas(artist.songCount)}
           </p>
           <div className="mt-4 flex items-center justify-center gap-4 sm:justify-start">
             <button

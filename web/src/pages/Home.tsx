@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { endpoints, artworkUrl } from '../api'
 import type { Album, Home } from '../api/types'
 import { usePlayer } from '../store/player'
-import { greeting } from '../lib/format'
+import { greeting, musicas } from '../lib/format'
 import Section from '../components/Section'
 import Card from '../components/Card'
 import Spinner from '../components/Spinner'
@@ -65,7 +65,7 @@ export default function Home() {
               className="flex h-24 w-36 shrink-0 flex-col justify-end rounded-lg bg-gradient-to-br from-accent/40 to-grid p-3 text-left text-sm font-bold transition-transform hover:scale-105"
             >
               {g.name}
-              <span className="text-xs font-normal text-white/70">{g.songCount} músicas</span>
+              <span className="text-xs font-normal text-white/70">{musicas(g.songCount)}</span>
             </button>
           ))}
         </Section>

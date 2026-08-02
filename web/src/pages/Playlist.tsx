@@ -4,7 +4,7 @@ import { Play, Trash2 } from 'lucide-react'
 import { endpoints, artworkUrl } from '../api'
 import type { PlaylistDetail, Song } from '../api/types'
 import { usePlayer } from '../store/player'
-import { formatDurationLong } from '../lib/format'
+import { formatDurationLong, musicas } from '../lib/format'
 import TrackRow from '../components/TrackRow'
 import Spinner from '../components/Spinner'
 
@@ -45,7 +45,7 @@ export default function Playlist() {
           <h1 className="mt-1 break-words text-4xl font-bold">{playlist.name}</h1>
           {playlist.comment && <p className="mt-2 text-sm text-subtext">{playlist.comment}</p>}
           <p className="mt-2 text-sm text-subtext">
-            {playlist.owner} • {playlist.songCount} músicas • {formatDurationLong(playlist.duration)}
+            {playlist.owner} • {musicas(playlist.songCount)} • {formatDurationLong(playlist.duration)}
           </p>
           <button
             onClick={playAll}
@@ -59,7 +59,7 @@ export default function Playlist() {
       <div className="px-4 sm:px-6">
         {playlist.songs.length === 0 ? (
           <p className="pt-8 text-center text-subtext">
-            Esta playlist está vazia. Toque numa música e a adicione a uma playlist pela página do álbum.
+            Esta playlist está vazia. Crie uma playlist pela página de Configurações e adicione músicas.
           </p>
         ) : (
           <div className="rounded-xl bg-surface/30 p-2">
