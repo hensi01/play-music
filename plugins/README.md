@@ -195,7 +195,7 @@ Agents = "lastfm,spotify,my-plugin"
 ```go
 package main
 
-import "github.com/navidrome/navidrome/plugins/pdk/go/metadata"
+import "github.com/hensi01/play-music/plugins/pdk/go/metadata"
 
 type myPlugin struct{}
 
@@ -277,7 +277,7 @@ On success, return `0`. On failure, use `pdk.SetError()` with one of these error
 - `scrobbler(unrecoverable)` – Permanent failure, scrobble discarded
 
 ```go
-import "github.com/navidrome/navidrome/plugins/pdk/go/scrobbler"
+import "github.com/hensi01/play-music/plugins/pdk/go/scrobbler"
 
 return scrobbler.ScrobblerErrorNotAuthorized
 return scrobbler.ScrobblerErrorRetryLater
@@ -355,14 +355,14 @@ Host services let your plugin call back into Navidrome for advanced functionalit
 All host service examples below use the generated Go SDK. Add this to your `go.mod`:
 
 ```
-require github.com/navidrome/navidrome/plugins/pdk/go v0.0.0
-replace github.com/navidrome/navidrome/plugins/pdk/go => ../../pdk/go
+require github.com/hensi01/play-music/plugins/pdk/go v0.0.0
+replace github.com/hensi01/play-music/plugins/pdk/go => ../../pdk/go
 ```
 
 Then import:
 
 ```go
-import "github.com/navidrome/navidrome/plugins/pdk/go/host"
+import "github.com/hensi01/play-music/plugins/pdk/go/host"
 ```
 
 ### HTTP
@@ -914,7 +914,7 @@ Navidrome provides type-safe Go packages for each capability and host service in
 ```go
 package main
 
-import "github.com/navidrome/navidrome/plugins/pdk/go/metadata"
+import "github.com/hensi01/play-music/plugins/pdk/go/metadata"
 
 type myPlugin struct{}
 
@@ -929,8 +929,8 @@ func main() {}
 Add to your `go.mod`:
 
 ```
-require github.com/navidrome/navidrome v0.0.0
-replace github.com/navidrome/navidrome => ../../..
+require github.com/hensi01/play-music v0.0.0
+replace github.com/hensi01/play-music => ../../..
 ```
 
 **Available capability packages:**

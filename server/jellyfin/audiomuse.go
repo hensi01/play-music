@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/server/jellyfin/dto"
-	"github.com/navidrome/navidrome/utils/req"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/model/request"
+	"github.com/hensi01/play-music/server/jellyfin/dto"
+	"github.com/hensi01/play-music/utils/req"
 )
 
 // audioMuseEndpoints is what /AudioMuseAI/info advertises; it omits info itself, like the plugin,

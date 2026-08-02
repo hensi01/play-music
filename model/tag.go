@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/navidrome/navidrome/model/id"
-	"github.com/navidrome/navidrome/utils/slice"
+	"github.com/hensi01/play-music/model/id"
+	"github.com/hensi01/play-music/utils/slice"
 )
 
 type Tag struct {

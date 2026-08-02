@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/navidrome/navidrome/conf"
+	"github.com/hensi01/play-music/conf"
 )
 
 func setup(t *testing.T) {

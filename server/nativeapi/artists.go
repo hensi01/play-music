@@ -9,9 +9,9 @@ import (
 
 	"github.com/deluan/rest"
 	"github.com/go-chi/chi/v5"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/server"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/server"
 )
 
 func (api *Router) addArtistRoute(r chi.Router) {

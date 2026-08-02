@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/navidrome/navidrome/utils/slice"
+	"github.com/hensi01/play-music/utils/slice"
 )
 
 var (

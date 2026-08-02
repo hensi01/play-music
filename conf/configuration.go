@@ -21,11 +21,11 @@ import (
 	"github.com/go-viper/encoding/ini"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/kr/pretty"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/scheduler"
-	"github.com/navidrome/navidrome/utils/run"
-	"github.com/navidrome/navidrome/utils/slice"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/scheduler"
+	"github.com/hensi01/play-music/utils/run"
+	"github.com/hensi01/play-music/utils/slice"
 	"github.com/spf13/viper"
 )
 
@@ -849,7 +849,7 @@ func validateEnforceNonRootUser() error {
 	}
 
 	if getEUID() == 0 {
-		return fmt.Errorf("EnforceNonRootUser is enabled but Navidrome is running as root")
+		return fmt.Errorf("EnforceNonRootUser is enabled but Play Music is running as root")
 	}
 
 	return nil
@@ -1168,7 +1168,7 @@ func InitConfig(cfgFile string, loadEnvVars bool) {
 
 	err := viper.ReadInConfig()
 	if viper.ConfigFileUsed() != "" && err != nil {
-		logFatal("Navidrome could not open config file:", err)
+		logFatal("Play Music could not open config file:", err)
 	}
 }
 

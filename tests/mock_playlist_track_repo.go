@@ -1,8 +1,8 @@
 package tests
 
 import (
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/utils/slice"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/utils/slice"
 )
 
 type MockPlaylistTrackRepo struct {

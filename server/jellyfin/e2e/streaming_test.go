@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/server/jellyfin/dto"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/server/jellyfin/dto"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

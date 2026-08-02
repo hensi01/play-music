@@ -1,6 +1,6 @@
 package capabilities
 
-import "github.com/navidrome/navidrome/plugins/types"
+import "github.com/hensi01/play-music/plugins/types"
 
 // MetadataAgent provides artist and album metadata retrieval.
 // This capability allows plugins to provide external metadata for artists and albums,

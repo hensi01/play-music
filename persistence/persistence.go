@@ -6,10 +6,10 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/navidrome/navidrome/db"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/utils/run"
+	"github.com/hensi01/play-music/db"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/utils/run"
 	"github.com/pocketbase/dbx"
 )
 

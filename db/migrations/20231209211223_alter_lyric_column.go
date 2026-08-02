@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/model"
 	"github.com/pressly/goose/v3"
 )
 

@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/mattn/go-sqlite3"
-	"github.com/navidrome/navidrome/conf"
-	_ "github.com/navidrome/navidrome/db/migrations"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/utils/hasher"
-	"github.com/navidrome/navidrome/utils/singleton"
+	"github.com/hensi01/play-music/conf"
+	_ "github.com/hensi01/play-music/db/migrations"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/utils/hasher"
+	"github.com/hensi01/play-music/utils/singleton"
 	"github.com/pressly/goose/v3"
 )
 

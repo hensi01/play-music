@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/navidrome/navidrome/core/scrobbler"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/server/jellyfin/dto"
+	"github.com/hensi01/play-music/core/scrobbler"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model/request"
+	"github.com/hensi01/play-music/server/jellyfin/dto"
 )
 
 // playbackReport is the subset of Jellyfin's PlaybackStartInfo/PlaybackProgressInfo

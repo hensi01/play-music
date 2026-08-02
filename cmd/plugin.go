@@ -12,10 +12,10 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/plugins"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/plugins"
 	"github.com/spf13/cobra"
 )
 

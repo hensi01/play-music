@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/model"
 )
 
 // These are the legacy ID functions that were used in the original Navidrome ID generation.

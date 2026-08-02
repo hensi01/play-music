@@ -10,13 +10,13 @@ import (
 	"time"
 
 	ppl "github.com/google/go-pipeline/pkg/pipeline"
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/core/artwork"
-	"github.com/navidrome/navidrome/core/playlists"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/core/artwork"
+	"github.com/hensi01/play-music/core/playlists"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/request"
 )
 
 type phasePlaylists struct {

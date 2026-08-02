@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/navidrome/navidrome/conf"
+	"github.com/hensi01/play-music/conf"
 )
 
 // Enabled reports whether the Bunny CDN is configured and ready to serve

@@ -9,12 +9,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"github.com/navidrome/navidrome/core/ffmpeg"
-	"github.com/navidrome/navidrome/core/stream"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/server/subsonic/responses"
-	"github.com/navidrome/navidrome/tests"
+	"github.com/hensi01/play-music/core/ffmpeg"
+	"github.com/hensi01/play-music/core/stream"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/request"
+	"github.com/hensi01/play-music/server/subsonic/responses"
+	"github.com/hensi01/play-music/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

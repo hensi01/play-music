@@ -6,7 +6,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/navidrome/navidrome/consts"
+	"github.com/hensi01/play-music/consts"
 )
 
 type Artist struct {

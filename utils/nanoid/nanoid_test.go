@@ -3,7 +3,7 @@ package nanoid_test
 import (
 	"testing"
 
-	"github.com/navidrome/navidrome/utils/nanoid"
+	"github.com/hensi01/play-music/utils/nanoid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

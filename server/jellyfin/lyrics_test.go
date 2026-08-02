@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/server/jellyfin/dto"
-	"github.com/navidrome/navidrome/tests"
-	"github.com/navidrome/navidrome/utils/cache"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/request"
+	"github.com/hensi01/play-music/server/jellyfin/dto"
+	"github.com/hensi01/play-music/tests"
+	"github.com/hensi01/play-music/utils/cache"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

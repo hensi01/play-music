@@ -4,8 +4,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/id"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/id"
 )
 
 func CreateMockAlbumRepo() *MockAlbumRepo {

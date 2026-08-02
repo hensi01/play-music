@@ -8,11 +8,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/utils/singleton"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/utils/singleton"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -132,7 +132,7 @@ var getPrometheusMetrics = sync.OnceValue(func() *prometheusMetrics {
 		versionInfo: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: "navidrome_info",
-				Help: "Information about Navidrome version",
+				Help: "Information about Play Music version",
 			},
 			[]string{"version"},
 		),

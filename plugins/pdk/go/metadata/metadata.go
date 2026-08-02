@@ -8,8 +8,8 @@
 package metadata
 
 import (
-	"github.com/navidrome/navidrome/plugins/pdk/go/pdk"
-	"github.com/navidrome/navidrome/plugins/pdk/go/types"
+	"github.com/hensi01/play-music/plugins/pdk/go/pdk"
+	"github.com/hensi01/play-music/plugins/pdk/go/types"
 )
 
 // Deprecated: use types.ArtistRef.

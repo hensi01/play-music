@@ -1,4 +1,4 @@
-module github.com/navidrome/navidrome
+module github.com/hensi01/play-music
 
 go 1.26
 

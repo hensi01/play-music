@@ -3,7 +3,7 @@ package subsonic
 import (
 	"net/http"
 
-	"github.com/navidrome/navidrome/server/subsonic/responses"
+	"github.com/hensi01/play-music/server/subsonic/responses"
 )
 
 func (api *Router) Ping(_ *http.Request) (*responses.Subsonic, error) {

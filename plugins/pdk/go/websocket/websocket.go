@@ -8,7 +8,7 @@
 package websocket
 
 import (
-	"github.com/navidrome/navidrome/plugins/pdk/go/pdk"
+	"github.com/hensi01/play-music/plugins/pdk/go/pdk"
 )
 
 // OnBinaryMessageRequest is the request provided when a binary message is received.

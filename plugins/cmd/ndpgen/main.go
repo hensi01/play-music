@@ -48,7 +48,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/navidrome/navidrome/plugins/cmd/ndpgen/internal"
+	"github.com/hensi01/play-music/plugins/cmd/ndpgen/internal"
 )
 
 // config holds the parsed command-line configuration.

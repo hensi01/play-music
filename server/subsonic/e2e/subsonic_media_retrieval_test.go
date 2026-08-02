@@ -3,10 +3,10 @@ package e2e
 import (
 	"net/http"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/conf/configtest"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/server/subsonic/responses"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/conf/configtest"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/server/subsonic/responses"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

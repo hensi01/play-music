@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/djherbis/times"
-	"github.com/navidrome/navidrome/core/storage"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model/metadata"
+	"github.com/hensi01/play-music/core/storage"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model/metadata"
 )
 
 // localStorage implements a Storage that reads the files from the local filesystem and uses registered extractors

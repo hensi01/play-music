@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/conf/configtest"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/tests"
-	"github.com/navidrome/navidrome/utils/cache"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/conf/configtest"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/tests"
+	"github.com/hensi01/play-music/utils/cache"
 )
 
 // setupE2EBenchmark creates an artwork instance with a real album cover image on disk,

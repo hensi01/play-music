@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/tests"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

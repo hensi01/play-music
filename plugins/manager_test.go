@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/navidrome/navidrome/core/agents"
-	"github.com/navidrome/navidrome/server/events"
+	"github.com/hensi01/play-music/core/agents"
+	"github.com/hensi01/play-music/server/events"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

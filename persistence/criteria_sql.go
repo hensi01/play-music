@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/criteria"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/criteria"
 )
 
 type smartPlaylistJoinType int

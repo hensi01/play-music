@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/navidrome/navidrome/model/id"
+	"github.com/hensi01/play-music/model/id"
 )
 
 const (
@@ -189,7 +189,7 @@ var (
 	}
 )
 
-var HTTPUserAgent = "Navidrome" + "/" + Version
+var HTTPUserAgent = "PlayMusic" + "/" + Version
 
 var (
 	VariousArtists = "Various Artists"

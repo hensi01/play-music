@@ -25,7 +25,7 @@ FROM scratch AS xx
 COPY --from=xx-build /out/ /usr/bin/
 
 ########################################################################################################################
-### Build Navidrome UI
+### Build Play Music UI
 FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/node:lts-alpine AS ui
 WORKDIR /app
 
@@ -42,7 +42,7 @@ FROM scratch AS ui-bundle
 COPY --from=ui /build /build
 
 ########################################################################################################################
-### Build Navidrome binary for Docker image (dynamic musl, enables native libwebp via dlopen)
+### Build Play Music binary for Docker image (dynamic musl, enables native libwebp via dlopen)
 FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/golang:1.26-alpine AS build-alpine
 COPY --from=xx / /
 
@@ -73,18 +73,18 @@ RUN --mount=type=bind,source=. \
     # -latomic is required on 32-bit arm (arm/v6, arm/v7) so SQLite's 64-bit atomics resolve.
     go build -tags="${BUILD_TAGS}" -ldflags="-w -s \
         -linkmode=external -extldflags '-latomic' \
-        -X github.com/navidrome/navidrome/consts.gitSha=${GIT_SHA} \
-        -X github.com/navidrome/navidrome/consts.gitTag=${GIT_TAG}" \
-        -o /out/navidrome .
+        -X github.com/hensi01/play-music/consts.gitSha=${GIT_SHA} \
+        -X github.com/hensi01/play-music/consts.gitTag=${GIT_TAG}" \
+        -o /out/playmusic .
     # Fail the build if native libwebp (purego) leaked into a 32-bit binary (issue #5738).
-    ./release/verify-binary.sh /out/navidrome
+    ./release/verify-binary.sh /out/playmusic
     # Fail the build if the binary is accidentally statically linked: dlopen (and
     # therefore native libwebp detection) only works with a dynamic interpreter.
-    file /out/navidrome | grep -q "dynamically linked" || { echo "ERROR: /out/navidrome is not dynamically linked"; file /out/navidrome; exit 1; }
+    file /out/playmusic | grep -q "dynamically linked" || { echo "ERROR: /out/playmusic is not dynamically linked"; file /out/playmusic; exit 1; }
 EOT
 
 ########################################################################################################################
-### Build Navidrome binary for standalone distribution (static glibc, cross-compiled)
+### Build Play Music binary for standalone distribution (static glibc, cross-compiled)
 FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/golang:1.26-trixie AS base
 RUN apt-get update && apt-get install -y clang lld
 COPY --from=xx / /
@@ -139,15 +139,15 @@ RUN --mount=type=bind,source=. \
 
     BUILD_TAGS=$(./release/build-tags.sh)
     go build -tags="${BUILD_TAGS}" -ldflags="${LD_EXTRA} -w -s \
-        -X github.com/navidrome/navidrome/consts.gitSha=${GIT_SHA} \
-        -X github.com/navidrome/navidrome/consts.gitTag=${GIT_TAG}" \
-        -o /out/navidrome${EXT} .
+        -X github.com/hensi01/play-music/consts.gitSha=${GIT_SHA} \
+        -X github.com/hensi01/play-music/consts.gitTag=${GIT_TAG}" \
+        -o /out/playmusic${EXT} .
     # Fail the build if native libwebp (purego) leaked into a 32-bit binary (issue #5738).
-    ./release/verify-binary.sh /out/navidrome*
+    ./release/verify-binary.sh /out/playmusic*
 EOT
 
 # Verify if the binary was built for the correct platform and it is statically linked
-RUN xx-verify --static /out/navidrome*
+RUN xx-verify --static /out/playmusic*
 
 FROM scratch AS binary
 COPY --from=build /out /
@@ -155,8 +155,8 @@ COPY --from=build /out /
 ########################################################################################################################
 ### Build Final Image
 FROM public.ecr.aws/docker/library/alpine:3.20 AS final
-LABEL maintainer="deluan@navidrome.org"
-LABEL org.opencontainers.image.source="https://github.com/navidrome/navidrome"
+LABEL maintainer="hensi01"
+LABEL org.opencontainers.image.source="https://github.com/hensi01/play-music"
 
 # Install runtime dependencies
 # - libwebp + symlinks: enables native WebP encoding via purego/dlopen
@@ -166,13 +166,13 @@ RUN apk add -U --no-cache ffmpeg mpv sqlite libwebp libwebpdemux libwebpmux && \
         [ -n "$target" ] && ln -sf "$target" /usr/lib/$lib.so; \
     done
 
-# Copy navidrome binary (musl build for Docker, enables native libwebp)
-COPY --from=build-alpine /out/navidrome /app/
+# Copy playmusic binary (musl build for Docker, enables native libwebp)
+COPY --from=build-alpine /out/playmusic /app/
 
 VOLUME ["/data", "/music"]
 ENV ND_MUSICFOLDER=/music
 ENV ND_DATAFOLDER=/data
-ENV ND_CONFIGFILE=/data/navidrome.toml
+ENV ND_CONFIGFILE=/data/playmusic.toml
 ENV ND_PORT=4533
 RUN touch /.nddockerenv
 
@@ -180,5 +180,5 @@ EXPOSE ${ND_PORT}
 WORKDIR /app
 ENV PATH="/app:${PATH}"
 
-ENTRYPOINT ["/app/navidrome"]
+ENTRYPOINT ["/app/playmusic"]
 

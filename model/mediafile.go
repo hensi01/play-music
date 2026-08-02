@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/gohugoio/hashstructure"
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/utils"
-	"github.com/navidrome/navidrome/utils/gg"
-	"github.com/navidrome/navidrome/utils/number"
-	"github.com/navidrome/navidrome/utils/slice"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/utils"
+	"github.com/hensi01/play-music/utils/gg"
+	"github.com/hensi01/play-music/utils/number"
+	"github.com/hensi01/play-music/utils/slice"
 )
 
 type MediaFile struct {

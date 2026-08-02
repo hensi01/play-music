@@ -5,15 +5,15 @@ import (
 	"path"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/core"
-	"github.com/navidrome/navidrome/core/artwork"
-	"github.com/navidrome/navidrome/core/publicurl"
-	"github.com/navidrome/navidrome/core/stream"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/server"
-	"github.com/navidrome/navidrome/ui"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/core"
+	"github.com/hensi01/play-music/core/artwork"
+	"github.com/hensi01/play-music/core/publicurl"
+	"github.com/hensi01/play-music/core/stream"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/server"
+	"github.com/hensi01/play-music/ui"
 )
 
 type Router struct {

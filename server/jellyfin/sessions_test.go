@@ -7,11 +7,11 @@ import (
 	"net/http/httptest"
 	"strings"
 
-	"github.com/navidrome/navidrome/core"
-	"github.com/navidrome/navidrome/core/scrobbler"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/tests"
+	"github.com/hensi01/play-music/core"
+	"github.com/hensi01/play-music/core/scrobbler"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/request"
+	"github.com/hensi01/play-music/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

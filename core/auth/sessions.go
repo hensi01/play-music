@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/core/redis"
-	"github.com/navidrome/navidrome/log"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/core/redis"
+	"github.com/hensi01/play-music/log"
 )
 
 // sessionKey derives a stable Redis key from a JWT string. The full token is

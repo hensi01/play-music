@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )

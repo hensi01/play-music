@@ -4,8 +4,8 @@ import (
 	"time"
 
 	. "github.com/Masterminds/squirrel"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
 )
 
 // PlaylistRepository methods to handle smart playlists, which are defined by criteria and automatically populated

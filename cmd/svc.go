@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/kardianos/service"
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/log"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/log"
 	"github.com/spf13/cobra"
 )
 
@@ -38,8 +38,8 @@ func init() {
 var svcCmd = &cobra.Command{
 	Use:     "service",
 	Aliases: []string{"svc"},
-	Short:   "Manage Navidrome as a service",
-	Long:    fmt.Sprintf("Manage Navidrome as a service, using the OS service manager (%s)", service.Platform()),
+	Short:   "Manage Play Music as a service",
+	Long:    fmt.Sprintf("Manage Play Music as a service, using the OS service manager (%s)", service.Platform()),
 	Run:     runServiceCmd,
 }
 
@@ -86,8 +86,8 @@ var svcInstance = sync.OnceValue(func() service.Service {
 	}
 	svcConfig := &service.Config{
 		UserName:    installUser,
-		Name:        "navidrome",
-		DisplayName: "Navidrome",
+		Name:        "play-music",
+		DisplayName: "Play Music",
 		Description: "Your Personal Streaming Service",
 		Dependencies: []string{
 			"After=remote-fs.target network.target",
@@ -148,12 +148,12 @@ func buildInstallCmd() *cobra.Command {
 		if err != nil {
 			log.Fatal(err)
 		}
-		println("Service installed. Use 'navidrome svc start' to start it.")
+		println("Service installed. Use 'play-music svc start' to start it.")
 	}
 
 	cmd := &cobra.Command{
 		Use:   "install",
-		Short: "Install Navidrome service.",
+		Short: "Install Play Music service.",
 		Run:   runInstallCmd,
 	}
 	cmd.Flags().StringVarP(&installUser, "user", "u", "", "user to run service")
@@ -165,7 +165,7 @@ func buildInstallCmd() *cobra.Command {
 func buildUninstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "uninstall",
-		Short: "Uninstall Navidrome service. Does not delete the music or data folders",
+		Short: "Uninstall Play Music service. Does not delete the music or data folders",
 		Run: func(cmd *cobra.Command, args []string) {
 			err := svcInstance().Uninstall()
 			if err != nil {
@@ -179,13 +179,13 @@ func buildUninstallCmd() *cobra.Command {
 func buildStartCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "start",
-		Short: "Start Navidrome service",
+		Short: "Start Play Music service",
 		Run: func(cmd *cobra.Command, args []string) {
 			err := svcInstance().Start()
 			if err != nil {
 				log.Fatal(err)
 			}
-			println("Service started. Use 'navidrome svc status' to check its status.")
+			println("Service started. Use 'play-music svc status' to check its status.")
 		},
 	}
 }
@@ -193,13 +193,13 @@ func buildStartCmd() *cobra.Command {
 func buildStopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop",
-		Short: "Stop Navidrome service",
+		Short: "Stop Play Music service",
 		Run: func(cmd *cobra.Command, args []string) {
 			err := svcInstance().Stop()
 			if err != nil {
 				log.Fatal(err)
 			}
-			println("Service stopped. Use 'navidrome svc status' to check its status.")
+			println("Service stopped. Use 'play-music svc status' to check its status.")
 		},
 	}
 }
@@ -207,13 +207,13 @@ func buildStopCmd() *cobra.Command {
 func buildStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
-		Short: "Show Navidrome service status",
+		Short: "Show Play Music service status",
 		Run: func(cmd *cobra.Command, args []string) {
 			status, err := svcInstance().Status()
 			if err != nil {
 				log.Fatal(err)
 			}
-			fmt.Printf("Navidrome is %s.\n", svcStatusLabels[status])
+			fmt.Printf("Play Music is %s.\n", svcStatusLabels[status])
 		},
 	}
 }
@@ -221,7 +221,7 @@ func buildStatusCmd() *cobra.Command {
 func buildExecuteCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "execute",
-		Short: "Run navidrome as a service in the foreground (it is very unlikely you want to run this, you are better off running just navidrome)",
+		Short: "Run play-music as a service in the foreground (it is very unlikely you want to run this, you are better off running just play-music)",
 		Run: func(cmd *cobra.Command, args []string) {
 			err := svcInstance().Run()
 			if err != nil {

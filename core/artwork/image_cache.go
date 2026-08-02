@@ -6,11 +6,11 @@ import (
 	"io"
 	"time"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/utils/cache"
-	"github.com/navidrome/navidrome/utils/singleton"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/utils/cache"
+	"github.com/hensi01/play-music/utils/singleton"
 )
 
 type cacheKey struct {

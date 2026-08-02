@@ -1,7 +1,7 @@
 package plugins
 
 import (
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/model"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

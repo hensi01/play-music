@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/mattn/go-sqlite3"
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/log"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/log"
 )
 
 const (

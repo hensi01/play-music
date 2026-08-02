@@ -5,9 +5,9 @@ import (
 	"encoding/xml"
 	"time"
 
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/server/subsonic/responses"
-	. "github.com/navidrome/navidrome/server/subsonic/responses"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/server/subsonic/responses"
+	. "github.com/hensi01/play-music/server/subsonic/responses"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

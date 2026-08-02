@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/log"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/log"
 )
 
 var analyzeMux sync.Mutex

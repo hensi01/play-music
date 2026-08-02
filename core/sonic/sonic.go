@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/navidrome/navidrome/core/agents"
-	"github.com/navidrome/navidrome/core/matcher"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/core/agents"
+	"github.com/hensi01/play-music/core/matcher"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
 )
 
 const capabilitySonicSimilarity = "SonicSimilarity"

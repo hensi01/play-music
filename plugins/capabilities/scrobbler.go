@@ -1,6 +1,6 @@
 package capabilities
 
-import "github.com/navidrome/navidrome/plugins/types"
+import "github.com/hensi01/play-music/plugins/types"
 
 // Scrobbler provides scrobbling functionality to external services.
 // This capability allows plugins to submit listening history to services like Last.fm,

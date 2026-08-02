@@ -8,7 +8,7 @@ import (
 	"time"
 
 	extism "github.com/extism/go-sdk"
-	"github.com/navidrome/navidrome/log"
+	"github.com/hensi01/play-music/log"
 )
 
 var errFunctionNotFound = errors.New("function not found")

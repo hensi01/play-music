@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/navidrome/navidrome/core"
-	"github.com/navidrome/navidrome/core/stream"
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/core"
+	"github.com/hensi01/play-music/core/stream"
+	"github.com/hensi01/play-music/model"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"

@@ -6,11 +6,11 @@ import (
 	"slices"
 	"time"
 
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/server/subsonic/responses"
-	"github.com/navidrome/navidrome/utils/req"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/request"
+	"github.com/hensi01/play-music/server/subsonic/responses"
+	"github.com/hensi01/play-music/utils/req"
 )
 
 func (api *Router) GetScanStatus(r *http.Request) (*responses.Subsonic, error) {

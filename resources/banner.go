@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/navidrome/navidrome/consts"
+	"github.com/hensi01/play-music/consts"
 )
 
 func loadBanner() string {
@@ -20,5 +20,5 @@ func loadBanner() string {
 
 func Banner() string {
 	version := "Version: " + consts.Version
-	return fmt.Sprintf("%s\n%52s\n", loadBanner(), version)
+	return fmt.Sprintf("%s\n%s\n", loadBanner(), version)
 }

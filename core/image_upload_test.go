@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/conf/configtest"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/core"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/conf/configtest"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/core"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

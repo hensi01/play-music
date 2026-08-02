@@ -12,9 +12,9 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/utils/gg"
-	"github.com/navidrome/navidrome/utils/str"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/utils/gg"
+	"github.com/hensi01/play-music/utils/str"
 )
 
 const (

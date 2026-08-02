@@ -5,11 +5,11 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/navidrome/navidrome/core/scrobbler"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/plugins/capabilities"
-	"github.com/navidrome/navidrome/plugins/types"
+	"github.com/hensi01/play-music/core/scrobbler"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/request"
+	"github.com/hensi01/play-music/plugins/capabilities"
+	"github.com/hensi01/play-music/plugins/types"
 )
 
 // CapabilityScrobbler indicates the plugin can receive scrobble events.

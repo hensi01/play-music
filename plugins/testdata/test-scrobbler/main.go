@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/navidrome/navidrome/plugins/pdk/go/pdk"
-	"github.com/navidrome/navidrome/plugins/pdk/go/scrobbler"
+	"github.com/hensi01/play-music/plugins/pdk/go/pdk"
+	"github.com/hensi01/play-music/plugins/pdk/go/scrobbler"
 )
 
 func init() {

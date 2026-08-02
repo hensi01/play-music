@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/conf/configtest"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/conf/configtest"
 )
 
 func BenchmarkResizeFullPipeline(b *testing.B) {

@@ -3,7 +3,7 @@ package scheduler
 import (
 	"context"
 
-	"github.com/navidrome/navidrome/utils/singleton"
+	"github.com/hensi01/play-music/utils/singleton"
 	"github.com/robfig/cron/v3"
 )
 

@@ -6,9 +6,9 @@ import (
 	"encoding/base64"
 	"errors"
 
-	"github.com/navidrome/navidrome/plugins/pdk/go/host"
-	"github.com/navidrome/navidrome/plugins/pdk/go/pdk"
-	"github.com/navidrome/navidrome/plugins/pdk/go/websocket"
+	"github.com/hensi01/play-music/plugins/pdk/go/host"
+	"github.com/hensi01/play-music/plugins/pdk/go/pdk"
+	"github.com/hensi01/play-music/plugins/pdk/go/websocket"
 )
 
 func init() {

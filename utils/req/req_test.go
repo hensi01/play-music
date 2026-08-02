@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/navidrome/navidrome/utils/req"
+	"github.com/hensi01/play-music/utils/req"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/navidrome/navidrome/core/auth"
+	"github.com/hensi01/play-music/core/auth"
 )
 
 const (

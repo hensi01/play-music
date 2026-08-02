@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/navidrome/navidrome/utils/slice"
+	"github.com/hensi01/play-music/utils/slice"
 )
 
 func ShortDur(d time.Duration) string {

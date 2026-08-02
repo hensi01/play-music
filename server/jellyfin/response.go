@@ -8,7 +8,7 @@ import (
 	"iter"
 	"strconv"
 
-	"github.com/navidrome/navidrome/server/jellyfin/dto"
+	"github.com/hensi01/play-music/server/jellyfin/dto"
 )
 
 // streamItemsEnvelope writes a QueryResult, byte-identical to json.NewEncoder(w).Encode(q).

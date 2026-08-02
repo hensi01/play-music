@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/utils/shellquote"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/utils/shellquote"
 )
 
 func start(ctx context.Context, args []string) (Executor, error) {

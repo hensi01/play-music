@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/navidrome/navidrome/utils/str"
+	"github.com/hensi01/play-music/utils/str"
 )
 
 var (

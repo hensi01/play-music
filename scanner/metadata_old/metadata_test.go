@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"slices"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/conf/configtest"
-	"github.com/navidrome/navidrome/core/ffmpeg"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/scanner/metadata_old"
-	_ "github.com/navidrome/navidrome/scanner/metadata_old/ffmpeg"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/conf/configtest"
+	"github.com/hensi01/play-music/core/ffmpeg"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/scanner/metadata_old"
+	_ "github.com/hensi01/play-music/scanner/metadata_old/ffmpeg"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

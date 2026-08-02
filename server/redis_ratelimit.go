@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/navidrome/navidrome/core/redis"
+	"github.com/hensi01/play-music/core/redis"
 )
 
 // redisRateLimiter is an IP-based fixed-window rate limiter backed by Redis, so

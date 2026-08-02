@@ -6,10 +6,10 @@ import (
 	"strconv"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/server/jellyfin/dto"
-	"github.com/navidrome/navidrome/utils/req"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/request"
+	"github.com/hensi01/play-music/server/jellyfin/dto"
+	"github.com/hensi01/play-music/utils/req"
 )
 
 // accessibleLibraryIDs returns the ids of the libraries the current user can access. An empty

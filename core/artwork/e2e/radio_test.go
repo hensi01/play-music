@@ -1,8 +1,8 @@
 package artworke2e_test
 
 import (
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/model"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

@@ -8,7 +8,7 @@ import (
 	"io"
 
 	extism "github.com/extism/go-sdk"
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/model"
 	"github.com/tetratelabs/wazero"
 )
 

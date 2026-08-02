@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/deluan/rest"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/request"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/pocketbase/dbx"
@@ -17,9 +17,9 @@ var _ = Describe("PlayerRepository", func() {
 	var database *dbx.DB
 
 	var (
-		adminPlayer1  = model.Player{ID: "1", Name: "NavidromeUI [Firefox/Linux]", UserAgent: "Firefox/Linux", UserId: adminUser.ID, Username: adminUser.UserName, Client: "NavidromeUI", IP: "127.0.0.1", ReportRealPath: true, ScrobbleEnabled: true}
+		adminPlayer1  = model.Player{ID: "1", Name: "PlayMusicUI [Firefox/Linux]", UserAgent: "Firefox/Linux", UserId: adminUser.ID, Username: adminUser.UserName, Client: "PlayMusicUI", IP: "127.0.0.1", ReportRealPath: true, ScrobbleEnabled: true}
 		adminPlayer2  = model.Player{ID: "2", Name: "GenericClient [Chrome/Windows]", IP: "192.168.0.5", UserAgent: "Chrome/Windows", UserId: adminUser.ID, Username: adminUser.UserName, Client: "GenericClient", MaxBitRate: 128}
-		regularPlayer = model.Player{ID: "3", Name: "NavidromeUI [Safari/macOS]", UserAgent: "Safari/macOS", UserId: regularUser.ID, Username: regularUser.UserName, Client: "NavidromeUI", ReportRealPath: true, ScrobbleEnabled: false}
+		regularPlayer = model.Player{ID: "3", Name: "PlayMusicUI [Safari/macOS]", UserAgent: "Safari/macOS", UserId: regularUser.ID, Username: regularUser.UserName, Client: "PlayMusicUI", ReportRealPath: true, ScrobbleEnabled: false}
 
 		players = model.Players{adminPlayer1, adminPlayer2, regularPlayer}
 	)
@@ -56,13 +56,13 @@ var _ = Describe("PlayerRepository", func() {
 
 	Describe("FindMatch", func() {
 		It("finds existing match", func() {
-			player, err := adminRepo.FindMatch(adminUser.ID, "NavidromeUI", "Firefox/Linux")
+			player, err := adminRepo.FindMatch(adminUser.ID, "PlayMusicUI", "Firefox/Linux")
 			Expect(err).To(BeNil())
 			Expect(*player).To(Equal(adminPlayer1))
 		})
 
 		It("doesn't find bad match", func() {
-			_, err := adminRepo.FindMatch(regularUser.ID, "NavidromeUI", "Firefox/Linux")
+			_, err := adminRepo.FindMatch(regularUser.ID, "PlayMusicUI", "Firefox/Linux")
 			Expect(err).To(Equal(model.ErrNotFound))
 		})
 	})

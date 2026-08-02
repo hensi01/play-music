@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/navidrome/navidrome/core"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/core"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -25,7 +25,7 @@ func init() {
 var inspectCmd = &cobra.Command{
 	Use:   "inspect [files to inspect]",
 	Short: "Inspect tags",
-	Long:  "Show file tags as seen by Navidrome",
+	Long:  "Show file tags as seen by Play Music",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		runInspector(args)

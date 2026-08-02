@@ -9,7 +9,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/navidrome/navidrome/log"
+	"github.com/hensi01/play-music/log"
 )
 
 func Encrypt(ctx context.Context, encKey []byte, data string) (string, error) {

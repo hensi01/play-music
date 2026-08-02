@@ -3,8 +3,8 @@ package gg_test
 import (
 	"testing"
 
-	"github.com/navidrome/navidrome/tests"
-	"github.com/navidrome/navidrome/utils/gg"
+	"github.com/hensi01/play-music/tests"
+	"github.com/hensi01/play-music/utils/gg"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

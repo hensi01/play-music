@@ -7,13 +7,13 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/deluan/rest"
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	. "github.com/navidrome/navidrome/utils/gg"
-	"github.com/navidrome/navidrome/utils/nanoid"
-	"github.com/navidrome/navidrome/utils/slice"
-	"github.com/navidrome/navidrome/utils/str"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	. "github.com/hensi01/play-music/utils/gg"
+	"github.com/hensi01/play-music/utils/nanoid"
+	"github.com/hensi01/play-music/utils/slice"
+	"github.com/hensi01/play-music/utils/str"
 )
 
 type Share interface {

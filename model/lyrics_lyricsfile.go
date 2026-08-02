@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/navidrome/navidrome/utils/str"
+	"github.com/hensi01/play-music/utils/str"
 	"gopkg.in/yaml.v3"
 )
 

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/navidrome/navidrome/log"
+	"github.com/hensi01/play-music/log"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/robfig/cron/v3"

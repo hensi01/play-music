@@ -6,8 +6,8 @@ import (
 	"time"
 
 	. "github.com/Masterminds/squirrel"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/id"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/id"
 	"github.com/pocketbase/dbx"
 )
 

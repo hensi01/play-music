@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/resources"
-	"github.com/navidrome/navidrome/tests"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/resources"
+	"github.com/hensi01/play-music/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

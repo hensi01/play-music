@@ -8,12 +8,12 @@ import (
 	"slices"
 	"time"
 
-	"github.com/navidrome/navidrome/core/matcher"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/plugins/host"
-	"github.com/navidrome/navidrome/plugins/types"
-	"github.com/navidrome/navidrome/utils/slice"
+	"github.com/hensi01/play-music/core/matcher"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/request"
+	"github.com/hensi01/play-music/plugins/host"
+	"github.com/hensi01/play-music/plugins/types"
+	"github.com/hensi01/play-music/utils/slice"
 )
 
 type matcherServiceImpl struct {

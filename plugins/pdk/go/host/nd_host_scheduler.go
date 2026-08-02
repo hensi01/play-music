@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/navidrome/navidrome/plugins/pdk/go/pdk"
+	"github.com/hensi01/play-music/plugins/pdk/go/pdk"
 )
 
 // scheduler_scheduleonetime is the host function provided by Navidrome.

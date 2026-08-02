@@ -14,13 +14,13 @@ import (
 
 	. "github.com/Masterminds/squirrel"
 	"github.com/deluan/rest"
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	id2 "github.com/navidrome/navidrome/model/id"
-	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/utils/hasher"
-	"github.com/navidrome/navidrome/utils/slice"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	id2 "github.com/hensi01/play-music/model/id"
+	"github.com/hensi01/play-music/model/request"
+	"github.com/hensi01/play-music/utils/hasher"
+	"github.com/hensi01/play-music/utils/slice"
 	"github.com/pocketbase/dbx"
 )
 

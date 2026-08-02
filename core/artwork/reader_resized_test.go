@@ -6,8 +6,8 @@ import (
 	"errors"
 	"io"
 
-	"github.com/navidrome/navidrome/core/ffmpeg"
-	"github.com/navidrome/navidrome/tests"
+	"github.com/hensi01/play-music/core/ffmpeg"
+	"github.com/hensi01/play-music/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

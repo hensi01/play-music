@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/navidrome/navidrome/core/sonic"
-	"github.com/navidrome/navidrome/server/subsonic/responses"
-	"github.com/navidrome/navidrome/utils/req"
+	"github.com/hensi01/play-music/core/sonic"
+	"github.com/hensi01/play-music/server/subsonic/responses"
+	"github.com/hensi01/play-music/utils/req"
 )
 
 func (api *Router) GetSonicSimilarTracks(w http.ResponseWriter, r *http.Request) (*responses.Subsonic, error) {

@@ -6,8 +6,8 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/utils/nanoid"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/utils/nanoid"
 )
 
 func NewRandom() string {

@@ -11,8 +11,8 @@ import (
 	. "github.com/Masterminds/squirrel"
 	"github.com/deluan/rest"
 	"github.com/fatih/structs"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
 )
 
 type filterFunc = func(field string, value any) Sqlizer

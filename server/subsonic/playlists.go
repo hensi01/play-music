@@ -7,13 +7,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/server/subsonic/responses"
-	"github.com/navidrome/navidrome/utils/req"
-	"github.com/navidrome/navidrome/utils/slice"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/request"
+	"github.com/hensi01/play-music/server/subsonic/responses"
+	"github.com/hensi01/play-music/utils/req"
+	"github.com/hensi01/play-music/utils/slice"
 )
 
 func (api *Router) GetPlaylists(r *http.Request) (*responses.Subsonic, error) {

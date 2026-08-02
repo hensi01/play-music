@@ -9,7 +9,7 @@
 package host
 
 import (
-	"github.com/navidrome/navidrome/plugins/pdk/go/types"
+	"github.com/hensi01/play-music/plugins/pdk/go/types"
 	"github.com/stretchr/testify/mock"
 )
 

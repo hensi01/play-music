@@ -3,10 +3,10 @@ package core
 import (
 	"path/filepath"
 
-	"github.com/navidrome/navidrome/core/storage"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/metadata"
+	"github.com/hensi01/play-music/core/storage"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/metadata"
 )
 
 type InspectOutput struct {

@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/deluan/sanitize"
-	"github.com/navidrome/navidrome/log"
+	"github.com/hensi01/play-music/log"
 	"github.com/pressly/goose/v3"
 )
 

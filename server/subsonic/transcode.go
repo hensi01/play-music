@@ -8,13 +8,13 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/navidrome/navidrome/core/ffmpeg"
-	"github.com/navidrome/navidrome/core/stream"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/server/subsonic/responses"
-	"github.com/navidrome/navidrome/utils/req"
+	"github.com/hensi01/play-music/core/ffmpeg"
+	"github.com/hensi01/play-music/core/stream"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/request"
+	"github.com/hensi01/play-music/server/subsonic/responses"
+	"github.com/hensi01/play-music/utils/req"
 )
 
 // API-layer request structs for JSON unmarshaling (decoupled from core structs)
@@ -272,7 +272,7 @@ func (api *Router) GetTranscodeDecision(w http.ResponseWriter, r *http.Request) 
 
 	// TODO: Remove this filter once AAC transcoding works reliably
 	// with streaming clients (Sonos, etc).
-	// See https://github.com/navidrome/navidrome/discussions/4832#discussioncomment-16068231
+	// See https://github.com/hensi01/play-music/discussions/4832#discussioncomment-16068231
 	clientInfo.TranscodingProfiles = slices.DeleteFunc(clientInfo.TranscodingProfiles, func(p stream.Profile) bool {
 		if p.AudioCodec != "" {
 			return stream.IsAACCodec(p.AudioCodec)

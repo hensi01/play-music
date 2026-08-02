@@ -11,11 +11,11 @@ import (
 	"strings"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/navidrome/navidrome/core/stream"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/utils/slice"
-	"github.com/navidrome/navidrome/utils/str"
+	"github.com/hensi01/play-music/core/stream"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/utils/slice"
+	"github.com/hensi01/play-music/utils/str"
 )
 
 type Archiver interface {
@@ -81,7 +81,7 @@ func (a *archiver) zipAlbums(ctx context.Context, id string, format string, bitr
 
 func createZipWriter(out io.Writer, format string, bitrate int) *zip.Writer {
 	z := zip.NewWriter(out)
-	comment := "Downloaded from Navidrome"
+	comment := "Downloaded from Play Music"
 	if format != "raw" && format != "" {
 		comment = fmt.Sprintf("%s, transcoded to %s %dbps", comment, format, bitrate)
 	}

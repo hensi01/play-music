@@ -13,7 +13,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/navidrome/navidrome/log"
+	"github.com/hensi01/play-music/log"
 	"golang.org/x/sync/semaphore"
 )
 

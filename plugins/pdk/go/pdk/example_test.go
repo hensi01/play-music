@@ -8,7 +8,7 @@ package pdk_test
 import (
 	"testing"
 
-	"github.com/navidrome/navidrome/plugins/pdk/go/pdk"
+	"github.com/hensi01/play-music/plugins/pdk/go/pdk"
 	"github.com/stretchr/testify/mock"
 )
 

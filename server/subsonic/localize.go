@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/navidrome/navidrome/server/subsonic/responses"
+	"github.com/hensi01/play-music/server/subsonic/responses"
 )
 
 // isPortuguese returns true when the request's Accept-Language header prefers

@@ -20,10 +20,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/core/storage/local"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model/metadata"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/core/storage/local"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model/metadata"
 	"go.senan.xyz/taglib"
 )
 

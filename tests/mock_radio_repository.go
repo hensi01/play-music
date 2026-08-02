@@ -3,8 +3,8 @@ package tests
 import (
 	"errors"
 
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/id"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/id"
 )
 
 type MockedRadioRepo struct {

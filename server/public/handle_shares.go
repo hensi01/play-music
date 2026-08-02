@@ -6,16 +6,16 @@ import (
 	"net/http"
 	"path"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/core/auth"
-	"github.com/navidrome/navidrome/core/publicurl"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/server"
-	"github.com/navidrome/navidrome/ui"
-	. "github.com/navidrome/navidrome/utils/gg"
-	"github.com/navidrome/navidrome/utils/req"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/core/auth"
+	"github.com/hensi01/play-music/core/publicurl"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/server"
+	"github.com/hensi01/play-music/ui"
+	. "github.com/hensi01/play-music/utils/gg"
+	"github.com/hensi01/play-music/utils/req"
 )
 
 func (pub *Router) handleShares(w http.ResponseWriter, r *http.Request) {

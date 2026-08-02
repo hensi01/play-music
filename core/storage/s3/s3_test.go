@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	_ "github.com/navidrome/navidrome/adapters/gotaglib" // register the "taglib" extractor
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/core/storage"
-	"github.com/navidrome/navidrome/log"
+	_ "github.com/hensi01/play-music/adapters/gotaglib" // register the "taglib" extractor
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/core/storage"
+	"github.com/hensi01/play-music/log"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"

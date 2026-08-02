@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/navidrome/navidrome/utils/hasher"
+	"github.com/hensi01/play-music/utils/hasher"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

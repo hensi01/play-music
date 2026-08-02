@@ -3,10 +3,10 @@ package plugins
 import (
 	"context"
 
-	"github.com/navidrome/navidrome/core/sonic"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/plugins/capabilities"
-	"github.com/navidrome/navidrome/plugins/types"
+	"github.com/hensi01/play-music/core/sonic"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/plugins/capabilities"
+	"github.com/hensi01/play-music/plugins/types"
 )
 
 const CapabilitySonicSimilarity Capability = "SonicSimilarity"

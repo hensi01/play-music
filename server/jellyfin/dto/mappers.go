@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/utils/slice"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/utils/slice"
 )
 
 // Jellyfin wire times are ticks: 100ns units, i.e. 10,000 per millisecond.

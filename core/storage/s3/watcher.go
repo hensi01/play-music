@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/navidrome/navidrome/log"
+	"github.com/hensi01/play-music/log"
 )
 
 // bucketEvents lists the S3 notification events that trigger a library scan.

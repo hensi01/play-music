@@ -3,9 +3,9 @@ package artwork
 import (
 	"context"
 
-	"github.com/navidrome/navidrome/core/storage/storagetest"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/tests"
+	"github.com/hensi01/play-music/core/storage/storagetest"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

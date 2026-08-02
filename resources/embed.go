@@ -6,8 +6,8 @@ import (
 	"os"
 	"path"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/utils/merge"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/utils/merge"
 )
 
 //go:embed *

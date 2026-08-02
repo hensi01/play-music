@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/navidrome/navidrome/core/auth"
-	streampkg "github.com/navidrome/navidrome/core/stream"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	. "github.com/navidrome/navidrome/utils/gg"
-	"github.com/navidrome/navidrome/utils/req"
+	"github.com/hensi01/play-music/core/auth"
+	streampkg "github.com/hensi01/play-music/core/stream"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	. "github.com/hensi01/play-music/utils/gg"
+	"github.com/hensi01/play-music/utils/req"
 )
 
 func (pub *Router) handleStream(w http.ResponseWriter, r *http.Request) {

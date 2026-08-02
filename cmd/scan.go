@@ -9,14 +9,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/navidrome/navidrome/core"
-	"github.com/navidrome/navidrome/core/playlists"
-	"github.com/navidrome/navidrome/db"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/persistence"
-	"github.com/navidrome/navidrome/scanner"
-	"github.com/navidrome/navidrome/utils/pl"
+	"github.com/hensi01/play-music/core"
+	"github.com/hensi01/play-music/core/playlists"
+	"github.com/hensi01/play-music/db"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/persistence"
+	"github.com/hensi01/play-music/scanner"
+	"github.com/hensi01/play-music/utils/pl"
 	"github.com/spf13/cobra"
 )
 

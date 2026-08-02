@@ -18,15 +18,15 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httprate"
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/core/auth"
-	"github.com/navidrome/navidrome/core/metrics"
-	"github.com/navidrome/navidrome/core/redis"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/server/events"
-	"github.com/navidrome/navidrome/ui"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/core/auth"
+	"github.com/hensi01/play-music/core/metrics"
+	"github.com/hensi01/play-music/core/redis"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/server/events"
+	"github.com/hensi01/play-music/ui"
 )
 
 type Server struct {
@@ -121,7 +121,7 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 		log.Error(ctx, "Could not start server. Aborting", err)
 		return fmt.Errorf("starting server: %w", err)
 	case <-time.After(50 * time.Millisecond):
-		log.Info(ctx, "----> Navidrome server is ready!", "address", addr, "startupTime", startupTime, "tlsEnabled", tlsEnabled)
+		log.Info(ctx, "----> Play Music server is ready!", "address", addr, "startupTime", startupTime, "tlsEnabled", tlsEnabled)
 	}
 
 	// Wait for a signal to terminate
@@ -265,7 +265,7 @@ func validateTLSCertificates(certFile, keyFile string) error {
 	// Check for encrypted private key indicators
 	if isEncryptedPEM(block, keyData) {
 		return errors.New("TLS private key is encrypted (password-protected). " +
-			"Navidrome does not support encrypted private keys. " +
+			"Play Music does not support encrypted private keys. " +
 			"Please decrypt your key using: openssl pkey -in <encrypted-key> -out <decrypted-key>")
 	}
 

@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/navidrome/navidrome/core/agents"
-	"github.com/navidrome/navidrome/plugins/capabilities"
-	"github.com/navidrome/navidrome/plugins/types"
-	"github.com/navidrome/navidrome/utils/slice"
+	"github.com/hensi01/play-music/core/agents"
+	"github.com/hensi01/play-music/plugins/capabilities"
+	"github.com/hensi01/play-music/plugins/types"
+	"github.com/hensi01/play-music/utils/slice"
 )
 
 // CapabilityMetadataAgent indicates the plugin can provide artist/album metadata.

@@ -6,7 +6,7 @@ import (
 
 	. "github.com/Masterminds/squirrel"
 	"github.com/deluan/rest"
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/model"
 	"github.com/pocketbase/dbx"
 )
 
@@ -65,7 +65,7 @@ func (r *playerRepository) newRestSelect(options ...model.QueryOptions) SelectBu
 func (r *playerRepository) CountByClient(options ...model.QueryOptions) (map[string]int64, error) {
 	sel := r.newSelect(options...).
 		Columns(
-			"case when client = 'NavidromeUI' then name else client end as player",
+			"case when client = 'PlayMusicUI' then name else client end as player",
 			"count(*) as count",
 		).GroupBy("client")
 	var res []struct {

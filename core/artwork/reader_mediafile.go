@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/model"
 )
 
 type mediafileArtworkReader struct {

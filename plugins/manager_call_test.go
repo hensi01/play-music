@@ -6,7 +6,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/navidrome/navidrome/core/agents"
+	"github.com/hensi01/play-music/core/agents"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

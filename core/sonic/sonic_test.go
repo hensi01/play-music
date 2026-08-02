@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 
-	"github.com/navidrome/navidrome/core/agents"
-	"github.com/navidrome/navidrome/core/matcher"
-	"github.com/navidrome/navidrome/core/sonic"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/tests"
+	"github.com/hensi01/play-music/core/agents"
+	"github.com/hensi01/play-music/core/matcher"
+	"github.com/hensi01/play-music/core/sonic"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

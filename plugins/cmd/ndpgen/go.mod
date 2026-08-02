@@ -1,4 +1,4 @@
-module github.com/navidrome/navidrome/plugins/cmd/ndpgen
+module github.com/hensi01/play-music/plugins/cmd/ndpgen
 
 go 1.25.0
 

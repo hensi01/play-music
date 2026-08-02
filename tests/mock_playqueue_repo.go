@@ -3,7 +3,7 @@ package tests
 import (
 	"errors"
 
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/model"
 )
 
 type MockPlayQueueRepo struct {

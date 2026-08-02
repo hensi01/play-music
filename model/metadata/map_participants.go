@@ -4,10 +4,10 @@ import (
 	"cmp"
 	"strings"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/utils/str"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/utils/str"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )

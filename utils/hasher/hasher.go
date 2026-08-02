@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/navidrome/navidrome/utils/random"
+	"github.com/hensi01/play-music/utils/random"
 )
 
 var instance = NewHasher()

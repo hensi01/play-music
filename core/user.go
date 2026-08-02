@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/deluan/rest"
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/model"
 )
 
 // PluginUnloader defines the interface for unloading disabled plugins.

@@ -3,9 +3,9 @@ package plugins
 import (
 	"context"
 
-	"github.com/navidrome/navidrome/core/publicurl"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/plugins/host"
+	"github.com/hensi01/play-music/core/publicurl"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/plugins/host"
 )
 
 type artworkServiceImpl struct{}

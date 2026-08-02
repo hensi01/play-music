@@ -9,14 +9,14 @@ import (
 	"sync"
 
 	"github.com/deluan/rest"
-	_ "github.com/navidrome/navidrome/adapters/gotaglib" // Register taglib extractor
-	"github.com/navidrome/navidrome/conf/configtest"
-	"github.com/navidrome/navidrome/core"
-	_ "github.com/navidrome/navidrome/core/storage/local" // Register local storage
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/server/events"
-	"github.com/navidrome/navidrome/tests"
+	_ "github.com/hensi01/play-music/adapters/gotaglib" // Register taglib extractor
+	"github.com/hensi01/play-music/conf/configtest"
+	"github.com/hensi01/play-music/core"
+	_ "github.com/hensi01/play-music/core/storage/local" // Register local storage
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/request"
+	"github.com/hensi01/play-music/server/events"
+	"github.com/hensi01/play-music/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

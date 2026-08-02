@@ -5,12 +5,12 @@ import (
 	"time"
 
 	"github.com/deluan/rest"
-	"github.com/navidrome/navidrome/core"
-	"github.com/navidrome/navidrome/core/playlists"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/criteria"
-	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/tests"
+	"github.com/hensi01/play-music/core"
+	"github.com/hensi01/play-music/core/playlists"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/model/criteria"
+	"github.com/hensi01/play-music/model/request"
+	"github.com/hensi01/play-music/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

@@ -9,29 +9,29 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/core/redis"
-	"github.com/navidrome/navidrome/db"
-	"github.com/navidrome/navidrome/log"
-	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/resources"
-	"github.com/navidrome/navidrome/scanner"
-	"github.com/navidrome/navidrome/scheduler"
-	"github.com/navidrome/navidrome/server/backgrounds"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/core/redis"
+	"github.com/hensi01/play-music/db"
+	"github.com/hensi01/play-music/log"
+	"github.com/hensi01/play-music/model"
+	"github.com/hensi01/play-music/resources"
+	"github.com/hensi01/play-music/scanner"
+	"github.com/hensi01/play-music/scheduler"
+	"github.com/hensi01/play-music/server/backgrounds"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 
 	// Import adapters to register them
-	_ "github.com/navidrome/navidrome/adapters/deezer"
-	_ "github.com/navidrome/navidrome/adapters/gotaglib"
-	_ "github.com/navidrome/navidrome/adapters/lastfm"
-	_ "github.com/navidrome/navidrome/adapters/listenbrainz"
+	_ "github.com/hensi01/play-music/adapters/deezer"
+	_ "github.com/hensi01/play-music/adapters/gotaglib"
+	_ "github.com/hensi01/play-music/adapters/lastfm"
+	_ "github.com/hensi01/play-music/adapters/listenbrainz"
 
 	// Import storage backends to register them
-	_ "github.com/navidrome/navidrome/core/storage/local"
-	_ "github.com/navidrome/navidrome/core/storage/s3"
+	_ "github.com/hensi01/play-music/core/storage/local"
+	_ "github.com/hensi01/play-music/core/storage/s3"
 )
 
 var (
@@ -39,10 +39,10 @@ var (
 	noBanner bool
 
 	rootCmd = &cobra.Command{
-		Use:   "navidrome",
-		Short: "Navidrome is a self-hosted music server and streamer",
-		Long: `Navidrome is a self-hosted music server and streamer.
-Complete documentation is available at https://www.navidrome.org/docs`,
+		Use:   "playmusic",
+		Short: "Play Music is a self-hosted music server and streamer",
+		Long: `Play Music is a self-hosted music server and streamer.
+Stream your personal music library from MinIO/S3 with a Spotify-style interface.`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			preRun()
 		},

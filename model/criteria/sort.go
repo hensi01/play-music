@@ -3,7 +3,7 @@ package criteria
 import (
 	"strings"
 
-	"github.com/navidrome/navidrome/log"
+	"github.com/hensi01/play-music/log"
 )
 
 type SortField struct {

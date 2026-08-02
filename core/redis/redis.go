@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/log"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/log"
 	goredis "github.com/redis/go-redis/v9"
 )
 

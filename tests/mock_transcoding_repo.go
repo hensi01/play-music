@@ -1,6 +1,6 @@
 package tests
 
-import "github.com/navidrome/navidrome/model"
+import "github.com/hensi01/play-music/model"
 
 type MockTranscodingRepo struct {
 	model.TranscodingRepository

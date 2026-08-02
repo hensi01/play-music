@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/model"
 )
 
 type radioArtworkReader struct {

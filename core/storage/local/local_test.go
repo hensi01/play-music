@@ -8,11 +8,11 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/conf/configtest"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/core/storage"
-	"github.com/navidrome/navidrome/model/metadata"
+	"github.com/hensi01/play-music/conf"
+	"github.com/hensi01/play-music/conf/configtest"
+	"github.com/hensi01/play-music/consts"
+	"github.com/hensi01/play-music/core/storage"
+	"github.com/hensi01/play-music/model/metadata"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

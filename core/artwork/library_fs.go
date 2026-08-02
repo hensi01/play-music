@@ -4,8 +4,8 @@ import (
 	"context"
 	"path/filepath"
 
-	"github.com/navidrome/navidrome/core/storage"
-	"github.com/navidrome/navidrome/model"
+	"github.com/hensi01/play-music/core/storage"
+	"github.com/hensi01/play-music/model"
 )
 
 // libraryView bundles the MusicFS for a library with its absolute root path,
