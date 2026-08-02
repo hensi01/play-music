@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/core/cdn"
 	"github.com/navidrome/navidrome/core/stream"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -34,6 +35,19 @@ func (api *Router) Stream(w http.ResponseWriter, r *http.Request) (*responses.Su
 	}
 
 	streamReq := api.transcodeDecision.ResolveRequest(ctx, mf, format, maxBitRate, timeOffset)
+
+	// Bunny CDN mode: when the track can be served directly (no transcoding)
+	// and its library lives on S3/MinIO, redirect the client to a signed CDN
+	// URL instead of proxying the bytes. The Pull Zone serves the object from
+	// the MinIO origin.
+	if cdnRedirectEnabled(mf) && timeOffset == 0 && streamReq.Format == "raw" {
+		if u, ok := cdn.StreamURL(mf.Path); ok {
+			log.Debug(ctx, "CDN: redirecting stream to Bunny CDN", "id", id, "url", u)
+			http.Redirect(w, r, u, http.StatusTemporaryRedirect)
+			return nil, nil
+		}
+	}
+
 	stream, err := api.streamer.NewStream(ctx, mf, streamReq)
 	if err != nil {
 		return nil, err
@@ -51,6 +65,16 @@ func (api *Router) Stream(w http.ResponseWriter, r *http.Request) (*responses.Su
 
 	_, err = stream.Serve(ctx, w, r)
 	return nil, err
+}
+
+// cdnRedirectEnabled reports whether Bunny CDN redirects are active for a media
+// file. Only S3/MinIO-backed libraries qualify, because mf.Path must map
+// directly to an object key served by the Pull Zone origin.
+func cdnRedirectEnabled(mf *model.MediaFile) bool {
+	if !cdn.Enabled() {
+		return false
+	}
+	return strings.HasPrefix(mf.LibraryPath, "s3://")
 }
 
 func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.Subsonic, error) {
@@ -103,6 +127,16 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 	switch v := entity.(type) {
 	case *model.MediaFile:
 		streamReq := api.transcodeDecision.ResolveRequest(ctx, v, format, maxBitRate, 0)
+
+		// Bunny CDN mode: serve downloads directly from the CDN when possible.
+		if cdnRedirectEnabled(v) && streamReq.Format == "raw" {
+			if u, ok := cdn.StreamURL(v.Path); ok {
+				log.Debug(ctx, "CDN: redirecting download to Bunny CDN", "id", id, "url", u)
+				http.Redirect(w, r, u, http.StatusFound)
+				return nil, nil
+			}
+		}
+
 		stream, err := api.streamer.NewStream(ctx, v, streamReq)
 		if err != nil {
 			return nil, err
