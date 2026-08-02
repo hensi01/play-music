@@ -118,6 +118,7 @@ func mainContext(ctx context.Context) (context.Context, context.CancelFunc) {
 func startServer(ctx context.Context) func() error {
 	return func() error {
 		a := CreateServer()
+		a.MountRouter("API", consts.URLPathNativeAPI, CreateAPIRouter(ctx))
 		a.MountRouter("Public Endpoints", consts.URLPathPublic, CreatePublicRouter())
 		if conf.Server.Prometheus.Enabled {
 			p := CreatePrometheus()
