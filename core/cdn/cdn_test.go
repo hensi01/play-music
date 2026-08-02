@@ -94,6 +94,39 @@ func TestSignAdvancedMatchesBunnyAlgorithm(t *testing.T) {
 	}
 }
 
+func TestSignAdvancedDecodedPath(t *testing.T) {
+	setup(t)
+	conf.Server.CDN.AdvancedAuth = true
+	const relPath = "Artist/Album 1/01 Track & More.mp3"
+
+	u, ok := StreamURL(relPath)
+	if !ok {
+		t.Fatal("expected URL")
+	}
+	params := queryParams(u)
+	expires := params["expires"]
+	if expires == "" {
+		t.Fatalf("missing expires param in %s", u)
+	}
+
+	// The signature MUST be computed over the DECODED path (spaces, not %20).
+	// Bunny's token auth implementations sign the decoded path; signing the
+	// encoded path returns 403 from the edge.
+	decodedPath := "/Artist/Album 1/01 Track & More.mp3"
+	message := decodedPath + expires + "token_ignore_params=true"
+	mac := hmac.New(sha256.New, []byte("test-security-key"))
+	_, _ = mac.Write([]byte(message))
+	expectedToken := "HS256-" + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if params["token"] != expectedToken {
+		t.Fatalf("advanced token must sign decoded path: got %q want %q", params["token"], expectedToken)
+	}
+
+	// And the request URL must still carry the percent-encoded path.
+	if !strings.Contains(u, "/Album%201/01%20Track%20%26%20More.mp3") {
+		t.Fatalf("expected escaped path in URL, got %s", u)
+	}
+}
+
 func TestStreamURLDisabled(t *testing.T) {
 	conf.Server.CDN.Enabled = false
 	if _, ok := StreamURL("x.mp3"); ok {

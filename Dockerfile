@@ -30,12 +30,11 @@ FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/node:lts-alpine AS 
 WORKDIR /app
 
 # Install node dependencies
-COPY ui/package.json ui/package-lock.json ./
-COPY ui/bin/ ./bin/
+COPY web/package.json web/package-lock.json ./
 RUN npm ci
 
 # Build bundle
-COPY ui/ ./
+COPY web/ ./
 RUN npm run build -- --outDir=/build
 
 FROM scratch AS ui-bundle
@@ -63,7 +62,7 @@ ARG GIT_SHA
 ARG GIT_TAG
 
 RUN --mount=type=bind,source=. \
-    --mount=from=ui,source=/build,target=./ui/build,ro \
+    --mount=from=ui,source=/build,target=./web/dist,ro \
     --mount=type=cache,target=/root/.cache \
     --mount=type=cache,target=/go/pkg/mod <<EOT
     set -e
@@ -107,7 +106,7 @@ ARG GIT_SHA
 ARG GIT_TAG
 
 RUN --mount=type=bind,source=. \
-    --mount=from=ui,source=/build,target=./ui/build,ro \
+    --mount=from=ui,source=/build,target=./web/dist,ro \
     --mount=from=osxcross,src=/osxcross/SDK,target=/xx-sdk,ro \
     --mount=type=cache,target=/root/.cache \
     --mount=type=cache,target=/go/pkg/mod <<EOT
