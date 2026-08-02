@@ -65,6 +65,9 @@ func newS3Storage(u url.URL) storage.Storage {
 	if err != nil {
 		log.Fatal("s3 storage: error creating client", "endpoint", endpoint, "err", err)
 	}
+	if conf.Server.S3.Debug {
+		client.TraceOn(traceWriter{})
+	}
 
 	return &s3Storage{
 		u:      u,
@@ -72,6 +75,15 @@ func newS3Storage(u url.URL) storage.Storage {
 		bucket: bucket,
 		prefix: strings.Trim(prefix, "/"),
 	}
+}
+
+// traceWriter routes minio-go HTTP tracing to the Navidrome debug log. Enable
+// with ND_S3_DEBUG=true to diagnose connectivity/auth issues with the origin.
+type traceWriter struct{}
+
+func (traceWriter) Write(p []byte) (int, error) {
+	log.Debug("s3 trace", "request", string(p))
+	return len(p), nil
 }
 
 // FS verifies the bucket is reachable and returns a MusicFS backed by S3.

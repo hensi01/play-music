@@ -248,6 +248,7 @@ type s3Options struct {
 	Region    string
 	Secure    bool
 	Prefix    string
+	Debug     bool
 }
 
 // redisOptions configures the Redis cache/state backend.
@@ -1056,6 +1057,7 @@ func setViperDefaults() {
 	viper.SetDefault("s3.region", "us-east-1")
 	viper.SetDefault("s3.secure", false)
 	viper.SetDefault("s3.prefix", "")
+	viper.SetDefault("s3.debug", false)
 	viper.SetDefault("redis.enabled", false)
 	viper.SetDefault("redis.url", "")
 	viper.SetDefault("redis.password", "")
