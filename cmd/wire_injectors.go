@@ -6,8 +6,6 @@ import (
 	"context"
 
 	"github.com/google/wire"
-	"github.com/hensi01/play-music/adapters/lastfm"
-	"github.com/hensi01/play-music/adapters/listenbrainz"
 	"github.com/hensi01/play-music/core"
 	"github.com/hensi01/play-music/core/agents"
 	"github.com/hensi01/play-music/core/artwork"
@@ -23,23 +21,15 @@ import (
 	"github.com/hensi01/play-music/scanner"
 	"github.com/hensi01/play-music/server"
 	"github.com/hensi01/play-music/server/events"
-	"github.com/hensi01/play-music/server/jellyfin"
-	"github.com/hensi01/play-music/server/nativeapi"
 	"github.com/hensi01/play-music/server/public"
-	"github.com/hensi01/play-music/server/subsonic"
 )
 
 var allProviders = wire.NewSet(
 	core.Set,
 	artwork.Set,
 	server.New,
-	subsonic.New,
-	jellyfin.New,
-	nativeapi.New,
 	public.New,
 	persistence.New,
-	lastfm.NewRouter,
-	listenbrainz.NewRouter,
 	events.GetBroker,
 	scanner.New,
 	scanner.GetWatcher,
@@ -52,7 +42,6 @@ var allProviders = wire.NewSet(
 	wire.Bind(new(lyrics.PluginLoader), new(*plugins.Manager)),
 	wire.Bind(new(sonic.PluginLoader), new(*plugins.Manager)),
 	wire.Bind(new(sonic.Engine), new(*sonic.Sonic)),
-	wire.Bind(new(nativeapi.PluginManager), new(*plugins.Manager)),
 	wire.Bind(new(core.PluginUnloader), new(*plugins.Manager)),
 	wire.Bind(new(plugins.PluginMetricsRecorder), new(metrics.Metrics)),
 	wire.Bind(new(core.Watcher), new(scanner.Watcher)),
@@ -70,37 +59,7 @@ func CreateServer() *server.Server {
 	))
 }
 
-func CreateNativeAPIRouter(ctx context.Context) *nativeapi.Router {
-	panic(wire.Build(
-		allProviders,
-	))
-}
-
-func CreateSubsonicAPIRouter(ctx context.Context) *subsonic.Router {
-	panic(wire.Build(
-		allProviders,
-	))
-}
-
-func CreateJellyfinAPIRouter(ctx context.Context) *jellyfin.Router {
-	panic(wire.Build(
-		allProviders,
-	))
-}
-
 func CreatePublicRouter() *public.Router {
-	panic(wire.Build(
-		allProviders,
-	))
-}
-
-func CreateLastFMRouter() *lastfm.Router {
-	panic(wire.Build(
-		allProviders,
-	))
-}
-
-func CreateListenBrainzRouter() *listenbrainz.Router {
 	panic(wire.Build(
 		allProviders,
 	))
@@ -143,7 +102,5 @@ func getPluginManager() *plugins.Manager {
 }
 
 func GetPluginManager(ctx context.Context) *plugins.Manager {
-	manager := getPluginManager()
-	manager.SetSubsonicRouter(CreateSubsonicAPIRouter(ctx))
-	return manager
+	return getPluginManager()
 }

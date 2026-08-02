@@ -24,10 +24,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	// Import adapters to register them
-	_ "github.com/hensi01/play-music/adapters/deezer"
 	_ "github.com/hensi01/play-music/adapters/gotaglib"
-	_ "github.com/hensi01/play-music/adapters/lastfm"
-	_ "github.com/hensi01/play-music/adapters/listenbrainz"
 
 	// Import storage backends to register them
 	_ "github.com/hensi01/play-music/core/storage/local"
@@ -121,18 +118,7 @@ func mainContext(ctx context.Context) (context.Context, context.CancelFunc) {
 func startServer(ctx context.Context) func() error {
 	return func() error {
 		a := CreateServer()
-		a.MountRouter("Native API", consts.URLPathNativeAPI, CreateNativeAPIRouter(ctx))
-		a.MountRouter("Subsonic API", consts.URLPathSubsonicAPI, CreateSubsonicAPIRouter(ctx))
 		a.MountRouter("Public Endpoints", consts.URLPathPublic, CreatePublicRouter())
-		if conf.Server.LastFM.Enabled {
-			a.MountRouter("LastFM Auth", consts.URLPathNativeAPI+"/lastfm", CreateLastFMRouter())
-		}
-		if conf.Server.ListenBrainz.Enabled {
-			a.MountRouter("ListenBrainz Auth", consts.URLPathNativeAPI+"/listenbrainz", CreateListenBrainzRouter())
-		}
-		if conf.Server.Jellyfin.Enabled {
-			a.MountRouter("Jellyfin API", consts.URLPathJellyfinAPI, CreateJellyfinAPIRouter(ctx))
-		}
 		if conf.Server.Prometheus.Enabled {
 			p := CreatePrometheus()
 			// blocking call because takes <100ms but useful if fails

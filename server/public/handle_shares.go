@@ -13,7 +13,7 @@ import (
 	"github.com/hensi01/play-music/log"
 	"github.com/hensi01/play-music/model"
 	"github.com/hensi01/play-music/server"
-	"github.com/hensi01/play-music/ui"
+	"github.com/hensi01/play-music/web"
 	. "github.com/hensi01/play-music/utils/gg"
 	"github.com/hensi01/play-music/utils/req"
 )
@@ -26,7 +26,7 @@ func (pub *Router) handleShares(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// If requested file is a UI asset, just serve it
-	_, err = ui.BuildAssets().Open(id)
+	_, err = web.BuildAssets().Open(id)
 	if err == nil {
 		pub.assetsHandler.ServeHTTP(w, r)
 		return
@@ -40,7 +40,7 @@ func (pub *Router) handleShares(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s = pub.mapShareInfo(r, *s)
-	server.IndexWithShare(pub.ds, ui.BuildAssets(), s)(w, r)
+	server.IndexWithShare(pub.ds, web.BuildAssets(), s)(w, r)
 }
 
 func (pub *Router) handleM3U(w http.ResponseWriter, r *http.Request) {

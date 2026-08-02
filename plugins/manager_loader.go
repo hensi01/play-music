@@ -59,14 +59,6 @@ var hostServices = []hostServiceEntry{
 		},
 	},
 	{
-		name:          "SubsonicAPI",
-		hasPermission: func(p *Permissions) bool { return p != nil && p.Subsonicapi != nil },
-		create: func(ctx *serviceContext) ([]extism.HostFunction, io.Closer, error) {
-			service := newSubsonicAPIService(ctx.pluginName, ctx.manager.subsonicRouter, ctx.manager.ds, newUserAccess(ctx.allowedUsers, ctx.allUsers))
-			return host.RegisterSubsonicAPIHostFunctions(service), nil, nil
-		},
-	},
-	{
 		name:          "Scheduler",
 		hasPermission: func(p *Permissions) bool { return p != nil && p.Scheduler != nil },
 		create: func(ctx *serviceContext) ([]extism.HostFunction, io.Closer, error) {

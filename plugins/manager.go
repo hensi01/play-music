@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -35,9 +34,6 @@ const (
 	maxPluginLoadConcurrency = 3
 )
 
-// SubsonicRouter is an http.Handler that serves Subsonic API requests.
-type SubsonicRouter = http.Handler
-
 // PluginMetricsRecorder is an interface for recording plugin metrics.
 // This is satisfied by core/metrics.Metrics but defined here to avoid import cycles.
 type PluginMetricsRecorder interface {
@@ -61,11 +57,10 @@ type Manager struct {
 	debounceTimers map[string]*time.Timer
 	debounceMu     sync.Mutex
 
-	// SubsonicAPI host function dependencies (set once before Start, not modified after)
-	subsonicRouter SubsonicRouter
-	ds             model.DataStore
-	broker         events.Broker
-	metrics        PluginMetricsRecorder
+	// Host service dependencies (set once before Start, not modified after)
+	ds     model.DataStore
+	broker events.Broker
+	metrics PluginMetricsRecorder
 }
 
 // GetManager returns a singleton instance of the plugin manager.
@@ -91,13 +86,6 @@ func (m *Manager) sendPluginRefreshEvent(ctx context.Context, pluginIDs ...strin
 	m.broker.SendBroadcastMessage(ctx, event)
 }
 
-// SetSubsonicRouter sets the Subsonic router for SubsonicAPI host functions.
-// This should be called after the subsonic router is created but before plugins
-// that require SubsonicAPI access are loaded.
-func (m *Manager) SetSubsonicRouter(router SubsonicRouter) {
-	m.subsonicRouter = router
-}
-
 // Start initializes the plugin manager and loads plugins from the configured folder.
 // It should be called once during application startup when plugins are enabled.
 // The startup flow is:
@@ -107,10 +95,6 @@ func (m *Manager) Start(ctx context.Context) error {
 	if !conf.Server.Plugins.Enabled {
 		log.Debug(ctx, "Plugin system is disabled")
 		return nil
-	}
-
-	if m.subsonicRouter == nil {
-		log.Fatal(ctx, "Plugin manager requires DataStore to be configured")
 	}
 
 	// Set extism log level based on plugin-specific config or global log level

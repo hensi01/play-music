@@ -9,8 +9,6 @@ package cmd
 import (
 	"context"
 	"github.com/google/wire"
-	"github.com/hensi01/play-music/adapters/lastfm"
-	"github.com/hensi01/play-music/adapters/listenbrainz"
 	"github.com/hensi01/play-music/core"
 	"github.com/hensi01/play-music/core/agents"
 	"github.com/hensi01/play-music/core/artwork"
@@ -31,17 +29,11 @@ import (
 	"github.com/hensi01/play-music/scanner"
 	"github.com/hensi01/play-music/server"
 	"github.com/hensi01/play-music/server/events"
-	"github.com/hensi01/play-music/server/jellyfin"
-	"github.com/hensi01/play-music/server/nativeapi"
 	"github.com/hensi01/play-music/server/public"
-	"github.com/hensi01/play-music/server/subsonic"
 )
 
 import (
-	_ "github.com/hensi01/play-music/adapters/deezer"
 	_ "github.com/hensi01/play-music/adapters/gotaglib"
-	_ "github.com/hensi01/play-music/adapters/lastfm"
-	_ "github.com/hensi01/play-music/adapters/listenbrainz"
 )
 
 // Injectors from wire_injectors.go:
@@ -61,87 +53,6 @@ func CreateServer() *server.Server {
 	return serverServer
 }
 
-func CreateNativeAPIRouter(ctx context.Context) *nativeapi.Router {
-	sqlDB := db.Db()
-	dataStore := persistence.New(sqlDB)
-	share := core.NewShare(dataStore)
-	imageUploadService := core.NewImageUploadService()
-	playlistsPlaylists := playlists.NewPlaylists(dataStore, imageUploadService)
-	insights := metrics.GetInstance(dataStore)
-	fileCache := artwork.GetImageCache()
-	fFmpeg := ffmpeg.New()
-	broker := events.GetBroker()
-	metricsMetrics := metrics.GetPrometheusInstance(dataStore)
-	manager := plugins.GetManager(dataStore, broker, metricsMetrics)
-	agentsAgents := agents.GetAgents(dataStore, manager)
-	matcherMatcher := matcher.New(dataStore)
-	provider := external.NewProvider(dataStore, agentsAgents, matcherMatcher)
-	artworkArtwork := artwork.NewArtwork(dataStore, fileCache, fFmpeg, provider)
-	cacheWarmer := artwork.NewCacheWarmer(artworkArtwork, fileCache)
-	modelScanner := scanner.New(ctx, dataStore, cacheWarmer, broker, playlistsPlaylists, metricsMetrics)
-	watcher := scanner.GetWatcher(dataStore, modelScanner)
-	library := core.NewLibrary(dataStore, modelScanner, watcher, broker, manager)
-	user := core.NewUser(dataStore, manager)
-	maintenance := core.NewMaintenance(dataStore)
-	router := nativeapi.New(dataStore, share, playlistsPlaylists, insights, library, user, maintenance, manager, imageUploadService)
-	return router
-}
-
-func CreateSubsonicAPIRouter(ctx context.Context) *subsonic.Router {
-	sqlDB := db.Db()
-	dataStore := persistence.New(sqlDB)
-	fileCache := artwork.GetImageCache()
-	fFmpeg := ffmpeg.New()
-	broker := events.GetBroker()
-	metricsMetrics := metrics.GetPrometheusInstance(dataStore)
-	manager := plugins.GetManager(dataStore, broker, metricsMetrics)
-	agentsAgents := agents.GetAgents(dataStore, manager)
-	matcherMatcher := matcher.New(dataStore)
-	provider := external.NewProvider(dataStore, agentsAgents, matcherMatcher)
-	artworkArtwork := artwork.NewArtwork(dataStore, fileCache, fFmpeg, provider)
-	transcodingCache := stream.GetTranscodingCache()
-	mediaStreamer := stream.NewMediaStreamer(dataStore, fFmpeg, transcodingCache)
-	share := core.NewShare(dataStore)
-	archiver := core.NewArchiver(mediaStreamer, dataStore, share)
-	players := core.NewPlayers(dataStore)
-	cacheWarmer := artwork.NewCacheWarmer(artworkArtwork, fileCache)
-	imageUploadService := core.NewImageUploadService()
-	playlistsPlaylists := playlists.NewPlaylists(dataStore, imageUploadService)
-	modelScanner := scanner.New(ctx, dataStore, cacheWarmer, broker, playlistsPlaylists, metricsMetrics)
-	playTracker := scrobbler.GetPlayTracker(dataStore, broker, manager)
-	playbackServer := playback.GetInstance(dataStore)
-	lyricsLyrics := lyrics.NewLyrics(dataStore, manager)
-	transcodeDecider := stream.NewTranscodeDecider(dataStore, fFmpeg)
-	sonicSonic := sonic.New(dataStore, manager, matcherMatcher)
-	router := subsonic.New(dataStore, artworkArtwork, mediaStreamer, archiver, players, provider, modelScanner, broker, playlistsPlaylists, playTracker, share, playbackServer, metricsMetrics, lyricsLyrics, transcodeDecider, sonicSonic)
-	return router
-}
-
-func CreateJellyfinAPIRouter(ctx context.Context) *jellyfin.Router {
-	sqlDB := db.Db()
-	dataStore := persistence.New(sqlDB)
-	fileCache := artwork.GetImageCache()
-	fFmpeg := ffmpeg.New()
-	broker := events.GetBroker()
-	metricsMetrics := metrics.GetPrometheusInstance(dataStore)
-	manager := plugins.GetManager(dataStore, broker, metricsMetrics)
-	agentsAgents := agents.GetAgents(dataStore, manager)
-	matcherMatcher := matcher.New(dataStore)
-	provider := external.NewProvider(dataStore, agentsAgents, matcherMatcher)
-	artworkArtwork := artwork.NewArtwork(dataStore, fileCache, fFmpeg, provider)
-	transcodingCache := stream.GetTranscodingCache()
-	mediaStreamer := stream.NewMediaStreamer(dataStore, fFmpeg, transcodingCache)
-	transcodeDecider := stream.NewTranscodeDecider(dataStore, fFmpeg)
-	players := core.NewPlayers(dataStore)
-	playTracker := scrobbler.GetPlayTracker(dataStore, broker, manager)
-	imageUploadService := core.NewImageUploadService()
-	playlistsPlaylists := playlists.NewPlaylists(dataStore, imageUploadService)
-	sonicSonic := sonic.New(dataStore, manager, matcherMatcher)
-	lyricsLyrics := lyrics.NewLyrics(dataStore, manager)
-	router := jellyfin.New(dataStore, artworkArtwork, mediaStreamer, transcodeDecider, players, playTracker, playlistsPlaylists, provider, sonicSonic, lyricsLyrics, broker)
-	return router
-}
-
 func CreatePublicRouter() *public.Router {
 	sqlDB := db.Db()
 	dataStore := persistence.New(sqlDB)
@@ -159,20 +70,6 @@ func CreatePublicRouter() *public.Router {
 	share := core.NewShare(dataStore)
 	archiver := core.NewArchiver(mediaStreamer, dataStore, share)
 	router := public.New(dataStore, artworkArtwork, mediaStreamer, share, archiver)
-	return router
-}
-
-func CreateLastFMRouter() *lastfm.Router {
-	sqlDB := db.Db()
-	dataStore := persistence.New(sqlDB)
-	router := lastfm.NewRouter(dataStore)
-	return router
-}
-
-func CreateListenBrainzRouter() *listenbrainz.Router {
-	sqlDB := db.Db()
-	dataStore := persistence.New(sqlDB)
-	router := listenbrainz.NewRouter(dataStore)
 	return router
 }
 
@@ -247,10 +144,9 @@ func getPluginManager() *plugins.Manager {
 
 // wire_injectors.go:
 
-var allProviders = wire.NewSet(core.Set, artwork.Set, server.New, subsonic.New, jellyfin.New, nativeapi.New, public.New, persistence.New, lastfm.NewRouter, listenbrainz.NewRouter, events.GetBroker, scanner.New, scanner.GetWatcher, metrics.GetPrometheusInstance, db.Db, plugins.GetManager, sonic.New, wire.Bind(new(agents.PluginLoader), new(*plugins.Manager)), wire.Bind(new(scrobbler.PluginLoader), new(*plugins.Manager)), wire.Bind(new(lyrics.PluginLoader), new(*plugins.Manager)), wire.Bind(new(sonic.PluginLoader), new(*plugins.Manager)), wire.Bind(new(sonic.Engine), new(*sonic.Sonic)), wire.Bind(new(nativeapi.PluginManager), new(*plugins.Manager)), wire.Bind(new(core.PluginUnloader), new(*plugins.Manager)), wire.Bind(new(plugins.PluginMetricsRecorder), new(metrics.Metrics)), wire.Bind(new(core.Watcher), new(scanner.Watcher)))
+var allProviders = wire.NewSet(core.Set, artwork.Set, server.New, public.New, persistence.New, events.GetBroker, scanner.New, scanner.GetWatcher, metrics.GetPrometheusInstance, db.Db, plugins.GetManager, sonic.New, wire.Bind(new(agents.PluginLoader), new(*plugins.Manager)), wire.Bind(new(scrobbler.PluginLoader), new(*plugins.Manager)), wire.Bind(new(lyrics.PluginLoader), new(*plugins.Manager)), wire.Bind(new(sonic.PluginLoader), new(*plugins.Manager)), wire.Bind(new(sonic.Engine), new(*sonic.Sonic)), wire.Bind(new(core.PluginUnloader), new(*plugins.Manager)), wire.Bind(new(plugins.PluginMetricsRecorder), new(metrics.Metrics)), wire.Bind(new(core.Watcher), new(scanner.Watcher)))
 
 func GetPluginManager(ctx context.Context) *plugins.Manager {
 	manager := getPluginManager()
-	manager.SetSubsonicRouter(CreateSubsonicAPIRouter(ctx))
 	return manager
 }

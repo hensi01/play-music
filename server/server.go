@@ -26,7 +26,7 @@ import (
 	"github.com/hensi01/play-music/log"
 	"github.com/hensi01/play-music/model"
 	"github.com/hensi01/play-music/server/events"
-	"github.com/hensi01/play-music/ui"
+	"github.com/hensi01/play-music/web"
 )
 
 type Server struct {
@@ -177,7 +177,7 @@ func (s *Server) initRoutes() {
 		realIPMiddleware,
 		middleware.Recoverer,
 		middleware.Heartbeat("/ping"),
-		robotsTXT(ui.BuildAssets()),
+		robotsTXT(web.BuildAssets()),
 		serverAddressMiddleware,
 		clientUniqueIDMiddleware,
 		compressMiddleware(),
@@ -242,8 +242,8 @@ func (s *Server) mountRootRedirector() {
 func (s *Server) frontendAssetsHandler() http.Handler {
 	r := chi.NewRouter()
 
-	r.Handle("/", Index(s.ds, ui.BuildAssets()))
-	r.Handle("/*", http.StripPrefix(s.appRoot, http.FileServer(http.FS(ui.BuildAssets()))))
+	r.Handle("/", Index(s.ds, web.BuildAssets()))
+	r.Handle("/*", http.StripPrefix(s.appRoot, http.FileServer(http.FS(web.BuildAssets()))))
 	return r
 }
 
