@@ -1,0 +1,2 @@
+﻿# Vite build output is mounted here by the Dockerfile and embedded at build time.
+# This file keeps the package compiling when no build has run yet.

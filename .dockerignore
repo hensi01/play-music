@@ -1,7 +1,7 @@
 .DS_Store
-ui/node_modules
-ui/build
-!ui/build/.gitkeep
+web/node_modules
+web/dist/*
+!web/dist/.gitkeep
 Dockerfile
 docker-compose*.yml
 data
@@ -11,7 +11,6 @@ navidrome
 navidrome.toml
 tmp
 !tmp/taglib
-dist
 binaries
 cache
 music
