@@ -47,11 +47,7 @@ export default function BottomBar() {
     }
   }, [current, playing])
 
-  if (!current) {
-    return (
-      <div className="h-20 shrink-0 border-t border-grid/50 bg-surface md:h-24" aria-hidden />
-    )
-  }
+  if (!current) return null
 
   const totalDuration = resolveDuration(duration, current.duration)
   const safeProgress = Number.isFinite(progress) ? Math.min(Math.max(progress, 0), totalDuration) : 0
