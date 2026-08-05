@@ -20,7 +20,7 @@ func Init(t *testing.T, skipOnShort bool) {
 	once.Do(func() {
 		_, file, _, _ := runtime.Caller(0)
 		appPath, _ := filepath.Abs(filepath.Join(filepath.Dir(file), ".."))
-		confPath, _ := filepath.Abs(filepath.Join(appPath, "tests", "navidrome-test.toml"))
+		confPath, _ := filepath.Abs(filepath.Join(appPath, "tests", "playmusic-test.toml"))
 		println("Loading test configuration file from " + confPath)
 		_ = os.Chdir(appPath)
 		conf.LoadFromFile(confPath)

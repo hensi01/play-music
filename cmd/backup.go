@@ -48,7 +48,7 @@ var (
 	backupCmd = &cobra.Command{
 		Use:   "create",
 		Short: "Create a backup database",
-		Long:  "Manually backup Navidrome database. This will ignore BackupCount",
+		Long:  "Manually backup Play Music database. This will ignore BackupCount",
 		Run: func(cmd *cobra.Command, _ []string) {
 			runBackup(cmd.Context())
 		},
@@ -65,8 +65,8 @@ var (
 
 	restoreCommand = &cobra.Command{
 		Use:   "restore",
-		Short: "Restore Navidrome database",
-		Long:  "Restore Navidrome database from a backup. This must be done offline",
+		Short: "Restore Play Music database",
+		Long:  "Restore Play Music database from a backup. This must be done offline",
 		Run: func(cmd *cobra.Command, _ []string) {
 			runRestore(cmd.Context())
 		},
@@ -164,7 +164,7 @@ func runRestore(ctx context.Context) {
 	}
 
 	if !force {
-		fmt.Println("Warning: restoring the Navidrome database should only be done offline, especially if your backup is very old.")
+		fmt.Println("Warning: restoring the Play Music database should only be done offline, especially if your backup is very old.")
 		fmt.Printf("Please enter YES (all caps) to continue: ")
 		var input string
 		_, err := fmt.Scanln(&input)

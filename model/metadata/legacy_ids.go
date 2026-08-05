@@ -11,7 +11,7 @@ import (
 	"github.com/hensi01/play-music/model"
 )
 
-// These are the legacy ID functions that were used in the original Navidrome ID generation.
+// These are the legacy ID functions that were used in the original Play Music ID generation.
 // They are kept here for backwards compatibility with existing databases.
 
 func legacyTrackID(mf model.MediaFile, prependLibId bool) string {

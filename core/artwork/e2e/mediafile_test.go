@@ -11,8 +11,8 @@ import (
 )
 
 // Doc reference:
-// https://www.navidrome.org/docs/usage/library/artwork/#mediafiles
-// Navidrome resolves mediafile artwork in this order:
+// https://github.com/hensi01/play-music/usage/library/artwork/#mediafiles
+// playmusic resolves mediafile artwork in this order:
 //  1. Embedded image from the mediafile itself
 //  2. For multi-disc albums, disc-level artwork
 //  3. Album cover art

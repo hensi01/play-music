@@ -80,21 +80,12 @@ type PlayTracker interface {
 	ReportPlayback(ctx context.Context, params ReportPlaybackParams) error
 }
 
-// PluginLoader is a minimal interface for plugin manager usage in PlayTracker
-// (avoids import cycles)
-type PluginLoader interface {
-	PluginNames(capability string) []string
-	LoadScrobbler(name string) (Scrobbler, bool)
-}
-
 type playTracker struct {
 	ds                model.DataStore
 	broker            events.Broker
 	playMap           cache.SimpleCache[string, PlaybackSession]
 	sessionsMu        sync.Mutex // serializes playMap check-then-write across concurrent reports
 	builtinScrobblers map[string]Scrobbler
-	pluginScrobblers  map[string]Scrobbler
-	pluginLoader      PluginLoader
 	mu                sync.RWMutex
 	npQueue           map[string]nowPlayingEntry
 	npMu              sync.Mutex
@@ -107,27 +98,25 @@ type playTracker struct {
 	prWorkerDone      chan struct{}
 }
 
-func GetPlayTracker(ds model.DataStore, broker events.Broker, pluginManager PluginLoader) PlayTracker {
+func GetPlayTracker(ds model.DataStore, broker events.Broker) PlayTracker {
 	return singleton.GetInstance(func() *playTracker {
-		return newPlayTracker(ds, broker, pluginManager)
+		return newPlayTracker(ds, broker)
 	})
 }
 
 // NewPlayTracker creates a new PlayTracker instance. For normal usage, the PlayTracker has to be a singleton,
 // returned by the GetPlayTracker function above. This constructor is exported for testing.
-func NewPlayTracker(ds model.DataStore, broker events.Broker, pluginManager PluginLoader) PlayTracker {
-	return newPlayTracker(ds, broker, pluginManager)
+func NewPlayTracker(ds model.DataStore, broker events.Broker) PlayTracker {
+	return newPlayTracker(ds, broker)
 }
 
-func newPlayTracker(ds model.DataStore, broker events.Broker, pluginManager PluginLoader) *playTracker {
+func newPlayTracker(ds model.DataStore, broker events.Broker) *playTracker {
 	m := cache.NewSimpleCache[string, PlaybackSession]()
 	p := &playTracker{
 		ds:                ds,
 		playMap:           m,
 		broker:            broker,
 		builtinScrobblers: make(map[string]Scrobbler),
-		pluginScrobblers:  make(map[string]Scrobbler),
-		pluginLoader:      pluginManager,
 		npQueue:           make(map[string]nowPlayingEntry),
 		npSignal:          make(chan struct{}, 1),
 		shutdown:          make(chan struct{}),
@@ -176,81 +165,12 @@ func (p *playTracker) stopBackgroundWorkers() {
 	<-p.prWorkerDone // Wait for playbackReport worker to finish
 }
 
-// pluginNamesMatchScrobblers returns true if the set of pluginNames matches the keys in pluginScrobblers.
-func pluginNamesMatchScrobblers(pluginNames []string, scrobblers map[string]Scrobbler) bool {
-	if len(pluginNames) != len(scrobblers) {
-		return false
-	}
-	for _, name := range pluginNames {
-		if _, ok := scrobblers[name]; !ok {
-			return false
-		}
-	}
-	return true
-}
-
-// refreshPluginScrobblers updates the pluginScrobblers map to match the current set of plugin scrobblers.
-// The buffered scrobblers use a loader function to dynamically get the current plugin instance,
-// so we only need to add/remove scrobblers when plugins are added/removed (not when reloaded).
-func (p *playTracker) refreshPluginScrobblers() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.pluginLoader == nil {
-		return
-	}
-
-	// Get the list of available plugin names
-	pluginNames := p.pluginLoader.PluginNames("Scrobbler")
-
-	// Early return if plugin names match existing scrobblers (no change)
-	if pluginNamesMatchScrobblers(pluginNames, p.pluginScrobblers) {
-		return
-	}
-
-	// Build a set of current plugins for faster lookups
-	current := make(map[string]struct{}, len(pluginNames))
-
-	// Process additions - add new plugins with a loader that dynamically fetches the current instance
-	for _, name := range pluginNames {
-		current[name] = struct{}{}
-		if _, exists := p.pluginScrobblers[name]; !exists {
-			// Capture the name for the closure
-			pluginName := name
-			loader := p.pluginLoader
-			p.pluginScrobblers[name] = newBufferedScrobblerWithLoader(p.ds, name, func() (Scrobbler, bool) {
-				return loader.LoadScrobbler(pluginName)
-			})
-		}
-	}
-
-	type stoppableScrobbler interface {
-		Scrobbler
-		Stop()
-	}
-
-	// Process removals - remove plugins that no longer exist
-	for name, scrobbler := range p.pluginScrobblers {
-		if _, exists := current[name]; !exists {
-			// If the scrobbler implements stoppableScrobbler, call Stop() before removing it
-			if stoppable, ok := scrobbler.(stoppableScrobbler); ok {
-				log.Debug("Stopping scrobbler", "name", name)
-				stoppable.Stop()
-			}
-			delete(p.pluginScrobblers, name)
-		}
-	}
-}
-
-// getActiveScrobblers refreshes plugin scrobblers, acquires a read lock,
-// combines builtin and plugin scrobblers into a new map, releases the lock,
-// and returns the combined map.
+// getActiveScrobblers acquires a read lock, returns a clone of the builtin scrobblers map,
+// and releases the lock.
 func (p *playTracker) getActiveScrobblers() map[string]Scrobbler {
-	p.refreshPluginScrobblers()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	combined := maps.Clone(p.builtinScrobblers)
-	maps.Copy(combined, p.pluginScrobblers)
-	return combined
+	return maps.Clone(p.builtinScrobblers)
 }
 
 // hasPlayingSession reports whether clientId's current session is already playing mediaId.
@@ -270,10 +190,10 @@ func remainingTTL(durationSec float32, positionMs int64, rate float64) time.Dura
 
 // nowPlayingRedisKey returns the Redis key storing a session for clientId.
 func nowPlayingRedisKey(clientId string) string {
-	return "navidrome:nowplaying:" + clientId
+	return "playmusic:nowplaying:" + clientId
 }
 
-// publishToRedis mirrors a playback session to Redis so other Navidrome
+// publishToRedis mirrors a playback session to Redis so other Play Music
 // instances can see what each user is listening to. No-op when Redis is
 // disabled.
 func (p *playTracker) publishToRedis(ctx context.Context, clientId string, info PlaybackSession, ttl time.Duration) {
@@ -464,7 +384,7 @@ func (p *playTracker) GetNowPlaying(_ context.Context) ([]PlaybackSession, error
 		localIDs[s.PlayerId] = true
 	}
 
-	// Merge sessions published by other Navidrome instances (via Redis).
+	// Merge sessions published by other Play Music instances (via Redis).
 	if redis.Enabled() {
 		for _, clientId := range redis.SMembers(context.Background(), redis.KeyNowPlaying) {
 			if localIDs[clientId] {

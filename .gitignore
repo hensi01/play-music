@@ -2,7 +2,6 @@
 .idea
 .vscode
 .envrc
-/navidrome
 /iTunes*.xml
 /tmp
 /bin
@@ -11,8 +10,7 @@ vendor/*/
 wiki
 TODO.md
 var
-navidrome.toml
-!release/linux/navidrome.toml
+playmusic.toml
 master.zip
 testDB
 cache/*
@@ -26,7 +24,7 @@ music.old
 docker-compose.yml
 !contrib/docker-compose.yml
 binaries
-navidrome-*
+playmusic-*
 /ndpgen
 AGENTS.md
 .github/prompts
@@ -44,9 +42,7 @@ go.work*
 # Playwright MCP artifacts
 .playwright-mcp/
 
-# Frontend (web/)
-node_modules/
-web/dist/*
-!web/dist/
-!web/dist/.gitkeep
+# Graphify knowledge graph (local analysis tool)
+.graphify/
+
 *.exe~

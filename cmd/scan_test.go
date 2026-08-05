@@ -29,7 +29,7 @@ var _ = Describe("readTargetsFromFile", func() {
 
 	BeforeEach(func() {
 		var err error
-		tempDir, err = os.MkdirTemp("", "navidrome-test-")
+		tempDir, err = os.MkdirTemp("", "playmusic-test-")
 		Expect(err).ToNot(HaveOccurred())
 	})
 

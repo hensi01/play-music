@@ -5,11 +5,11 @@ import (
 	"io/fs"
 )
 
-//go:embed all:dist
+//go:embed all:assets
 var filesystem embed.FS
 
-// BuildAssets returns the built frontend assets (Vite output in dist/).
+// BuildAssets returns the web UI assets (HTML/CSS/JS, embedded in the binary).
 func BuildAssets() fs.FS {
-	dist, _ := fs.Sub(filesystem, "dist")
+	dist, _ := fs.Sub(filesystem, "assets")
 	return dist
 }

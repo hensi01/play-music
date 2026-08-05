@@ -1,6 +1,6 @@
-# Navidrome Contribution Guide
+# Play Music Contribution Guide
 
-Navidrome is a streaming service which allows you to enjoy your music collection from anywhere. We'd welcome you to contribute to our open source project and make Navidrome even better. There are some basic guidelines which you need to follow if you like to contribute to Navidrome.
+Play Music is a streaming service which allows you to enjoy your music collection from anywhere. We'd welcome you to contribute to our open source project and make Play Music even better. There are some basic guidelines which you need to follow if you like to contribute to Play Music.
 
 - [Asking Support Questions](#asking-support-questions)
 - [Code of Conduct](#code-of-conduct)
@@ -26,7 +26,7 @@ the [issues](https://github.com/hensi01/play-music/issues)**
 Before submitting a pull request, ensure that you go through the following:
 - Open a corresponding issue for the Pull Request, if not existing. The issue can be opened following [these guidelines](#issues)
 - Ensure that there is no open or closed Pull Request corresponding to your submission to avoid duplication of effort.
-- Setup the [development environment](https://www.navidrome.org/docs/developers/dev-environment/)
+- Setup the [development environment](https://www.play-music.org/docs/developers/dev-environment/)
 - Create a new branch on your forked repo and make the changes in it. Naming conventions for branch are: `<Issue Title>/<Issue Number>`. Example:
 ```
     git checkout -b adding-docs/834 master

@@ -149,7 +149,7 @@ func estimateArgLength(targets []model.ScanTarget) int {
 // writeTargetsToFile writes the targets to a temporary file, one per line.
 // Returns the path to the temp file, which the caller should clean up.
 func writeTargetsToFile(targets []model.ScanTarget) (string, error) {
-	tmpFile, err := os.CreateTemp("", "navidrome-scan-targets-*.txt")
+	tmpFile, err := os.CreateTemp("", "playmusic-scan-targets-*.txt")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}

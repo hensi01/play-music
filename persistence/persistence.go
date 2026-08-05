@@ -61,16 +61,8 @@ func (s *SQLStore) Property(ctx context.Context) model.PropertyRepository {
 	return NewPropertyRepository(ctx, s.getDBXBuilder())
 }
 
-func (s *SQLStore) Radio(ctx context.Context) model.RadioRepository {
-	return NewRadioRepository(ctx, s.getDBXBuilder())
-}
-
 func (s *SQLStore) UserProps(ctx context.Context) model.UserPropsRepository {
 	return NewUserPropsRepository(ctx, s.getDBXBuilder())
-}
-
-func (s *SQLStore) Share(ctx context.Context) model.ShareRepository {
-	return NewShareRepository(ctx, s.getDBXBuilder())
 }
 
 func (s *SQLStore) User(ctx context.Context) model.UserRepository {
@@ -115,10 +107,6 @@ func (s *SQLStore) Resource(ctx context.Context, m any) model.ResourceRepository
 		return s.Genre(ctx).(model.ResourceRepository)
 	case model.Playlist:
 		return s.Playlist(ctx).(model.ResourceRepository)
-	case model.Radio:
-		return s.Radio(ctx).(model.ResourceRepository)
-	case model.Share:
-		return s.Share(ctx).(model.ResourceRepository)
 	case model.Tag:
 		return s.Tag(ctx).(model.ResourceRepository)
 	case model.Plugin:

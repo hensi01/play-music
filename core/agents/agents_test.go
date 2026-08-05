@@ -30,7 +30,7 @@ var _ = Describe("Agents", func() {
 		var ag *Agents
 		BeforeEach(func() {
 			conf.Server.Agents = ""
-			ag = createAgents(ds, nil)
+			ag = createAgents(ds)
 		})
 
 		It("calls the placeholder GetArtistImages", func() {
@@ -50,7 +50,7 @@ var _ = Describe("Agents", func() {
 			Register("disabled", func(model.DataStore) Interface { return nil })
 			Register("empty", func(model.DataStore) Interface { return &emptyAgent{} })
 			conf.Server.Agents = "empty,fake,disabled"
-			ag = createAgents(ds, nil)
+			ag = createAgents(ds)
 			Expect(ag.AgentName()).To(Equal("agents"))
 		})
 
@@ -194,7 +194,7 @@ var _ = Describe("Agents", func() {
 
 				It("falls back to the next agent on error", func() {
 					conf.Server.Agents = "imgFail,imgOk"
-					ag = createAgents(ds, nil)
+					ag = createAgents(ds)
 
 					images, err := ag.GetArtistImages(ctx, "id", "artist", "mbid")
 					Expect(err).ToNot(HaveOccurred())
@@ -207,7 +207,7 @@ var _ = Describe("Agents", func() {
 					first.Err = nil
 					first.Images = []ExternalImage{}
 					conf.Server.Agents = "imgFail,imgOk"
-					ag = createAgents(ds, nil)
+					ag = createAgents(ds)
 
 					images, err := ag.GetArtistImages(ctx, "id", "artist", "mbid")
 					Expect(err).ToNot(HaveOccurred())

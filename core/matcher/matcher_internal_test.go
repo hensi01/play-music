@@ -105,7 +105,7 @@ var _ = Describe("matcher internals", func() {
 	})
 
 	It("treats an ID-only artist (no name/MBID) as an identity match, unlocking album tiers", func() {
-		// A plugin that supplies only a Navidrome artist ID: name and mbid are empty. The ID is the
+		// A plugin that supplies only a playmusic artist ID: name and mbid are empty. The ID is the
 		// strongest identity signal, so the track's album still elevates specificity above 0.
 		q := songQuery{
 			title:     "song",

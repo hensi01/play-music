@@ -2,7 +2,7 @@ version: '3.6'
 
 volumes:
   caddy_data:
-  navidrome_data:
+  playmusic_data:
 
 services:
 
@@ -18,14 +18,14 @@ services:
       - "80:80"
       - "443:443"
 
-  navidrome:
-    container_name: "navidrome"
-    image: deluan/navidrome:latest
+  playmusic:
+    container_name: "playmusic"
+    image: deluan/playmusic:latest
     restart: unless-stopped
     read_only: true
     # user: 1000:1000
     ports:
       - "4533:4533"
     volumes:
-      - "navidrome_data:/data"
+      - "playmusic_data:/data"
       #- "/mnt/music:/music:ro"

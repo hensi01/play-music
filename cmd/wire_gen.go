@@ -14,26 +14,21 @@ import (
 	"github.com/hensi01/play-music/core/artwork"
 	"github.com/hensi01/play-music/core/external"
 	"github.com/hensi01/play-music/core/ffmpeg"
-	"github.com/hensi01/play-music/core/lyrics"
 	"github.com/hensi01/play-music/core/matcher"
 	"github.com/hensi01/play-music/core/metrics"
-	"github.com/hensi01/play-music/core/playback"
 	"github.com/hensi01/play-music/core/playlists"
-	"github.com/hensi01/play-music/core/scrobbler"
-	"github.com/hensi01/play-music/core/sonic"
-	"github.com/hensi01/play-music/core/stream"
 	"github.com/hensi01/play-music/db"
 	"github.com/hensi01/play-music/model"
 	"github.com/hensi01/play-music/persistence"
-	"github.com/hensi01/play-music/plugins"
 	"github.com/hensi01/play-music/scanner"
 	"github.com/hensi01/play-music/server"
 	"github.com/hensi01/play-music/server/events"
-	"github.com/hensi01/play-music/server/public"
 )
 
 import (
 	_ "github.com/hensi01/play-music/adapters/gotaglib"
+	_ "github.com/hensi01/play-music/core/storage/local"
+	_ "github.com/hensi01/play-music/core/storage/s3"
 )
 
 // Injectors from wire_injectors.go:
@@ -48,43 +43,8 @@ func CreateServer() *server.Server {
 	sqlDB := db.Db()
 	dataStore := persistence.New(sqlDB)
 	broker := events.GetBroker()
-	insights := metrics.GetInstance(dataStore)
-	serverServer := server.New(dataStore, broker, insights)
+	serverServer := server.New(dataStore, broker)
 	return serverServer
-}
-
-func CreatePublicRouter() *public.Router {
-	sqlDB := db.Db()
-	dataStore := persistence.New(sqlDB)
-	fileCache := artwork.GetImageCache()
-	fFmpeg := ffmpeg.New()
-	broker := events.GetBroker()
-	metricsMetrics := metrics.GetPrometheusInstance(dataStore)
-	manager := plugins.GetManager(dataStore, broker, metricsMetrics)
-	agentsAgents := agents.GetAgents(dataStore, manager)
-	matcherMatcher := matcher.New(dataStore)
-	provider := external.NewProvider(dataStore, agentsAgents, matcherMatcher)
-	artworkArtwork := artwork.NewArtwork(dataStore, fileCache, fFmpeg, provider)
-	transcodingCache := stream.GetTranscodingCache()
-	mediaStreamer := stream.NewMediaStreamer(dataStore, fFmpeg, transcodingCache)
-	share := core.NewShare(dataStore)
-	archiver := core.NewArchiver(mediaStreamer, dataStore, share)
-	router := public.New(dataStore, artworkArtwork, mediaStreamer, share, archiver)
-	return router
-}
-
-func CreateInsights() metrics.Insights {
-	sqlDB := db.Db()
-	dataStore := persistence.New(sqlDB)
-	insights := metrics.GetInstance(dataStore)
-	return insights
-}
-
-func CreatePrometheus() metrics.Metrics {
-	sqlDB := db.Db()
-	dataStore := persistence.New(sqlDB)
-	metricsMetrics := metrics.GetPrometheusInstance(dataStore)
-	return metricsMetrics
 }
 
 func CreateScanner(ctx context.Context) model.Scanner {
@@ -92,16 +52,15 @@ func CreateScanner(ctx context.Context) model.Scanner {
 	dataStore := persistence.New(sqlDB)
 	fileCache := artwork.GetImageCache()
 	fFmpeg := ffmpeg.New()
-	broker := events.GetBroker()
-	metricsMetrics := metrics.GetPrometheusInstance(dataStore)
-	manager := plugins.GetManager(dataStore, broker, metricsMetrics)
-	agentsAgents := agents.GetAgents(dataStore, manager)
+	agentsAgents := agents.GetAgents(dataStore)
 	matcherMatcher := matcher.New(dataStore)
 	provider := external.NewProvider(dataStore, agentsAgents, matcherMatcher)
 	artworkArtwork := artwork.NewArtwork(dataStore, fileCache, fFmpeg, provider)
 	cacheWarmer := artwork.NewCacheWarmer(artworkArtwork, fileCache)
+	broker := events.GetBroker()
 	imageUploadService := core.NewImageUploadService()
 	playlistsPlaylists := playlists.NewPlaylists(dataStore, imageUploadService)
+	metricsMetrics := metrics.GetPrometheusInstance(dataStore)
 	modelScanner := scanner.New(ctx, dataStore, cacheWarmer, broker, playlistsPlaylists, metricsMetrics)
 	return modelScanner
 }
@@ -111,42 +70,20 @@ func CreateScanWatcher(ctx context.Context) scanner.Watcher {
 	dataStore := persistence.New(sqlDB)
 	fileCache := artwork.GetImageCache()
 	fFmpeg := ffmpeg.New()
-	broker := events.GetBroker()
-	metricsMetrics := metrics.GetPrometheusInstance(dataStore)
-	manager := plugins.GetManager(dataStore, broker, metricsMetrics)
-	agentsAgents := agents.GetAgents(dataStore, manager)
+	agentsAgents := agents.GetAgents(dataStore)
 	matcherMatcher := matcher.New(dataStore)
 	provider := external.NewProvider(dataStore, agentsAgents, matcherMatcher)
 	artworkArtwork := artwork.NewArtwork(dataStore, fileCache, fFmpeg, provider)
 	cacheWarmer := artwork.NewCacheWarmer(artworkArtwork, fileCache)
+	broker := events.GetBroker()
 	imageUploadService := core.NewImageUploadService()
 	playlistsPlaylists := playlists.NewPlaylists(dataStore, imageUploadService)
+	metricsMetrics := metrics.GetPrometheusInstance(dataStore)
 	modelScanner := scanner.New(ctx, dataStore, cacheWarmer, broker, playlistsPlaylists, metricsMetrics)
 	watcher := scanner.GetWatcher(dataStore, modelScanner)
 	return watcher
 }
 
-func GetPlaybackServer() playback.PlaybackServer {
-	sqlDB := db.Db()
-	dataStore := persistence.New(sqlDB)
-	playbackServer := playback.GetInstance(dataStore)
-	return playbackServer
-}
-
-func getPluginManager() *plugins.Manager {
-	sqlDB := db.Db()
-	dataStore := persistence.New(sqlDB)
-	broker := events.GetBroker()
-	metricsMetrics := metrics.GetPrometheusInstance(dataStore)
-	manager := plugins.GetManager(dataStore, broker, metricsMetrics)
-	return manager
-}
-
 // wire_injectors.go:
 
-var allProviders = wire.NewSet(core.Set, artwork.Set, server.New, public.New, persistence.New, events.GetBroker, scanner.New, scanner.GetWatcher, metrics.GetPrometheusInstance, db.Db, plugins.GetManager, sonic.New, wire.Bind(new(agents.PluginLoader), new(*plugins.Manager)), wire.Bind(new(scrobbler.PluginLoader), new(*plugins.Manager)), wire.Bind(new(lyrics.PluginLoader), new(*plugins.Manager)), wire.Bind(new(sonic.PluginLoader), new(*plugins.Manager)), wire.Bind(new(sonic.Engine), new(*sonic.Sonic)), wire.Bind(new(core.PluginUnloader), new(*plugins.Manager)), wire.Bind(new(plugins.PluginMetricsRecorder), new(metrics.Metrics)), wire.Bind(new(core.Watcher), new(scanner.Watcher)))
-
-func GetPluginManager(ctx context.Context) *plugins.Manager {
-	manager := getPluginManager()
-	return manager
-}
+var allProviders = wire.NewSet(core.Set, artwork.Set, server.New, persistence.New, events.GetBroker, scanner.New, scanner.GetWatcher, metrics.GetPrometheusInstance, db.Db, wire.Bind(new(core.Watcher), new(scanner.Watcher)))

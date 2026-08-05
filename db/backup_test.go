@@ -58,7 +58,7 @@ var _ = Describe("database backups", func() {
 		BeforeEach(func() {
 			DeferCleanup(configtest.SetupConfig())
 
-			tempFolder, err := os.MkdirTemp("", "navidrome_backup")
+			tempFolder, err := os.MkdirTemp("", "playmusic_backup")
 			Expect(err).ToNot(HaveOccurred())
 			conf.Server.Backup.Path = conf.NewDir(tempFolder)
 
@@ -116,7 +116,7 @@ var _ = Describe("database backups", func() {
 		})
 
 		BeforeEach(func() {
-			tempFolder, err := os.MkdirTemp("", "navidrome_backup")
+			tempFolder, err := os.MkdirTemp("", "playmusic_backup")
 			Expect(err).ToNot(HaveOccurred())
 			conf.Server.Backup.Path = conf.NewDir(tempFolder)
 

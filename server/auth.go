@@ -2,9 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/md5"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -78,18 +75,6 @@ func buildAuthPayload(user *model.User) map[string]any {
 	if conf.Server.EnableGravatar && user.Email != "" {
 		payload["avatar"] = gravatar.Url(user.Email, 50)
 	}
-
-	bytes := make([]byte, 3)
-	_, err := rand.Read(bytes)
-	if err != nil {
-		log.Error("Could not create subsonic salt", "user", user.UserName, err)
-		return payload
-	}
-	subsonicSalt := hex.EncodeToString(bytes)
-	payload["subsonicSalt"] = subsonicSalt
-
-	subsonicToken := md5.Sum([]byte(user.Password + subsonicSalt))
-	payload["subsonicToken"] = hex.EncodeToString(subsonicToken[:])
 
 	return payload
 }

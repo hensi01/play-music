@@ -1,15 +1,15 @@
-# Ambiente de desenvolvimento local: Navidrome (modificado) + MinIO + Redis.
+# Ambiente de desenvolvimento local: Play Music + MinIO + Redis.
 # Os serviços MinIO e Redis são provisionados aqui para testes; em produção
 # eles já existem no servidor Coolify.
 #
 # Uso:
 #   docker compose -f docker-compose.dev.yml up -d
-#   docker compose -f docker-compose.dev.yml logs -f navidrome
+#   docker compose -f docker-compose.dev.yml logs -f playmusic
 #
 # Depois do primeiro "up", envie suas músicas para o MinIO:
 #   mc alias set local http://localhost:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
-#   mc mb local/navidrome-music
-#   mc cp -r /sua/pasta/musicas/* local/navidrome-music/
+#   mc mb local/play-music-music
+#   mc cp -r /sua/pasta/musicas/* local/play-music-music/
 #
 # A UI estará em http://localhost:4533 (criação do admin no primeiro acesso).
 
@@ -48,7 +48,7 @@ services:
         echo 'aguardando MinIO...'; sleep 2;
       done;
       /usr/bin/mc mb --ignore-existing local/$$MINIO_BUCKET;
-      /usr/bin/mc mb --ignore-existing local/navidrome-transcode;
+      /usr/bin/mc mb --ignore-existing local/playmusic-transcode;
       exit 0;
       "
     restart: "no"
@@ -67,11 +67,11 @@ services:
       retries: 5
     restart: unless-stopped
 
-  navidrome:
+  playmusic:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: playmusic-navidrome
+    container_name: playmusic
     ports:
       - "4533:4533"
     environment:
@@ -98,7 +98,7 @@ services:
       ND_CDN_TOKENTTL: "${ND_CDN_TOKENTTL}"
       ND_ENABLEINSIGHTSCOLLECTOR: "false"
     volumes:
-      - navidrome-data:/data
+      - playmusic-data:/data
     depends_on:
       minio:
         condition: service_healthy
@@ -109,4 +109,4 @@ services:
 volumes:
   minio-data:
   redis-data:
-  navidrome-data:
+  playmusic-data:

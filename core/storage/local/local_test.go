@@ -26,7 +26,7 @@ var _ = Describe("LocalStorage", func() {
 
 		// Create a temporary directory for testing
 		var err error
-		tempDir, err = os.MkdirTemp("", "navidrome-local-storage-test-")
+		tempDir, err = os.MkdirTemp("", "playmusic-local-storage-test-")
 		Expect(err).ToNot(HaveOccurred())
 
 		DeferCleanup(func() {
@@ -55,8 +55,8 @@ var _ = Describe("LocalStorage", func() {
 
 				Expect(localStorage.u.Scheme).To(Equal("file"))
 				// Check that the path is set correctly (could be resolved to real path on macOS)
-				Expect(localStorage.u.Path).To(ContainSubstring("navidrome-local-storage-test"))
-				Expect(localStorage.resolvedPath).To(ContainSubstring("navidrome-local-storage-test"))
+				Expect(localStorage.u.Path).To(ContainSubstring("playmusic-local-storage-test"))
+				Expect(localStorage.resolvedPath).To(ContainSubstring("playmusic-local-storage-test"))
 				Expect(localStorage.extractor).ToNot(BeNil())
 			})
 
@@ -218,7 +218,7 @@ var _ = Describe("LocalStorage", func() {
 		})
 
 		It("resolves a chain that leaves the library folder to its final target", func() {
-			outside, err := os.MkdirTemp("", "navidrome-symlink-outside-")
+			outside, err := os.MkdirTemp("", "playmusic-symlink-outside-")
 			Expect(err).ToNot(HaveOccurred())
 			DeferCleanup(func() { os.RemoveAll(outside) })
 

@@ -21,12 +21,10 @@ type MockDataStore struct {
 	MockedPlayer         model.PlayerRepository
 	MockedPlaylist       model.PlaylistRepository
 	MockedPlayQueue      model.PlayQueueRepository
-	MockedShare          model.ShareRepository
 	MockedTranscoding    model.TranscodingRepository
 	MockedUserProps      model.UserPropsRepository
 	MockedScrobbleBuffer model.ScrobbleBufferRepository
 	MockedScrobble       model.ScrobbleRepository
-	MockedRadio          model.RadioRepository
 	MockedPlugin         model.PluginRepository
 	scrobbleBufferMu     sync.Mutex
 	repoMu               sync.Mutex
@@ -158,17 +156,6 @@ func (db *MockDataStore) Property(ctx context.Context) model.PropertyRepository 
 	return db.MockedProperty
 }
 
-func (db *MockDataStore) Share(ctx context.Context) model.ShareRepository {
-	if db.MockedShare != nil {
-		return db.MockedShare
-	}
-	if db.RealDS != nil {
-		return db.RealDS.Share(ctx)
-	}
-	db.MockedShare = &MockShareRepo{}
-	return db.MockedShare
-}
-
 func (db *MockDataStore) User(ctx context.Context) model.UserRepository {
 	if db.MockedUser != nil {
 		return db.MockedUser
@@ -225,17 +212,6 @@ func (db *MockDataStore) Scrobble(ctx context.Context) model.ScrobbleRepository 
 	return db.MockedScrobble
 }
 
-func (db *MockDataStore) Radio(ctx context.Context) model.RadioRepository {
-	if db.MockedRadio != nil {
-		return db.MockedRadio
-	}
-	if db.RealDS != nil {
-		return db.RealDS.Radio(ctx)
-	}
-	db.MockedRadio = CreateMockedRadioRepo()
-	return db.MockedRadio
-}
-
 func (db *MockDataStore) Plugin(ctx context.Context) model.PluginRepository {
 	if db.MockedPlugin != nil {
 		return db.MockedPlugin
@@ -267,10 +243,6 @@ func (db *MockDataStore) Resource(ctx context.Context, m any) model.ResourceRepo
 		return db.User(ctx).(model.ResourceRepository)
 	case model.Playlist, *model.Playlist:
 		return db.Playlist(ctx).(model.ResourceRepository)
-	case model.Radio, *model.Radio:
-		return db.Radio(ctx).(model.ResourceRepository)
-	case model.Share, *model.Share:
-		return db.Share(ctx).(model.ResourceRepository)
 	case model.Genre, *model.Genre:
 		return db.Genre(ctx).(model.ResourceRepository)
 	case model.Tag, *model.Tag:

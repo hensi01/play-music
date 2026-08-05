@@ -16,7 +16,7 @@ import (
 var analyzeMux sync.Mutex
 
 // Optimize refreshes the query-planner statistics with a full ANALYZE. PRAGMA optimize is avoided
-// because its limited analysis misestimates Navidrome's low-cardinality indexes.
+// because its limited analysis misestimates Play Music's low-cardinality indexes.
 func Optimize(ctx context.Context) error {
 	analyzeMux.Lock()
 	defer analyzeMux.Unlock()

@@ -2,7 +2,7 @@
 //
 // Redis is used as an optional shared state store: now-playing, sessions,
 // rate-limit counters, scanner locks, etc. Every operation degrades gracefully
-// to a no-op when Redis is disabled or unreachable, so Navidrome keeps working
+// to a no-op when Redis is disabled or unreachable, so Play Music keeps working
 // with purely in-memory state exactly as before.
 package redis
 
@@ -22,13 +22,13 @@ var ErrDisabled = errors.New("redis is not enabled")
 
 const (
 	// KeyNowPlaying is a Redis hash: userID -> now-playing JSON.
-	KeyNowPlaying = "navidrome:nowplaying"
+	KeyNowPlaying = "playmusic:nowplaying"
 	// KeySessions is a Redis set: token ID -> userID (revocation support).
-	KeySessions = "navidrome:sessions"
+	KeySessions = "playmusic:sessions"
 	// KeyScannerLock is a Redis key used as a distributed lock for scanning.
-	KeyScannerLock = "navidrome:scanner:lock"
+	KeyScannerLock = "playmusic:scanner:lock"
 	// ChannelEvents is the pub/sub channel for server events.
-	ChannelEvents = "navidrome:events"
+	ChannelEvents = "playmusic:events"
 )
 
 var (

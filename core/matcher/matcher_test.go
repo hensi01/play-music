@@ -517,7 +517,7 @@ var _ = Describe("Matcher", func() {
 				Expect(result[0].ID).To(Equal("multi"))
 			})
 
-			It("matches by a directly-supplied Navidrome artist ID (fast-path)", func() {
+			It("matches by a directly-supplied playmusic artist ID (fast-path)", func() {
 				conf.Server.Matcher.FuzzyThreshold = 85
 				songs := []agents.Song{
 					{Name: "Song A", Artists: []agents.Artist{{ID: "ar-x"}}},

@@ -52,10 +52,8 @@ type configOptions struct {
 	UIWelcomeMessage                string
 	MaxSidebarPlaylists             int
 	EnableTranscodingConfig         bool
-	EnableDownloads                 bool
 	EnableExternalServices          bool
 	EnableM3UExternalAlbumArt       bool
-	EnableInsightsCollector         bool
 	EnableScheduledDBAnalyze        bool
 	EnableMediaFileCoverArt         bool
 	TranscodingCacheSize            string
@@ -90,10 +88,6 @@ type configOptions struct {
 	EnableUserEditing               bool
 	EnableArtworkUpload             bool
 	MaxImageUploadSize              string
-	EnableSharing                   bool
-	ShareURL                        string
-	DefaultShareExpiration          time.Duration
-	DefaultDownloadableShare        bool
 	DefaultTheme                    string
 	DefaultLanguage                 string
 	DefaultUIVolume                 int
@@ -109,19 +103,13 @@ type configOptions struct {
 	AuthWindowLength                time.Duration
 	PasswordEncryptionKey           string
 	ExtAuth                         extAuthOptions
-	Plugins                         pluginsOptions
 	HTTPHeaders                     httpHeaderOptions   `json:",omitzero"`
-	Prometheus                      prometheusOptions   `json:",omitzero"`
 	Scanner                         scannerOptions      `json:",omitzero"`
-	Jukebox                         jukeboxOptions      `json:",omitzero"`
-	Backup                          backupOptions       `json:",omitzero"`
+	Backup                          backupOptions      `json:",omitzero"`
 	PID                             pidOptions          `json:",omitzero"`
 	Inspect                         inspectOptions      `json:",omitzero"`
 	Subsonic                        subsonicOptions     `json:",omitzero"`
 	Transcoding                     transcodingOptions  `json:",omitzero"`
-	LastFM                          lastfmOptions       `json:",omitzero"`
-	Deezer                          deezerOptions       `json:",omitzero"`
-	ListenBrainz                    listenBrainzOptions `json:",omitzero"`
 	Jellyfin                        jellyfinOptions     `json:",omitzero"`
 	S3                              s3Options           `json:",omitzero"`
 	Redis                           redisOptions        `json:",omitzero"`
@@ -154,10 +142,6 @@ type configOptions struct {
 	DevExternalScanner                bool
 	DevScannerThreads                 uint
 	DevSelectiveWatcher               bool
-	DevInsightsInitialDelay           time.Duration
-	DevEnablePlayerInsights           bool
-	DevEnablePluginsInsights          bool
-	DevPluginCompilationTimeout       time.Duration
 	DevExternalArtistFetchMultiplier  float64
 	DevPreserveUnicodeInExternalCalls bool
 	DevEnableMediaFileProbe           bool
@@ -201,32 +185,6 @@ type TagConf struct {
 	MaxLength int      `yaml:"maxLength" json:",omitempty"`
 	Split     []string `yaml:"split" json:",omitempty"`
 	Album     bool     `yaml:"album" json:",omitempty"`
-}
-
-type lastfmOptions struct {
-	Enabled                 bool
-	ApiKey                  string //nolint:gosec
-	Secret                  string //nolint:gosec
-	Language                string
-	ScrobbleFirstArtistOnly bool
-
-	// Computed values
-	Languages []string `conf:"-"` // Computed from Language, split by comma
-}
-
-type deezerOptions struct {
-	Enabled  bool
-	Language string
-
-	// Computed values
-	Languages []string `conf:"-"` // Computed from Language, split by comma
-}
-
-type listenBrainzOptions struct {
-	Enabled         bool
-	BaseURL         string
-	ArtistAlgorithm string
-	TrackAlgorithm  string
 }
 
 type jellyfinOptions struct {
@@ -274,21 +232,6 @@ type httpHeaderOptions struct {
 	FrameOptions string
 }
 
-type prometheusOptions struct {
-	Enabled     bool
-	MetricsPath string
-	Password    string //nolint:gosec
-}
-
-type AudioDeviceDefinition []string
-
-type jukeboxOptions struct {
-	Enabled   bool
-	Devices   []AudioDeviceDefinition
-	Default   string
-	AdminOnly bool
-}
-
 type backupOptions struct {
 	Count    int
 	Path     Dir
@@ -305,14 +248,6 @@ type inspectOptions struct {
 	MaxRequests    int
 	BacklogLimit   int
 	BacklogTimeout int
-}
-
-type pluginsOptions struct {
-	Enabled    bool
-	Folder     Dir
-	CacheSize  string
-	AutoReload bool
-	LogLevel   string
 }
 
 type extAuthOptions struct {
@@ -405,14 +340,6 @@ func Load(noConfigDump bool) {
 		Server.CacheFolder = NewDir(filepath.Join(Server.DataFolder.String(), "cache"))
 	}
 
-	if Server.Plugins.Enabled {
-		if Server.Plugins.Folder.String() == "" {
-			Server.Plugins.Folder = NewDirWithPerm(filepath.Join(Server.DataFolder.String(), "plugins"), 0700)
-		} else {
-			Server.Plugins.Folder = NewDirWithPerm(Server.Plugins.Folder.String(), 0700)
-		}
-	}
-
 	Server.ConfigFile = viper.GetViper().ConfigFileUsed()
 	if Server.DbPath == "" {
 		Server.DbPath = filepath.Join(Server.DataFolder.String(), consts.DefaultDbPath)
@@ -492,19 +419,9 @@ func Load(noConfigDump bool) {
 		_, _ = fmt.Fprintln(out, prettyConf)
 	}
 
-	if !Server.EnableExternalServices {
-		disableExternalServices()
-	}
-
 	// Make sure we don't have empty PIDs
 	Server.PID.Album = cmp.Or(Server.PID.Album, consts.DefaultAlbumPID)
 	Server.PID.Track = cmp.Or(Server.PID.Track, consts.DefaultTrackPID)
-
-	// Parse LastFM.Language into Languages slice (comma-separated, with fallback to DefaultInfoLanguage)
-	Server.LastFM.Languages = parseLanguages(Server.LastFM.Language)
-
-	// Parse Deezer.Language into Languages slice (comma-separated, with fallback to DefaultInfoLanguage)
-	Server.Deezer.Languages = parseLanguages(Server.Deezer.Language)
 
 	// Validate other options
 	if Server.UICoverArtSize < 200 || Server.UICoverArtSize > 1200 {
@@ -788,19 +705,6 @@ func parseIniFileConfiguration() {
 	}
 }
 
-func disableExternalServices() {
-	log.Info("All external integrations are DISABLED!")
-	Server.EnableInsightsCollector = false
-	Server.EnableM3UExternalAlbumArt = false
-	Server.LastFM.Enabled = false
-	Server.Deezer.Enabled = false
-	Server.ListenBrainz.Enabled = false
-	Server.Agents = ""
-	if Server.UILoginBackgroundURL == consts.DefaultUILoginBackgroundURL {
-		Server.UILoginBackgroundURL = consts.DefaultUILoginBackgroundURLOffline
-	}
-}
-
 func validatePlaylistsPath() error {
 	for path := range strings.SplitSeq(Server.PlaylistsPath, string(filepath.ListSeparator)) {
 		_, err := doublestar.Match(path, "")
@@ -973,7 +877,6 @@ func setViperDefaults() {
 	viper.SetDefault("defaultplaylistpublicvisibility", false)
 	viper.SetDefault("playlistspath", "")
 	viper.SetDefault("smartPlaylistRefreshDelay", 5*time.Second)
-	viper.SetDefault("enabledownloads", true)
 	viper.SetDefault("enableexternalservices", true)
 	viper.SetDefault("enablem3uexternalalbumart", false)
 	viper.SetDefault("enablemediafilecoverart", true)
@@ -1012,12 +915,7 @@ func setViperDefaults() {
 	viper.SetDefault("uiplaybackreportinterval", consts.DefaultUIPlaybackReportInterval)
 	viper.SetDefault("enableartworkupload", true)
 	viper.SetDefault("maximageuploadsize", consts.DefaultMaxImageUploadSize)
-	viper.SetDefault("enablesharing", true)
-	viper.SetDefault("shareurl", "")
-	viper.SetDefault("defaultshareexpiration", 8760*time.Hour)
-	viper.SetDefault("defaultdownloadableshare", false)
 	viper.SetDefault("gatrackingid", "")
-	viper.SetDefault("enableinsightscollector", true)
 	viper.SetDefault("enablescheduleddbanalyze", true)
 	viper.SetDefault("enablelogredacting", true)
 	viper.SetDefault("authrequestlimit", 5)
@@ -1026,13 +924,6 @@ func setViperDefaults() {
 	viper.SetDefault("extauth.userheader", "Remote-User")
 	viper.SetDefault("extauth.trustedsources", "")
 	viper.SetDefault("extauth.logouturl", "")
-	viper.SetDefault("prometheus.enabled", false)
-	viper.SetDefault("prometheus.metricspath", consts.PrometheusDefaultPath)
-	viper.SetDefault("prometheus.password", "")
-	viper.SetDefault("jukebox.enabled", false)
-	viper.SetDefault("jukebox.devices", []AudioDeviceDefinition{})
-	viper.SetDefault("jukebox.default", "")
-	viper.SetDefault("jukebox.adminonly", true)
 	viper.SetDefault("scanner.enabled", true)
 	viper.SetDefault("scanner.schedule", "0")
 	viper.SetDefault("scanner.extractor", consts.DefaultScannerExtractor)
@@ -1072,18 +963,7 @@ func setViperDefaults() {
 	viper.SetDefault("transcoding.maxconcurrent", 0)
 	viper.SetDefault("transcoding.maxconcurrentperuser", 0)
 	viper.SetDefault("transcoding.enablecancellation", false)
-	viper.SetDefault("agents", "deezer,lastfm,listenbrainz")
-	viper.SetDefault("lastfm.enabled", true)
-	viper.SetDefault("lastfm.language", consts.DefaultInfoLanguage)
-	viper.SetDefault("lastfm.apikey", "")
-	viper.SetDefault("lastfm.secret", "")
-	viper.SetDefault("lastfm.scrobblefirstartistonly", false)
-	viper.SetDefault("deezer.enabled", true)
-	viper.SetDefault("deezer.language", consts.DefaultInfoLanguage)
-	viper.SetDefault("listenbrainz.enabled", true)
-	viper.SetDefault("listenbrainz.baseurl", consts.DefaultListenBrainzBaseURL)
-	viper.SetDefault("listenbrainz.artistalgorithm", consts.DefaultListenBrainzArtistAlgorithm)
-	viper.SetDefault("listenbrainz.trackalgorithm", consts.DefaultListenBrainzTrackAlgorithm)
+	viper.SetDefault("agents", "")
 	viper.SetDefault("jellyfin.enabled", false)
 	viper.SetDefault("jellyfin.servername", "")
 	viper.SetDefault("enablescrobblehistory", true)
@@ -1097,11 +977,6 @@ func setViperDefaults() {
 	viper.SetDefault("inspect.maxrequests", 1)
 	viper.SetDefault("inspect.backloglimit", consts.RequestThrottleBacklogLimit)
 	viper.SetDefault("inspect.backlogtimeout", consts.RequestThrottleBacklogTimeout)
-	viper.SetDefault("plugins.folder", "")
-	viper.SetDefault("plugins.enabled", true)
-	viper.SetDefault("plugins.cachesize", "200MB")
-	viper.SetDefault("plugins.autoreload", false)
-	viper.SetDefault("plugins.loglevel", "")
 	viper.SetDefault("adminusername", "")
 	viper.SetDefault("adminpassword", "")
 
@@ -1129,10 +1004,6 @@ func setViperDefaults() {
 	viper.SetDefault("devexternalscanner", true)
 	viper.SetDefault("devscannerthreads", 5)
 	viper.SetDefault("devselectivewatcher", true)
-	viper.SetDefault("devinsightsinitialdelay", consts.InsightsInitialDelay)
-	viper.SetDefault("devenableplayerinsights", true)
-	viper.SetDefault("devenablepluginsinsights", true)
-	viper.SetDefault("devplugincompilationtimeout", time.Minute)
 	viper.SetDefault("devexternalartistfetchmultiplier", 1.5)
 	viper.SetDefault("devpreserveunicodeinexternalcalls", false)
 	viper.SetDefault("devenablemediafileprobe", true)
@@ -1157,9 +1028,9 @@ func InitConfig(cfgFile string, loadEnvVars bool) {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
 	} else {
-		// Search config in local directory with name "navidrome" (without extension).
+		// Search config in local directory with name "playmusic" (without extension).
 		viper.AddConfigPath(".")
-		viper.SetConfigName("navidrome")
+		viper.SetConfigName("playmusic")
 	}
 
 	_ = viper.BindEnv("port")

@@ -18,7 +18,6 @@ import (
 	"github.com/hensi01/play-music/resources"
 	"github.com/hensi01/play-music/scanner"
 	"github.com/hensi01/play-music/scheduler"
-	"github.com/hensi01/play-music/server/backgrounds"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
@@ -44,7 +43,7 @@ Stream your personal music library from MinIO/S3 with a Spotify-style interface.
 			preRun()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			runNavidrome(cmd.Context())
+			runServer(cmd.Context())
 		},
 		PostRun: func(cmd *cobra.Command, args []string) {
 			postRun()
@@ -53,7 +52,7 @@ Stream your personal music library from MinIO/S3 with a Spotify-style interface.
 	}
 )
 
-// Execute runs the root cobra command, which will start the Navidrome server by calling the runNavidrome function.
+// Execute runs the root cobra command, which will start the Play Music server.
 func Execute() {
 	ctx, cancel := mainContext(context.Background())
 	defer cancel()
@@ -73,24 +72,21 @@ func preRun() {
 }
 
 func postRun() {
-	log.Info("Navidrome stopped, bye.")
+	log.Info("Play Music stopped, bye.")
 }
 
-// runNavidrome is the main entry point for the Navidrome server. It starts all the services and blocks.
+// runServer is the main entry point for the Play Music server. It starts all the services and blocks.
 // If any of the services returns an error, it will log it and exit. If the process receives a signal to exit,
 // it will cancel the context and exit gracefully.
-func runNavidrome(ctx context.Context) {
+func runServer(ctx context.Context) {
 	defer db.Init(ctx)()
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(startServer(ctx))
 	g.Go(startSignaller(ctx))
 	g.Go(startScheduler(ctx))
-	g.Go(startPlaybackServer(ctx))
 	g.Go(schedulePeriodicBackup(ctx))
-	g.Go(startInsightsCollector(ctx))
 	g.Go(scheduleDBAnalyzer(ctx))
-	g.Go(startPluginManager(ctx))
 	g.Go(runInitialScan(ctx))
 	if conf.Server.Scanner.Enabled {
 		g.Go(startScanWatcher(ctx))
@@ -100,7 +96,7 @@ func runNavidrome(ctx context.Context) {
 	}
 
 	if err := g.Wait(); err != nil {
-		log.Error("Fatal error in Navidrome. Aborting", err)
+		log.Error("Fatal error in Play Music. Aborting", err)
 	}
 }
 
@@ -114,23 +110,13 @@ func mainContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	)
 }
 
-// startServer starts the Navidrome web server, adding all the necessary routers.
+// startServer starts the Play Music web server, adding all the necessary routers.
 func startServer(ctx context.Context) func() error {
 	return func() error {
 		a := CreateServer()
 		a.MountRouter("API", consts.URLPathNativeAPI, CreateAPIRouter(ctx))
-		a.MountRouter("Public Endpoints", consts.URLPathPublic, CreatePublicRouter())
-		if conf.Server.Prometheus.Enabled {
-			p := CreatePrometheus()
-			// blocking call because takes <100ms but useful if fails
-			p.WriteInitialMetrics(ctx)
-			a.MountRouter("Prometheus metrics", conf.Server.Prometheus.MetricsPath, p.GetHandler())
-		}
 		if conf.Server.DevEnableProfiler {
 			a.MountRouter("Profiling", "/debug", middleware.Profiler())
-		}
-		if strings.HasPrefix(conf.Server.UILoginBackgroundURL, "/") {
-			a.MountRouter("Background images", conf.Server.UILoginBackgroundURL, backgrounds.NewHandler())
 		}
 		return a.Run(ctx, conf.Server.Address, conf.Server.Port, conf.Server.TLSCert, conf.Server.TLSKey)
 	}
@@ -294,7 +280,7 @@ func scheduleDBAnalyzer(ctx context.Context) func() error {
 	}
 }
 
-// startScheduler starts the Navidrome scheduler, which is used to run periodic tasks.
+// startScheduler starts the Play Music scheduler, which is used to run periodic tasks.
 func startScheduler(ctx context.Context) func() error {
 	return func() error {
 		log.Info(ctx, "Starting scheduler")
@@ -304,59 +290,13 @@ func startScheduler(ctx context.Context) func() error {
 	}
 }
 
-// startInsightsCollector starts the Navidrome Insight Collector, if configured.
-func startInsightsCollector(ctx context.Context) func() error {
-	return func() error {
-		if !conf.Server.EnableInsightsCollector {
-			log.Info(ctx, "Insight Collector is DISABLED")
-			return nil
-		}
-		log.Info(ctx, "Starting Insight Collector")
-		select {
-		case <-time.After(conf.Server.DevInsightsInitialDelay):
-		case <-ctx.Done():
-			return nil
-		}
-		ic := CreateInsights()
-		ic.Run(ctx)
-		return nil
-	}
-}
-
-// startPlaybackServer starts the Navidrome playback server, if configured.
-// It is responsible for the Jukebox functionality
-func startPlaybackServer(ctx context.Context) func() error {
-	return func() error {
-		if !conf.Server.Jukebox.Enabled {
-			log.Debug("Jukebox is DISABLED")
-			return nil
-		}
-		log.Info(ctx, "Starting Jukebox service")
-		playbackInstance := GetPlaybackServer()
-		return playbackInstance.Run(ctx)
-	}
-}
-
-// startPluginManager starts the plugin manager, if configured.
-func startPluginManager(ctx context.Context) func() error {
-	return func() error {
-		manager := GetPluginManager(ctx)
-		if !conf.Server.Plugins.Enabled {
-			log.Debug("Plugin system is DISABLED")
-			return nil
-		}
-		log.Info(ctx, "Starting plugin manager")
-		return manager.Start(ctx)
-	}
-}
-
 // TODO: Implement some struct tags to map flags to viper
 func init() {
 	cobra.OnInitialize(func() {
 		conf.InitConfig(cfgFile, true)
 	})
 
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "configfile", "c", "", `config file (default "./navidrome.toml")`)
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "configfile", "c", "", `config file (default "./playmusic.toml")`)
 	rootCmd.PersistentFlags().BoolVarP(&noBanner, "nobanner", "n", false, `don't show banner`)
 	rootCmd.PersistentFlags().String("musicfolder", viper.GetString("musicfolder"), "folder where your music is stored")
 	rootCmd.PersistentFlags().String("datafolder", viper.GetString("datafolder"), "folder to store application data (DB), needs write access")
@@ -371,13 +311,13 @@ func init() {
 	_ = viper.BindPFlag("logfile", rootCmd.PersistentFlags().Lookup("logfile"))
 
 	rootCmd.Flags().StringP("address", "a", viper.GetString("address"), "IP address to bind to")
-	rootCmd.Flags().IntP("port", "p", viper.GetInt("port"), "HTTP port Navidrome will listen to")
-	rootCmd.Flags().String("baseurl", viper.GetString("baseurl"), "base URL to configure Navidrome behind a proxy (ex: /music or http://my.server.com)")
+	rootCmd.Flags().IntP("port", "p", viper.GetInt("port"), "HTTP port Play Music will listen to")
+	rootCmd.Flags().String("baseurl", viper.GetString("baseurl"), "base URL to configure Play Music behind a proxy (ex: /music or http://my.server.com)")
 	rootCmd.Flags().String("tlscert", viper.GetString("tlscert"), "optional path to a TLS cert file (enables HTTPS listening)")
 	rootCmd.Flags().String("unixsocketperm", viper.GetString("unixsocketperm"), "optional file permission for the unix socket")
 	rootCmd.Flags().String("tlskey", viper.GetString("tlskey"), "optional path to a TLS key file (enables HTTPS listening)")
 
-	rootCmd.Flags().Duration("sessiontimeout", viper.GetDuration("sessiontimeout"), "how long Navidrome will wait before closing web ui idle sessions")
+	rootCmd.Flags().Duration("sessiontimeout", viper.GetDuration("sessiontimeout"), "how long Play Music will wait before closing web UI idle sessions")
 	rootCmd.Flags().Duration("scaninterval", viper.GetDuration("scaninterval"), "how frequently to scan for changes in your music library")
 	rootCmd.Flags().String("uiloginbackgroundurl", viper.GetString("uiloginbackgroundurl"), "URL to a backaground image used in the Login page")
 	rootCmd.Flags().Bool("enabletranscodingconfig", viper.GetBool("enabletranscodingconfig"), "enables transcoding configuration in the UI")
@@ -386,9 +326,6 @@ func init() {
 	rootCmd.Flags().String("imagecachesize", viper.GetString("imagecachesize"), "size of image (art work) cache. set to 0 to disable cache")
 	rootCmd.Flags().String("albumplaycountmode", viper.GetString("albumplaycountmode"), "how to compute playcount for albums. absolute (default) or normalized")
 	rootCmd.Flags().Bool("autoimportplaylists", viper.GetBool("autoimportplaylists"), "enable/disable .m3u playlist auto-import`")
-
-	rootCmd.Flags().Bool("prometheus.enabled", viper.GetBool("prometheus.enabled"), "enable/disable prometheus metrics endpoint")
-	rootCmd.Flags().String("prometheus.metricspath", viper.GetString("prometheus.metricspath"), "http endpoint for prometheus metrics")
 
 	_ = viper.BindPFlag("address", rootCmd.Flags().Lookup("address"))
 	_ = viper.BindPFlag("port", rootCmd.Flags().Lookup("port"))
@@ -400,9 +337,6 @@ func init() {
 	_ = viper.BindPFlag("sessiontimeout", rootCmd.Flags().Lookup("sessiontimeout"))
 	_ = viper.BindPFlag("scaninterval", rootCmd.Flags().Lookup("scaninterval"))
 	_ = viper.BindPFlag("uiloginbackgroundurl", rootCmd.Flags().Lookup("uiloginbackgroundurl"))
-
-	_ = viper.BindPFlag("prometheus.enabled", rootCmd.Flags().Lookup("prometheus.enabled"))
-	_ = viper.BindPFlag("prometheus.metricspath", rootCmd.Flags().Lookup("prometheus.metricspath"))
 
 	_ = viper.BindPFlag("enabletranscodingconfig", rootCmd.Flags().Lookup("enabletranscodingconfig"))
 	_ = viper.BindPFlag("enabletranscodingcancellation", rootCmd.Flags().Lookup("enabletranscodingcancellation"))

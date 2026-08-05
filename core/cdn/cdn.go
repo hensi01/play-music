@@ -2,7 +2,7 @@
 // S3/MinIO origin through the Bunny edge network.
 //
 // The Pull Zone is configured with the MinIO bucket (or a folder inside it) as
-// its S3 origin. Navidrome signs the object URL with Bunny's token
+// its S3 origin. Play Music signs the object URL with Bunny's token
 // authentication so only authenticated users can access the files.
 //
 // Two signing schemes are supported (conf.Server.CDN.AdvancedAuth):

@@ -2,13 +2,13 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: navidrome
+  name: playmusic
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: navidrome-data-pvc
-  namespace: navidrome
+  name: playmusic-data-pvc
+  namespace: playmusic
   annotations:
     volumeType: local
 spec:
@@ -22,22 +22,22 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: navidrome-deployment
-  namespace: navidrome
+  name: playmusic-deployment
+  namespace: playmusic
 spec:
   replicas: 1
   revisionHistoryLimit: 2
   selector:
     matchLabels:
-      app: navidrome
+      app: playmusic
   template:
     metadata:
       labels:
-        app: navidrome
+        app: playmusic
     spec:
       containers:
-        - name: navidrome
-          image: ghcr.io/navidrome/navidrome:0.49.3
+        - name: playmusic
+          image: ghcr.io/hensi01/play-music:0.49.3
           ports:
             - containerPort: 4533
           env:
@@ -64,7 +64,7 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: navidrome-data-pvc
+            claimName: playmusic-data-pvc
         - name: music
           hostPath:
             path: /path/to/your/music/on/the/host
@@ -73,8 +73,8 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: navidrome-service
-  namespace: navidrome
+  name: playmusic-service
+  namespace: playmusic
 spec:
   type: ClusterIP
   ports:
@@ -83,29 +83,29 @@ spec:
       port: 4533
       protocol: TCP
   selector:
-    app: navidrome
+    app: playmusic
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: navidrome-ingress
-  namespace: navidrome
+  name: playmusic-ingress
+  namespace: playmusic
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-production
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   rules:
-    - host: navidrome.${SECRET_INTERNAL_DOMAIN_NAME}
+    - host: playmusic.${SECRET_INTERNAL_DOMAIN_NAME}
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: navidrome-service
+                name: playmusic-service
                 port:
                   number: 4533
   tls:
     - hosts:
-        - navidrome.${SECRET_INTERNAL_DOMAIN_NAME}
-      secretName: navidrome-tls
+        - playmusic.${SECRET_INTERNAL_DOMAIN_NAME}
+      secretName: playmusic-tls

@@ -49,7 +49,7 @@ Browser → /app (UI) + /api (REST) + /auth/login (JWT)
 
 ## Desenvolvimento local
 
-Backend (Go 1.26+):
+O projeto é 100% Go — a UI (HTML/CSS/JS) fica em `web/assets/` e é embutida no binário via `//go:embed`. Não há Node, npm ou TypeScript.
 
 ```bash
 set CGO_ENABLED=1
@@ -58,20 +58,7 @@ go build -tags "netgo sqlite_fts5" -o playmusic.exe .
 $env:ND_MUSICFOLDER="caminho/para/sua/musica"; $env:ND_DATAFOLDER="tmp/data"; .\playmusic.exe
 ```
 
-Frontend (`web/`), com proxy para o backend em `:4533`:
-
-```bash
-cd web
-npm install
-npm run dev   # http://localhost:5173/app/
-```
-
-Build de produção (embutido no binário via `//go:embed`):
-
-```bash
-cd web && npm run build && cd ..
-go build -tags "netgo sqlite_fts5" -o playmusic.exe .
-```
+A UI fica disponível em `http://localhost:4533/app/`.
 
 ## Deploy no Coolify
 

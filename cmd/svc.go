@@ -53,7 +53,7 @@ func (p *svcControl) Start(service.Service) error {
 	p.done = make(chan struct{})
 	p.ctx, p.cancel = context.WithCancel(context.Background())
 	go func() {
-		runNavidrome(p.ctx)
+		runServer(p.ctx)
 		close(p.done)
 	}()
 	return nil

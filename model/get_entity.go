@@ -12,7 +12,6 @@ func GetEntityByID(ctx context.Context, ds DataStore, id string) (any, error) {
 		func() (any, error) { return ds.Album(ctx).Get(id) },
 		func() (any, error) { return ds.Playlist(ctx).Get(id) },
 		func() (any, error) { return ds.MediaFile(ctx).Get(id) },
-		func() (any, error) { return ds.Radio(ctx).Get(id) },
 	}
 	for _, get := range getters {
 		entity, err := get()

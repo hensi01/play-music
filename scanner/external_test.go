@@ -81,7 +81,7 @@ var _ = Describe("targetArguments", func() {
 
 			// Verify the file exists and has correct format
 			filePath := args[1]
-			Expect(filePath).To(ContainSubstring("navidrome-scan-targets-"))
+			Expect(filePath).To(ContainSubstring("playmusic-scan-targets-"))
 			Expect(filePath).To(HaveSuffix(".txt"))
 
 			// Verify file actually exists
@@ -105,7 +105,7 @@ var _ = Describe("targetArguments", func() {
 
 			// Verify file exists with correct format
 			filePath := args[1]
-			Expect(filePath).To(ContainSubstring("navidrome-scan-targets-"))
+			Expect(filePath).To(ContainSubstring("playmusic-scan-targets-"))
 			Expect(filePath).To(HaveSuffix(".txt"))
 
 			// Verify file content

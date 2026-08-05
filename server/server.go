@@ -22,7 +22,6 @@ import (
 	"github.com/hensi01/play-music/conf"
 	"github.com/hensi01/play-music/consts"
 	"github.com/hensi01/play-music/core/auth"
-	"github.com/hensi01/play-music/core/metrics"
 	"github.com/hensi01/play-music/core/redis"
 	"github.com/hensi01/play-music/log"
 	"github.com/hensi01/play-music/model"
@@ -31,22 +30,20 @@ import (
 )
 
 type Server struct {
-	router   chi.Router
-	ds       model.DataStore
-	appRoot  string
-	broker   events.Broker
-	insights metrics.Insights
+	router  chi.Router
+	ds      model.DataStore
+	appRoot string
+	broker  events.Broker
 }
 
-func New(ds model.DataStore, broker events.Broker, insights metrics.Insights) *Server {
-	s := &Server{ds: ds, broker: broker, insights: insights}
+func New(ds model.DataStore, broker events.Broker) *Server {
+	s := &Server{ds: ds, broker: broker}
 	initialSetup(ds)
 	auth.Init(s.ds)
 	s.initRoutes()
 	s.mountAuthenticationRoutes()
 	s.mountRootRedirector()
 	checkFFmpegInstallation()
-	checkExternalCredentials()
 	return s
 }
 

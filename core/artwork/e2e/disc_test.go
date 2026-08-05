@@ -120,7 +120,7 @@ var _ = Describe("Disc artwork resolution", func() {
 	})
 
 	// Doc scenarios from:
-	// https://www.navidrome.org/docs/usage/library/artwork/#disc-cover-art
+	// https://github.com/hensi01/play-music/usage/library/artwork/#disc-cover-art
 	// Default DiscArtPriority is "disc*.*, cd*.*, cover.*, folder.*, front.*, discsubtitle, embedded".
 	When("a disc subfolder has a cd2.png image", func() {
 		// Artist/

@@ -9,27 +9,21 @@ import (
 	"os"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/hensi01/play-music/conf"
 	"github.com/hensi01/play-music/conf/mime"
 	"github.com/hensi01/play-music/consts"
 	"github.com/hensi01/play-music/log"
 	"github.com/hensi01/play-music/model"
-	"github.com/hensi01/play-music/utils/slice"
 	"github.com/hensi01/play-music/utils/str"
 )
 
 func Index(ds model.DataStore, fs fs.FS) http.HandlerFunc {
-	return serveIndex(ds, fs, nil)
-}
-
-func IndexWithShare(ds model.DataStore, fs fs.FS, shareInfo *model.Share) http.HandlerFunc {
-	return serveIndex(ds, fs, shareInfo)
+	return serveIndex(ds, fs)
 }
 
 // Injects the config in the `index.html` template
-func serveIndex(ds model.DataStore, fs fs.FS, shareInfo *model.Share) http.HandlerFunc {
+func serveIndex(ds model.DataStore, fs fs.FS) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c, err := ds.User(r.Context()).CountAll()
 		firstTime := c == 0 && err == nil
@@ -48,7 +42,6 @@ func serveIndex(ds model.DataStore, fs fs.FS, shareInfo *model.Share) http.Handl
 			"welcomeMessage":            str.SanitizeHTML(conf.Server.UIWelcomeMessage),
 			"maxSidebarPlaylists":       conf.Server.MaxSidebarPlaylists,
 			"enableTranscodingConfig":   conf.Server.EnableTranscodingConfig,
-			"enableDownloads":           conf.Server.EnableDownloads,
 			"enableFavourites":          conf.Server.EnableFavourites,
 			"enableStarRating":          conf.Server.EnableStarRating,
 			"defaultTheme":              conf.Server.DefaultTheme,
@@ -64,21 +57,14 @@ func serveIndex(ds model.DataStore, fs fs.FS, shareInfo *model.Share) http.Handl
 			"devActivityPanel":          conf.Server.DevActivityPanel,
 			"enableUserEditing":         conf.Server.EnableUserEditing,
 			"enableArtworkUpload":       conf.Server.EnableArtworkUpload,
-			"enableSharing":             conf.Server.EnableSharing,
-			"shareURL":                  conf.Server.ShareURL,
-			"defaultDownloadableShare":  conf.Server.DefaultDownloadableShare,
 			"devSidebarPlaylists":       conf.Server.DevSidebarPlaylists,
-			"lastFMEnabled":             conf.Server.LastFM.Enabled,
 			"devShowArtistPage":         conf.Server.DevShowArtistPage,
 			"devUIShowConfig":           conf.Server.DevUIShowConfig,
 			"devNewEventStream":         conf.Server.DevNewEventStream,
-			"listenBrainzEnabled":       conf.Server.ListenBrainz.Enabled,
-			"enableExternalServices":    conf.Server.EnableExternalServices,
 			"enableReplayGain":          conf.Server.EnableReplayGain,
 			"defaultDownsamplingFormat": conf.Server.DefaultDownsamplingFormat,
 			"separator":                 string(os.PathSeparator),
 			"enableInspect":             conf.Server.Inspect.Enabled,
-			"pluginsEnabled":            conf.Server.Plugins.Enabled,
 			"extAuthLogoutURL":          conf.Server.ExtAuth.LogoutURL,
 		}
 		if strings.HasPrefix(conf.Server.UILoginBackgroundURL, "/") {
@@ -104,7 +90,6 @@ func serveIndex(ds model.DataStore, fs fs.FS, shareInfo *model.Share) http.Handl
 			"AppConfig": template.JS(string(appConfigJson)),
 			"Version":   version,
 		}
-		addShareData(r, data, shareInfo)
 
 		w.Header().Set("Content-Type", "text/html")
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
@@ -133,58 +118,4 @@ func getIndexTemplate(r *http.Request, fs fs.FS) (*template.Template, error) {
 		return nil, err
 	}
 	return t, nil
-}
-
-type shareData struct {
-	ID           string       `json:"id"`
-	Description  string       `json:"description"`
-	Downloadable bool         `json:"downloadable"`
-	Tracks       []shareTrack `json:"tracks"`
-}
-
-type shareTrack struct {
-	ID        string    `json:"id,omitempty"`
-	Title     string    `json:"title,omitempty"`
-	Artist    string    `json:"artist,omitempty"`
-	Album     string    `json:"album,omitempty"`
-	UpdatedAt time.Time `json:"updatedAt"`
-	Duration  float32   `json:"duration,omitempty"`
-}
-
-func addShareData(r *http.Request, data map[string]any, shareInfo *model.Share) {
-	ctx := r.Context()
-	if shareInfo == nil || shareInfo.ID == "" {
-		return
-	}
-	sd := shareData{
-		ID:           shareInfo.ID,
-		Description:  shareInfo.Description,
-		Downloadable: shareInfo.Downloadable,
-	}
-	sd.Tracks = slice.Map(shareInfo.Tracks, func(mf model.MediaFile) shareTrack {
-		return shareTrack{
-			ID:        mf.ID,
-			Title:     mf.Title,
-			Artist:    mf.Artist,
-			Album:     mf.Album,
-			Duration:  mf.Duration,
-			UpdatedAt: mf.UpdatedAt,
-		}
-	})
-
-	shareInfoJson, err := json.Marshal(sd)
-	if err != nil {
-		log.Error(ctx, "Error converting shareInfo to JSON", "config", shareInfo, err)
-	} else {
-		log.Trace(ctx, "Injecting shareInfo in index.html", "config", string(shareInfoJson))
-	}
-
-	if shareInfo.Description != "" {
-		data["ShareDescription"] = shareInfo.Description
-	} else {
-		data["ShareDescription"] = shareInfo.Contents
-	}
-	data["ShareURL"] = shareInfo.URL
-	data["ShareImageURL"] = shareInfo.ImageURL
-	data["ShareInfo"] = string(shareInfoJson)
 }

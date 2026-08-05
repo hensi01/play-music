@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	backupPrefix      = "navidrome_backup"
+	backupPrefix      = "playmusic_backup"
 	backupRegexString = backupPrefix + "_(.+)\\.db"
 )
 

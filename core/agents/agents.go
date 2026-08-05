@@ -14,33 +14,23 @@ import (
 	"github.com/hensi01/play-music/utils/singleton"
 )
 
-// PluginLoader defines an interface for loading plugins
-type PluginLoader interface {
-	// PluginNames returns the names of all plugins that implement a particular service
-	PluginNames(capability string) []string
-	// LoadMediaAgent loads and returns a media agent plugin
-	LoadMediaAgent(name string) (Interface, bool)
-}
-
-// Agents is a meta-agent that aggregates multiple built-in and plugin agents. It tries each enabled agent in order
+// Agents is a meta-agent that aggregates multiple built-in agents. It tries each enabled agent in order
 // until one returns valid data.
 type Agents struct {
-	ds           model.DataStore
-	pluginLoader PluginLoader
+	ds model.DataStore
 }
 
 // GetAgents returns the singleton instance of Agents
-func GetAgents(ds model.DataStore, pluginLoader PluginLoader) *Agents {
+func GetAgents(ds model.DataStore) *Agents {
 	return singleton.GetInstance(func() *Agents {
-		return createAgents(ds, pluginLoader)
+		return createAgents(ds)
 	})
 }
 
 // createAgents creates a new Agents instance. Used in tests
-func createAgents(ds model.DataStore, pluginLoader PluginLoader) *Agents {
+func createAgents(ds model.DataStore) *Agents {
 	return &Agents{
-		ds:           ds,
-		pluginLoader: pluginLoader,
+		ds: ds,
 	}
 }
 
@@ -61,13 +51,6 @@ func (a *Agents) getEnabledAgentNames() []enabledAgent {
 		return []enabledAgent{{name: LocalAgentName, isPlugin: false}}
 	}
 
-	// Get all available plugin names
-	var availablePlugins []string
-	if a.pluginLoader != nil {
-		availablePlugins = a.pluginLoader.PluginNames("MetadataAgent")
-	}
-	log.Trace("Available MetadataAgent plugins", "plugins", availablePlugins)
-
 	configuredAgents := strings.Split(conf.Server.Agents, ",")
 
 	// Always add LocalAgentName if not already included
@@ -76,19 +59,14 @@ func (a *Agents) getEnabledAgentNames() []enabledAgent {
 		configuredAgents = append(configuredAgents, LocalAgentName)
 	}
 
-	// Filter to only include valid agents (built-in or plugins)
+	// Filter to only include valid built-in agents
 	var validAgents []enabledAgent
 	for _, name := range configuredAgents {
 		// Check if it's a built-in agent
 		isBuiltIn := Map[name] != nil
 
-		// Check if it's a plugin
-		isPlugin := slices.Contains(availablePlugins, name)
-
 		if isBuiltIn {
 			validAgents = append(validAgents, enabledAgent{name: name, isPlugin: false})
-		} else if isPlugin {
-			validAgents = append(validAgents, enabledAgent{name: name, isPlugin: true})
 		} else {
 			log.Debug("Unknown agent ignored", "name", name)
 		}
@@ -97,24 +75,14 @@ func (a *Agents) getEnabledAgentNames() []enabledAgent {
 }
 
 func (a *Agents) getAgent(ea enabledAgent) Interface {
-	if ea.isPlugin {
-		// Try to load WASM plugin agent (if plugin loader is available)
-		if a.pluginLoader != nil {
-			agent, ok := a.pluginLoader.LoadMediaAgent(ea.name)
-			if ok && agent != nil {
-				return agent
-			}
+	// Try to get built-in agent
+	constructor, ok := Map[ea.name]
+	if ok {
+		agent := constructor(a.ds)
+		if agent != nil {
+			return agent
 		}
-	} else {
-		// Try to get built-in agent
-		constructor, ok := Map[ea.name]
-		if ok {
-			agent := constructor(a.ds)
-			if agent != nil {
-				return agent
-			}
-			log.Debug("Built-in agent not available. Missing configuration?", "name", ea.name)
-		}
+		log.Debug("Built-in agent not available. Missing configuration?", "name", ea.name)
 	}
 
 	return nil

@@ -166,7 +166,7 @@ func clientUniqueIDMiddleware(next http.Handler) http.Handler {
 }
 
 // realIPMiddleware applies middleware.RealIP, and additionally saves the request's original RemoteAddr to the request's
-// context if navidrome is behind a trusted reverse proxy.
+// context if playmusic is behind a trusted reverse proxy.
 func realIPMiddleware(next http.Handler) http.Handler {
 	if conf.Server.ExtAuth.TrustedSources != "" {
 		return chi.Chain(
@@ -176,7 +176,7 @@ func realIPMiddleware(next http.Handler) http.Handler {
 	}
 
 	// The middleware is applied without a trusted reverse proxy to support other use-cases such as multiple clients
-	// behind a caching proxy. In this case, navidrome only uses the request's RemoteAddr for logging, so the security
+	// behind a caching proxy. In this case, playmusic only uses the request's RemoteAddr for logging, so the security
 	// impact of reading the headers from untrusted sources is limited.
 	return middleware.RealIP(next)
 }

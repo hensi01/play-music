@@ -188,7 +188,7 @@ func parseProbeData(data string) (*ffmpeg.AudioProbeResult, error) {
 	return &result, nil
 }
 
-// matchesPCMWAVBridge bridges Navidrome's internal "pcm" codec name with the
+// matchesPCMWAVBridge bridges Play Music's internal "pcm" codec name with the
 // "wav" codec name that browsers use to advertise audio/wav support. The match
 // is scoped to WAV-container sources so AIFF files (which also normalize to
 // codec "pcm" but use a different container) cannot false-match a codec-only

@@ -140,12 +140,6 @@ var (
 )
 
 var (
-	radioWithoutHomePage = model.Radio{ID: "1235", StreamUrl: "https://example.com:8000/1/stream.mp3", HomePageUrl: "", Name: "No Homepage"}
-	radioWithHomePage    = model.Radio{ID: "5010", StreamUrl: "https://example.com/stream.mp3", Name: "Example Radio", HomePageUrl: "https://example.com"}
-	testRadios           = model.Radios{radioWithoutHomePage, radioWithHomePage}
-)
-
-var (
 	plsBest       model.Playlist
 	plsCool       model.Playlist
 	testPlaylists []*model.Playlist
@@ -239,14 +233,6 @@ var _ = BeforeSuite(func() {
 	mr := NewMediaFileRepository(ctx, conn)
 	for i := range testSongs {
 		err := mr.Put(&testSongs[i])
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	rar := NewRadioRepository(ctx, conn)
-	for i := range testRadios {
-		err := rar.Put(new(testRadios[i]))
 		if err != nil {
 			panic(err)
 		}

@@ -75,7 +75,7 @@ runs:
       with:
         github-token: ${{ inputs.github_token }}
         labels: |
-          maintainer=deluan@navidrome.org
+          maintainer=hensi01
         images: |
           name=${{env.DOCKER_HUB_REPO}},enable=${{env.DOCKER_HUB_ENABLED}}
           name=ghcr.io/${{ github.repository }}

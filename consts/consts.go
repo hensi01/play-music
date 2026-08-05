@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	AppName = "navidrome"
+	AppName = "playmusic"
 
-	DefaultDbPath                 = "navidrome.db?cache=shared&_busy_timeout=15000&_journal_mode=WAL&_foreign_keys=on&synchronous=normal"
+	DefaultDbPath                 = "playmusic.db?cache=shared&_busy_timeout=15000&_journal_mode=WAL&_foreign_keys=on&synchronous=normal"
 	InitialSetupFlagKey           = "InitialSetup"
 	FullScanAfterMigrationFlagKey = "FullScanAfterMigration"
 	// PlaylistsImportPendingFlagKey marks that playlist import was deferred because
@@ -28,7 +28,7 @@ const (
 	UIAuthorizationHeader  = "X-ND-Authorization"
 	UIClientUniqueIDHeader = "X-ND-Client-Unique-Id"
 	JWTSecretKey           = "JWTSecret"
-	JWTIssuer              = "ND"
+	JWTIssuer              = "PM"
 	DefaultSessionTimeout  = 48 * time.Hour
 	CookieExpiry           = 365 * 24 * 3600 // One year
 
@@ -36,10 +36,10 @@ const (
 	DBAnalyzeMaxAge        = 24 * time.Hour
 
 	// DefaultEncryptionKey This is the encryption key used if none is specified in the `PasswordEncryptionKey` option
-	// Never ever change this! Or it will break all Navidrome installations that don't set the config option
+	// Never ever change this! Or it will break all Play Music installations that don't set the config option
 	DefaultEncryptionKey  = "just for obfuscation"
 	PasswordsEncryptedKey = "PasswordsEncryptedKey"
-	PasswordAutogenPrefix = "__NAVIDROME_AUTOGEN__" //nolint:gosec
+	PasswordAutogenPrefix = "__PLAYMUSIC_AUTOGEN__" //nolint:gosec
 
 	DevInitialUserName = "admin"
 	DevInitialName     = "Dev Admin"
@@ -47,16 +47,13 @@ const (
 	URLPathUI           = "/app"
 	URLPathNativeAPI    = "/api"
 	URLPathSubsonicAPI  = "/rest"
-	URLPathPublic       = "/share"
-	URLPathPublicImages = URLPathPublic + "/img"
 	URLPathJellyfinAPI  = "/jellyfin"
 
 	// JellyfinServerIDKey is the Property key for the stable, persisted server Id reported by the
 	// Jellyfin API. Jellyfin clients cache this value, so it must survive process restarts.
 	JellyfinServerIDKey = "JellyfinServerID"
 
-	// DefaultUILoginBackgroundURL uses Navidrome curated background images collection,
-	// available at https://unsplash.com/collections/20072696/navidrome
+	// DefaultUILoginBackgroundURL uses Play Music curated background images collection,
 	DefaultUILoginBackgroundURL = "/backgrounds"
 
 	// DefaultUILoginBackgroundOffline Background image used in case external integrations are disabled
@@ -89,10 +86,6 @@ const (
 
 	DefaultHttpClientTimeOut = 10 * time.Second
 
-	DefaultListenBrainzBaseURL         = "https://api.listenbrainz.org/1/"
-	DefaultListenBrainzArtistAlgorithm = "session_based_days_9000_session_300_contribution_5_threshold_15_limit_50_skip_30"
-	DefaultListenBrainzTrackAlgorithm  = "session_based_days_9000_session_300_contribution_5_threshold_15_limit_50_skip_30"
-
 	DefaultScannerExtractor = "taglib"
 	DefaultWatcherWait      = 5 * time.Second
 	Zwsp                    = string('\u200b')
@@ -101,12 +94,6 @@ const (
 const (
 	DefaultUICoverArtSize     = 300
 	DefaultMaxImageUploadSize = "10MB"
-)
-
-// Prometheus options
-const (
-	PrometheusDefaultPath = "/metrics"
-	PrometheusAuthUser    = "navidrome"
 )
 
 // Cache options
@@ -139,13 +126,6 @@ const (
 	DefaultTrackPID = "musicbrainz_trackid|albumid,discnumber,tracknumber,title"
 	PIDAlbumKey     = "PIDAlbum"
 	PIDTrackKey     = "PIDTrack"
-)
-
-const (
-	InsightsIDKey          = "InsightsID"
-	InsightsEndpoint       = "https://insights.navidrome.org/collect"
-	InsightsUpdateInterval = 24 * time.Hour
-	InsightsInitialDelay   = 30 * time.Minute
 )
 
 const (

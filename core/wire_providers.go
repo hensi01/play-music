@@ -7,8 +7,6 @@ import (
 	"github.com/hensi01/play-music/core/ffmpeg"
 	"github.com/hensi01/play-music/core/lyrics"
 	"github.com/hensi01/play-music/core/matcher"
-	"github.com/hensi01/play-music/core/metrics"
-	"github.com/hensi01/play-music/core/playback"
 	"github.com/hensi01/play-music/core/playlists"
 	"github.com/hensi01/play-music/core/scrobbler"
 	"github.com/hensi01/play-music/core/stream"
@@ -17,9 +15,7 @@ import (
 var Set = wire.NewSet(
 	stream.NewMediaStreamer,
 	stream.GetTranscodingCache,
-	NewArchiver,
 	NewPlayers,
-	NewShare,
 	playlists.NewPlaylists,
 	NewLibrary,
 	NewUser,
@@ -33,7 +29,5 @@ var Set = wire.NewSet(
 	wire.Bind(new(external.Agents), new(*agents.Agents)),
 	ffmpeg.New,
 	scrobbler.GetPlayTracker,
-	playback.GetInstance,
-	metrics.GetInstance,
 	lyrics.NewLyrics,
 )

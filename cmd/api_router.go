@@ -10,13 +10,11 @@ import (
 	"github.com/hensi01/play-music/core/ffmpeg"
 	"github.com/hensi01/play-music/core/lyrics"
 	"github.com/hensi01/play-music/core/matcher"
-	"github.com/hensi01/play-music/core/metrics"
 	"github.com/hensi01/play-music/core/playlists"
 	"github.com/hensi01/play-music/core/scrobbler"
 	"github.com/hensi01/play-music/core/stream"
 	"github.com/hensi01/play-music/db"
 	"github.com/hensi01/play-music/persistence"
-	"github.com/hensi01/play-music/plugins"
 	"github.com/hensi01/play-music/server/api"
 	"github.com/hensi01/play-music/server/events"
 )
@@ -30,9 +28,7 @@ func CreateAPIRouter(ctx context.Context) *api.Router {
 	fileCache := artwork.GetImageCache()
 	fFmpeg := ffmpeg.New()
 	broker := events.GetBroker()
-	metricsMetrics := metrics.GetPrometheusInstance(dataStore)
-	manager := plugins.GetManager(dataStore, broker, metricsMetrics)
-	agentsAgents := agents.GetAgents(dataStore, manager)
+	agentsAgents := agents.GetAgents(dataStore)
 	matcherMatcher := matcher.New(dataStore)
 	provider := external.NewProvider(dataStore, agentsAgents, matcherMatcher)
 	artworkArtwork := artwork.NewArtwork(dataStore, fileCache, fFmpeg, provider)
@@ -40,8 +36,8 @@ func CreateAPIRouter(ctx context.Context) *api.Router {
 	mediaStreamer := stream.NewMediaStreamer(dataStore, fFmpeg, transcodingCache)
 	imageUploadService := core.NewImageUploadService()
 	playlistsPlaylists := playlists.NewPlaylists(dataStore, imageUploadService)
-	playTracker := scrobbler.GetPlayTracker(dataStore, broker, manager)
+	playTracker := scrobbler.GetPlayTracker(dataStore, broker)
 	transcodeDecider := stream.NewTranscodeDecider(dataStore, fFmpeg)
-	lyricsLyrics := lyrics.NewLyrics(dataStore, manager)
+	lyricsLyrics := lyrics.NewLyrics(dataStore)
 	return api.New(dataStore, artworkArtwork, mediaStreamer, transcodeDecider, playlistsPlaylists, playTracker, lyricsLyrics)
 }

@@ -1,5 +1,5 @@
 // Package s3 implements a storage.Storage backend backed by an S3-compatible
-// object store (MinIO, AWS S3, etc.). It allows Navidrome to scan and stream
+// object store (MinIO, AWS S3, etc.). It allows Play Music to scan and stream
 // the music library directly from a bucket.
 //
 // The library URI uses the "s3" schema, e.g.:
@@ -77,7 +77,7 @@ func newS3Storage(u url.URL) storage.Storage {
 	}
 }
 
-// traceWriter routes minio-go HTTP tracing to the Navidrome debug log. Enable
+// traceWriter routes minio-go HTTP tracing to the Play Music debug log. Enable
 // with ND_S3_DEBUG=true to diagnose connectivity/auth issues with the origin.
 type traceWriter struct{}
 

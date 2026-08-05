@@ -14,7 +14,7 @@ import (
 )
 
 // Doc reference:
-// https://www.navidrome.org/docs/usage/library/artwork/#artists
+// https://github.com/hensi01/play-music/usage/library/artwork/#artists
 // Default ArtistArtPriority is "artist.*, album/artist.*, external".
 var _ = Describe("Artist artwork resolution", func() {
 	BeforeEach(func() {

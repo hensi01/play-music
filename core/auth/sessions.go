@@ -16,7 +16,7 @@ import (
 // usable tokens.
 func sessionKey(tokenStr string) string {
 	h := sha256.Sum256([]byte(tokenStr))
-	return fmt.Sprintf("navidrome:session:%x", h[:16])
+	return fmt.Sprintf("playmusic:session:%x", h[:16])
 }
 
 // RecordSession registers an active session in Redis (when enabled). Auth

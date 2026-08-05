@@ -25,22 +25,6 @@ FROM scratch AS xx
 COPY --from=xx-build /out/ /usr/bin/
 
 ########################################################################################################################
-### Build Play Music UI
-FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/node:lts-alpine AS ui
-WORKDIR /app
-
-# Install node dependencies
-COPY web/package.json web/package-lock.json ./
-RUN npm ci
-
-# Build bundle
-COPY web/ ./
-RUN npm run build -- --outDir=/build
-
-FROM scratch AS ui-bundle
-COPY --from=ui /build /build
-
-########################################################################################################################
 ### Build Play Music binary for Docker image (dynamic musl, enables native libwebp via dlopen)
 FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/golang:1.26-alpine AS build-alpine
 COPY --from=xx / /
@@ -62,7 +46,6 @@ ARG GIT_SHA
 ARG GIT_TAG
 
 RUN --mount=type=bind,source=. \
-    --mount=from=ui,source=/build,target=./web/dist,ro \
     --mount=type=cache,target=/root/.cache \
     --mount=type=cache,target=/go/pkg/mod <<EOT
     set -e
@@ -106,7 +89,6 @@ ARG GIT_SHA
 ARG GIT_TAG
 
 RUN --mount=type=bind,source=. \
-    --mount=from=ui,source=/build,target=./web/dist,ro \
     --mount=from=osxcross,src=/osxcross/SDK,target=/xx-sdk,ro \
     --mount=type=cache,target=/root/.cache \
     --mount=type=cache,target=/go/pkg/mod <<EOT

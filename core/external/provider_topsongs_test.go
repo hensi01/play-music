@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 
-	_ "github.com/hensi01/play-music/adapters/lastfm"
-	_ "github.com/hensi01/play-music/adapters/listenbrainz"
 	"github.com/hensi01/play-music/conf"
 	"github.com/hensi01/play-music/conf/configtest"
 	"github.com/hensi01/play-music/core/agents"

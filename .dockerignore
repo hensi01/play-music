@@ -1,14 +1,11 @@
 .DS_Store
-web/node_modules
-web/dist/*
-!web/dist/.gitkeep
 Dockerfile
 docker-compose*.yml
 data
 *.db
 testDB
-navidrome
-navidrome.toml
+playmusic
+playmusic.toml
 tmp
 !tmp/taglib
 binaries

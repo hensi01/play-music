@@ -176,7 +176,7 @@ func TestS3StorageFS(t *testing.T) {
 	})
 
 	t.Run("EmptyBucketRootIsValid", func(t *testing.T) {
-		emptyBucket := "navidrome-test-empty"
+		emptyBucket := "playmusic-test-empty"
 		exists, err := client.BucketExists(ctx, emptyBucket)
 		if err != nil {
 			t.Fatalf("bucket check error: %v", err)

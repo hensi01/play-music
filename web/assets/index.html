@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0B0B0F" />
+    <meta name="description" content="Play Music - {{ .Version }}" />
+    <title>Play Music</title>
+    <link rel="stylesheet" href="/app/style.css" />
+    <script>
+      window.__APP_CONFIG__ = {{ .AppConfig }}
+    </script>
+  </head>
+  <body>
+    <noscript>Você precisa habilitar o JavaScript para usar o Play Music.</noscript>
+    <div id="app"></div>
+    <script type="module" src="/app/app.js"></script>
+  </body>
+</html>

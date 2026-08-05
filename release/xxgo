@@ -13,5 +13,5 @@ if [ "$GOARCH" = "arm" ]; then
 fi
 
 # Copy the output to the desired location
-chmod +x binaries/"${source}"/navidrome*
-cp binaries/"${source}"/navidrome* "$output"
+chmod +x binaries/"${source}"/playmusic*
+cp binaries/"${source}"/playmusic* "$output"

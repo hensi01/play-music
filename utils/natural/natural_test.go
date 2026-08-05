@@ -76,12 +76,12 @@ var _ = Describe("Compare", func() {
 		Entry("abc < abcd", "abc", "abcd", -1),
 		Entry("abcd > abc", "abcd", "abc", 1),
 
-		// Navidrome use cases: cover art sorting
+		// playmusic use cases: cover art sorting
 		Entry("cover < cover.1", "cover", "cover.1", -1),
 		Entry("cover.1 < cover.2", "cover.1", "cover.2", -1),
 		Entry("cover.2 < cover.10", "cover.2", "cover.10", -1),
 
-		// Navidrome use cases: disc sorting
+		// playmusic use cases: disc sorting
 		Entry("disc1 < disc2", "disc1", "disc2", -1),
 		Entry("disc2 < disc10", "disc2", "disc10", -1),
 		Entry("disc1 < disc10", "disc1", "disc10", -1),

@@ -32,7 +32,6 @@ var _ = Describe("Library Service", func() {
 	var scanner *tests.MockScanner
 	var watcherManager *mockWatcherManager
 	var broker *mockEventBroker
-	var pluginManager *mockPluginUnloader
 
 	BeforeEach(func() {
 		DeferCleanup(configtest.SetupConfig())
@@ -51,14 +50,12 @@ var _ = Describe("Library Service", func() {
 		}
 		// Create a mock event broker
 		broker = &mockEventBroker{}
-		// Create a mock plugin unloader
-		pluginManager = &mockPluginUnloader{}
-		service = core.NewLibrary(ds, scanner, watcherManager, broker, pluginManager)
+		service = core.NewLibrary(ds, scanner, watcherManager, broker)
 		ctx = context.Background()
 
 		// Create a temporary directory for testing valid paths
 		var err error
-		tempDir, err = os.MkdirTemp("", "navidrome-library-test-")
+		tempDir, err = os.MkdirTemp("", "playmusic-library-test-")
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() {
 			os.RemoveAll(tempDir)
@@ -128,7 +125,7 @@ var _ = Describe("Library Service", func() {
 
 				It("handles name uniqueness constraint violation from database", func() {
 					// Create the directory that will be used for the test
-					otherTempDir, err := os.MkdirTemp("", "navidrome-other-")
+					otherTempDir, err := os.MkdirTemp("", "playmusic-other-")
 					Expect(err).NotTo(HaveOccurred())
 					DeferCleanup(func() { os.RemoveAll(otherTempDir) })
 
@@ -175,7 +172,7 @@ var _ = Describe("Library Service", func() {
 			})
 
 			It("updates an existing library successfully", func() {
-				newTempDir, err := os.MkdirTemp("", "navidrome-library-update-")
+				newTempDir, err := os.MkdirTemp("", "playmusic-library-update-")
 				Expect(err).NotTo(HaveOccurred())
 				DeferCleanup(func() { os.RemoveAll(newTempDir) })
 
@@ -190,7 +187,7 @@ var _ = Describe("Library Service", func() {
 
 			It("fails when library doesn't exist", func() {
 				// Create a unique temporary directory to avoid path conflicts
-				uniqueTempDir, err := os.MkdirTemp("", "navidrome-nonexistent-")
+				uniqueTempDir, err := os.MkdirTemp("", "playmusic-nonexistent-")
 				Expect(err).NotTo(HaveOccurred())
 				DeferCleanup(func() { os.RemoveAll(uniqueTempDir) })
 
@@ -257,7 +254,7 @@ var _ = Describe("Library Service", func() {
 
 				It("handles name uniqueness constraint violation during update", func() {
 					// Create additional temp directory for the test
-					otherTempDir, err := os.MkdirTemp("", "navidrome-other-")
+					otherTempDir, err := os.MkdirTemp("", "playmusic-other-")
 					Expect(err).NotTo(HaveOccurred())
 					DeferCleanup(func() { os.RemoveAll(otherTempDir) })
 
@@ -285,7 +282,7 @@ var _ = Describe("Library Service", func() {
 
 				It("handles path uniqueness constraint violation during update", func() {
 					// Create additional temp directory for the test
-					otherTempDir, err := os.MkdirTemp("", "navidrome-other-")
+					otherTempDir, err := os.MkdirTemp("", "playmusic-other-")
 					Expect(err).NotTo(HaveOccurred())
 					DeferCleanup(func() { os.RemoveAll(otherTempDir) })
 
@@ -634,7 +631,7 @@ var _ = Describe("Library Service", func() {
 			})
 
 			// Create a new temporary directory for the update
-			newTempDir, err := os.MkdirTemp("", "navidrome-library-update-")
+			newTempDir, err := os.MkdirTemp("", "playmusic-library-update-")
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(func() { os.RemoveAll(newTempDir) })
 
@@ -758,7 +755,7 @@ var _ = Describe("Library Service", func() {
 				watcherManager.simulateExistingLibrary(model.Library{ID: 1, Name: "Original Library", Path: tempDir})
 
 				// Create a new temp directory for the update
-				newTempDir, err := os.MkdirTemp("", "navidrome-library-update-")
+				newTempDir, err := os.MkdirTemp("", "playmusic-library-update-")
 				Expect(err).NotTo(HaveOccurred())
 				DeferCleanup(func() { os.RemoveAll(newTempDir) })
 
@@ -872,44 +869,7 @@ var _ = Describe("Library Service", func() {
 			Expect(broker.Events).To(HaveLen(1))
 		})
 	})
-
-	Describe("Plugin Manager Integration", func() {
-		var repo rest.Persistable
-
-		BeforeEach(func() {
-			// Reset the call count for each test
-			pluginManager.unloadCalls = 0
-			r := service.NewRepository(ctx)
-			repo = r.(rest.Persistable)
-		})
-
-		It("calls UnloadDisabledPlugins after successful library deletion", func() {
-			libraryRepo.SetData(model.Libraries{
-				{ID: 2, Name: "Library to Delete", Path: tempDir},
-			})
-
-			err := repo.Delete("2")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(pluginManager.unloadCalls).To(Equal(1))
-		})
-
-		It("does not call UnloadDisabledPlugins when library deletion fails", func() {
-			// Try to delete non-existent library
-			err := repo.Delete("999")
-			Expect(err).To(HaveOccurred())
-			Expect(pluginManager.unloadCalls).To(Equal(0))
-		})
-	})
 })
-
-// mockPluginUnloader is a simple mock for testing UnloadDisabledPlugins calls
-type mockPluginUnloader struct {
-	unloadCalls int
-}
-
-func (m *mockPluginUnloader) UnloadDisabledPlugins(ctx context.Context) {
-	m.unloadCalls++
-}
 
 // mockWatcherManager provides a simple mock implementation of core.Watcher for testing
 type mockWatcherManager struct {

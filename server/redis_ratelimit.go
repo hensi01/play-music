@@ -11,11 +11,11 @@ import (
 )
 
 // redisRateLimiter is an IP-based fixed-window rate limiter backed by Redis, so
-// login attempt limits are shared across Navidrome instances. It is used in
+// login attempt limits are shared across Play Music instances. It is used in
 // place of httprate when Redis is enabled; when Redis is unavailable the
 // request is allowed through (the caller falls back to the in-memory limiter).
 func redisRateLimiter(limit int, window time.Duration) func(http.Handler) http.Handler {
-	prefix := "navidrome:ratelimit:"
+	prefix := "playmusic:ratelimit:"
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key := prefix + clientIP(r)
