@@ -77,10 +77,11 @@ type Lyrics struct {
 }
 
 type SearchResults struct {
-	Songs     []Song     `json:"songs"`
-	Albums    []Album    `json:"albums"`
-	Artists   []Artist   `json:"artists"`
-	Playlists []Playlist `json:"playlists"`
+	Songs      []Song     `json:"songs"`
+	Albums     []Album    `json:"albums"`
+	Artists    []Artist   `json:"artists"`
+	Playlists  []Playlist `json:"playlists"`
+	Categories []Category `json:"categories"`
 }
 
 type HomeSection struct {
@@ -115,6 +116,7 @@ type Category struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	SongCount int    `json:"songCount,omitempty"`
+	Songs     []Song `json:"songs,omitempty"`
 }
 
 type Settings struct {

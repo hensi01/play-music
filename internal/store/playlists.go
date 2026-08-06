@@ -32,6 +32,7 @@ func (s *Store) GetPlaylists(ctx context.Context, userID string) ([]model.Playli
 	return out, rows.Err()
 }
 
+// SearchPlaylists searches the playlists owned by the user.
 func (s *Store) SearchPlaylists(ctx context.Context, userID, q string, limit int) ([]model.Playlist, error) {
 	like := likePattern(q)
 	rows, err := s.pool.Query(ctx,
@@ -42,7 +43,7 @@ func (s *Store) SearchPlaylists(ctx context.Context, userID, q string, limit int
 		return nil, err
 	}
 	defer rows.Close()
-	var out []model.Playlist
+	out := []model.Playlist{}
 	for rows.Next() {
 		var p model.Playlist
 		if err := rows.Scan(&p.ID, &p.Name, &p.Comment, &p.Owner, &p.SongCount); err != nil {

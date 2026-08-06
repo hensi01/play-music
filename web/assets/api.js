@@ -83,8 +83,9 @@ export const endpoints = {
   me: () => api.get('/api/me'),
   settings: () => api.get('/api/settings'),
   home: () => api.get('/api/home'),
-  search: (q) => api.get(`/api/search?q=${encodeURIComponent(q)}`),
+  search: (q, type = 'all') => api.get(`/api/search?q=${encodeURIComponent(q)}&type=${encodeURIComponent(type)}`),
   categories: () => api.get('/api/categories'),
+  category: (id) => api.get(`/api/categories/${id}`),
 
   albums: (params = '') => api.get(`/api/albums${params}`),
   album: (id) => api.get(`/api/albums/${id}`),

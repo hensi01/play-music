@@ -177,3 +177,35 @@ func (s *Store) CategorySongIDs(ctx context.Context) (map[string][]string, error
 	}
 	return out, rows.Err()
 }
+
+// SearchCategories searches categories by name. Clients only see the
+// categories granted to them; admins (userID "") see all.
+func (s *Store) SearchCategories(ctx context.Context, userID, q string, limit int) ([]model.Category, error) {
+	like := likePattern(q)
+	base := `SELECT c.id, c.name,
+			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id) AS song_count
+		FROM categories c WHERE c.name ILIKE $1 ESCAPE '\'`
+	args := []any{like}
+	limPh := "$2"
+	if s.HasAccessFilter(userID) {
+		base += " AND c.id IN (SELECT category_id FROM user_categories WHERE user_id=$2)"
+		args = append(args, userID)
+		limPh = "$3"
+	}
+	base += " ORDER BY c.name LIMIT " + limPh
+	args = append(args, limit)
+	rows, err := s.pool.Query(ctx, base, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.Category{}
+	for rows.Next() {
+		var c model.Category
+		if err := rows.Scan(&c.ID, &c.Name, &c.SongCount); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}

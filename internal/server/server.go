@@ -72,6 +72,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/home", s.requireAuth(http.HandlerFunc(s.handleHome)))
 	mux.Handle("GET /api/search", s.requireAuth(http.HandlerFunc(s.handleSearch)))
 	mux.Handle("GET /api/categories", s.requireAuth(http.HandlerFunc(s.handleCategories)))
+	mux.Handle("GET /api/categories/{id}", s.requireAuth(http.HandlerFunc(s.handleCategory)))
 
 	mux.Handle("GET /api/albums", s.requireAuth(http.HandlerFunc(s.handleAlbums)))
 	mux.Handle("GET /api/albums/{id}", s.requireAuth(http.HandlerFunc(s.handleAlbum)))

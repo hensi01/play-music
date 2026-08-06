@@ -65,6 +65,7 @@ audio.addEventListener('durationchange', updateDuration)
 audio.addEventListener('play', () => {
   switching = false
   set({ playing: true })
+  setMediaSessionPlaybackState(true)
 })
 audio.addEventListener('pause', () => {
   if (switching) {
@@ -74,11 +75,12 @@ audio.addEventListener('pause', () => {
     return
   }
   set({ playing: false })
+  setMediaSessionPlaybackState(false)
 })
 audio.addEventListener('ended', () => {
   if (state.repeat) {
     audio.currentTime = 0
-    void audio.play()
+    playAudio()
   } else {
     next()
   }
@@ -90,12 +92,27 @@ audio.addEventListener('error', () => {
   if (!fallbackUsed) {
     fallbackUsed = true
     audio.src = streamUrl(state.current, true)
-    void audio.play()
+    playAudio()
   } else {
     fallbackUsed = false
     set({ playing: false })
+    setMediaSessionPlaybackState(false)
   }
 })
+
+// Wraps audio.play() so autoplay-policy rejections (iOS/Android) never turn
+// into unhandled promise rejections; the UI state stays honest (paused).
+function playAudio() {
+  const p = audio.play()
+  if (p && typeof p.catch === 'function') {
+    p.catch(() => {
+      if (!switching) {
+        set({ playing: false })
+        setMediaSessionPlaybackState(false)
+      }
+    })
+  }
+}
 
 // Media Session API: system media controls + notifications.
 function updateMediaSession() {
@@ -110,9 +127,28 @@ function updateMediaSession() {
   navigator.mediaSession.setActionHandler('pause', () => togglePlay())
   navigator.mediaSession.setActionHandler('previoustrack', () => prev())
   navigator.mediaSession.setActionHandler('nexttrack', () => next())
+  navigator.mediaSession.setActionHandler('seekbackward', (d) => {
+    const delta = (d && d.seekOffset) || 10
+    seek(audio.currentTime - delta)
+  })
+  navigator.mediaSession.setActionHandler('seekforward', (d) => {
+    const delta = (d && d.seekOffset) || 10
+    seek(audio.currentTime + delta)
+  })
   navigator.mediaSession.setActionHandler('seekto', (d) => {
     if (d.seekTime != null) seek(d.seekTime)
   })
+  setMediaSessionPlaybackState(state.playing)
+}
+
+// Syncs the lock-screen/notification play state (iOS/Android).
+function setMediaSessionPlaybackState(playing) {
+  if (!('mediaSession' in navigator)) return
+  try {
+    navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'
+  } catch {
+    /* not supported */
+  }
 }
 
 // Keeps the system media controls in sync with the audio element, clamping the
@@ -137,8 +173,9 @@ function loadAndPlay(song) {
   fallbackUsed = false
   switching = true
   set({ progress: 0, duration: resolveDuration(song.duration), playing: true })
+  setMediaSessionPlaybackState(true)
   audio.src = streamUrl(song)
-  void audio.play()
+  playAudio()
   // Report the play so play counts and history update.
   endpoints.registerPlay(song.id).catch(() => undefined)
 }
@@ -160,7 +197,7 @@ export function playSong(song) {
 export function togglePlay() {
   if (!state.current) return
   if (state.playing) audio.pause()
-  else void audio.play()
+  else playAudio()
 }
 
 export function next() {

@@ -167,7 +167,9 @@ func (s *Store) DeleteUser(ctx context.Context, id string) error {
 
 func (s *Store) UserCategories(ctx context.Context, userID string) ([]model.Category, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT c.id, c.name FROM user_categories uc
+		SELECT c.id, c.name,
+			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id) AS song_count
+		FROM user_categories uc
 		JOIN categories c ON c.id = uc.category_id
 		WHERE uc.user_id=$1 ORDER BY c.name`, userID)
 	if err != nil {
@@ -177,7 +179,7 @@ func (s *Store) UserCategories(ctx context.Context, userID string) ([]model.Cate
 	var out []model.Category
 	for rows.Next() {
 		var c model.Category
-		if err := rows.Scan(&c.ID, &c.Name); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.SongCount); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

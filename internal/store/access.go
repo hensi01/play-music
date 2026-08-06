@@ -57,6 +57,18 @@ func (s *Store) CanAccessSong(ctx context.Context, userID, songID string) (bool,
 	return ok, err
 }
 
+// CanAccessCategory checks whether the user has a category granted.
+func (s *Store) CanAccessCategory(ctx context.Context, userID, categoryID string) (bool, error) {
+	if userID == "" {
+		return true, nil
+	}
+	var ok bool
+	err := s.pool.QueryRow(ctx,
+		"SELECT EXISTS(SELECT 1 FROM user_categories uc WHERE uc.user_id=$1 AND uc.category_id=$2)",
+		userID, categoryID).Scan(&ok)
+	return ok, err
+}
+
 // CanAccessEntity resolves any entity id (song, album, artist or playlist)
 // used by the artwork endpoint.
 func (s *Store) CanAccessEntity(ctx context.Context, userID, entityID string) (bool, error) {

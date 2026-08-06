@@ -330,6 +330,16 @@ function songCard(song, onPlay) {
   })
 }
 
+// categoryCard: a card that opens a category page with its songs.
+function categoryCard(c) {
+  return card({
+    image: artworkUrl(c.id, 300),
+    title: c.name,
+    subtitle: musicas(c.songCount ?? 0),
+    onClick: () => navigate(`/category/${c.id}`),
+  })
+}
+
 // ---------- Pages ----------
 
 const pages = {
@@ -342,6 +352,7 @@ const pages = {
   '/lyrics': renderLyrics,
   '/settings': renderSettings,
   '/admin': renderAdminPage,
+  '/category/:id': renderCategory,
   '/playlist/:id': renderPlaylist,
 }
 
@@ -390,6 +401,17 @@ async function renderHome(container) {
       )
       sectionsEl.push(section(s.title, cards))
     }
+    const myPlaylists = playlistsCache ?? []
+    if (myPlaylists.length > 0) {
+      sectionsEl.push(
+        section(
+          'Playlists',
+          myPlaylists.map((p) =>
+            card({ image: artworkUrl(p.id, 300), title: p.name, subtitle: musicas(p.songCount), onClick: () => navigate(`/playlist/${p.id}`) }),
+          ),
+        ),
+      )
+    }
     container.append(...sectionsEl)
     if ((home.sections ?? []).length === 0) {
       container.append(
@@ -409,6 +431,7 @@ async function renderHome(container) {
 let searchBusy = false
 let searchResults = null
 let searchQuery = ''
+let searchType = 'all'
 
 async function runSearch(q) {
   searchQuery = q
@@ -421,7 +444,7 @@ async function runSearch(q) {
   searchBusy = true
   render()
   try {
-    searchResults = await endpoints.search(q)
+    searchResults = await endpoints.search(q, searchType)
   } catch {
     searchResults = null
   } finally {
@@ -429,6 +452,13 @@ async function runSearch(q) {
     render()
   }
 }
+
+const searchTypes = [
+  { id: 'all', label: 'Tudo' },
+  { id: 'songs', label: 'Músicas' },
+  { id: 'categories', label: 'Categorias' },
+  { id: 'playlists', label: 'Playlists' },
+]
 
 async function renderSearch(container) {
   const { params } = parseHash()
@@ -442,10 +472,24 @@ async function renderSearch(container) {
     debounce = window.setTimeout(() => runSearch(e.target.value), 300)
   })
 
+  const typeSelect = el(
+    'select',
+    {
+      class: 'search-type-select',
+      'aria-label': 'Tipo de pesquisa',
+      onchange: (e) => { searchType = e.target.value; runSearch(input.value) },
+    },
+    ...searchTypes.map((t) => el('option', { value: t.id }, t.label)),
+  )
+  typeSelect.value = searchTypes.some((t) => t.id === searchType) ? searchType : 'all'
+
   const page = el(
     'div',
     { class: 'page-padding' },
-    el('div', { class: 'search-input-wrap' }, el('span', { class: 'search-icon', html: icons.search }), input),
+    el('div', { class: 'search-bar' },
+      el('div', { class: 'search-input-wrap' }, el('span', { class: 'search-icon', html: icons.search }), input),
+      typeSelect,
+    ),
   )
   container.append(page)
 
@@ -457,10 +501,14 @@ async function renderSearch(container) {
   if (!searchResults) return
 
   const results = searchResults
+  const songs = results.songs ?? []
+  const cats = results.categories ?? []
+  const pls = results.playlists ?? []
   const blocks = []
-  if (results.songs.length > 0) {
-    const rows = results.songs.map((s, i) =>
-      trackRow(s, i, { onPlay: (_song, idx) => player.playContext(results.songs, idx) }),
+  const all = searchType === 'all'
+  if ((all || searchType === 'songs') && songs.length > 0) {
+    const rows = songs.map((s, i) =>
+      trackRow(s, i, { onPlay: (_song, idx) => player.playContext(songs, idx) }),
     )
     blocks.push(
       el('div', {},
@@ -469,17 +517,29 @@ async function renderSearch(container) {
       ),
     )
   }
-  if (results.playlists.length > 0) {
+  if ((all || searchType === 'categories') && cats.length > 0) {
+    blocks.push(
+      section(
+        'Categorias',
+        cats.map((c) => categoryCard(c)),
+      ),
+    )
+  }
+  if ((all || searchType === 'playlists') && pls.length > 0) {
     blocks.push(
       section(
         'Playlists',
-        results.playlists.map((p) =>
+        pls.map((p) =>
           card({ image: artworkUrl(p.id, 300), title: p.name, subtitle: p.owner, onClick: () => navigate(`/playlist/${p.id}`) }),
         ),
       ),
     )
   }
-  if (results.songs.length === 0 && results.playlists.length === 0) {
+  const total =
+    (all || searchType === 'songs' ? songs.length : 0) +
+    (all || searchType === 'categories' ? cats.length : 0) +
+    (all || searchType === 'playlists' ? pls.length : 0)
+  if (total === 0) {
     blocks.push(el('p', { class: 'empty-state' }, `Nada encontrado para “${searchQuery}”.`))
   }
   page.append(...blocks)
@@ -494,10 +554,11 @@ let libLoading = false
 async function loadLibrary() {
   if (libLoading) return
   libLoading = true
-  const [s, p] = await Promise.allSettled([endpoints.songs(), endpoints.playlists()])
+  const [s, p, c] = await Promise.allSettled([endpoints.songs(), endpoints.playlists(), endpoints.categories()])
   libData = {
     songs: s.status === 'fulfilled' ? s.value : [],
     playlists: p.status === 'fulfilled' ? p.value : [],
+    categories: c.status === 'fulfilled' ? c.value : [],
   }
   libLoading = false
   render()
@@ -512,6 +573,7 @@ async function renderLibrary(container) {
   }
   const tabs = [
     { id: 'songs', label: 'Músicas' },
+    { id: 'categories', label: 'Categorias' },
     { id: 'playlists', label: 'Playlists' },
   ]
   const tabsEl = el(
@@ -535,6 +597,14 @@ async function renderLibrary(container) {
       trackRow(s, i, { onPlay: (_song, idx) => player.playContext(libData.songs, idx) }),
     )
     page.append(el('div', { class: 'track-list' }, ...rows))
+  } else if (libTab === 'categories') {
+    if (libData.categories.length === 0) {
+      wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhuma categoria ainda.'))
+      return
+    }
+    for (const c of libData.categories) {
+      wrap.append(categoryCard(c))
+    }
   } else {
     if (libData.playlists.length === 0) {
       wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhuma playlist criada.'))
@@ -544,6 +614,65 @@ async function renderLibrary(container) {
       wrap.append(card({ image: artworkUrl(p.id, 300), title: p.name, subtitle: musicas(p.songCount), onClick: () => navigate(`/playlist/${p.id}`) }))
     }
   }
+}
+
+// ---------- Category ----------
+
+async function renderCategory(container, params) {
+  container.innerHTML = ''
+  container.append(spinner())
+  try {
+    const cat = await endpoints.category(params.id)
+    const songs = cat.songs ?? []
+
+    const header = el(
+      'div',
+      { class: 'detail-header horizontal' },
+      el('img', { class: 'detail-art', src: artworkUrl(cat.id, 480), alt: '', loading: 'lazy' }),
+      el(
+        'div',
+        { class: 'detail-info' },
+        el('p', { class: 'detail-type' }, 'Categoria'),
+        el('h1', { class: 'detail-title' }, cat.name),
+        el('p', { class: 'detail-meta' }, musicas(songs.length)),
+        el(
+          'div',
+          { class: 'detail-actions' },
+          el(
+            'button',
+            { class: 'btn-accent', disabled: songs.length === 0, onclick: () => player.playContext(songs, 0) },
+            icon('play'),
+            'Tocar',
+          ),
+          el('button', { class: 'btn-icon-lg', 'aria-label': 'Aleatório', onclick: () => playShuffle(songs) }, icon('shuffle')),
+        ),
+      ),
+    )
+
+    const content = el('div', { class: 'detail-content' })
+    if (songs.length === 0) {
+      content.append(emptyState('Esta categoria ainda não tem músicas.'))
+    } else {
+      const rows = songs.map((s, i) =>
+        trackRow(s, i, { onPlay: (_song, idx) => player.playContext(songs, idx) }),
+      )
+      content.append(el('div', { class: 'track-list' }, ...rows))
+    }
+    content.append(
+      el('button', { class: 'back-link', onclick: () => navigate('/library') }, icon('arrowLeft'), 'Voltar para a biblioteca'),
+    )
+
+    container.innerHTML = ''
+    container.append(el('div', { class: 'page' }, header, content))
+  } catch (err) {
+    container.innerHTML = ''
+    container.append(emptyState(err.message))
+  }
+}
+
+function playShuffle(songs) {
+  const shuffled = [...songs].sort(() => Math.random() - 0.5)
+  player.playContext(shuffled, 0)
 }
 
 // ---------- Playlist ----------

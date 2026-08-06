@@ -90,34 +90,52 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	typ := strings.TrimSpace(r.URL.Query().Get("type"))
 	ctx := r.Context()
 	userID := userIDOf(ctx)
 	res := model.SearchResults{
-		Songs:     []model.Song{},
-		Albums:    []model.Album{},
-		Artists:   []model.Artist{},
-		Playlists: []model.Playlist{},
+		Songs:      []model.Song{},
+		Albums:     []model.Album{},
+		Artists:    []model.Artist{},
+		Playlists:  []model.Playlist{},
+		Categories: []model.Category{},
 	}
 	if q == "" {
 		writeJSON(w, http.StatusOK, res)
 		return
 	}
+	// type=songs|categories|playlists|all (default all)
+	searchAll := typ == "" || typ == "all"
+	accessUser := s.filterUser(r) // "" for admin (sees everything)
 	var err error
-	if res.Songs, err = s.store.SearchSongs(ctx, userID, q, 30); err != nil {
-		handleStoreError(w, err)
-		return
+	if searchAll || typ == "songs" {
+		if res.Songs, err = s.store.SearchSongs(ctx, accessUser, q, 30); err != nil {
+			handleStoreError(w, err)
+			return
+		}
 	}
-	if res.Albums, err = s.store.SearchAlbums(ctx, userID, q, 20); err != nil {
-		handleStoreError(w, err)
-		return
+	if searchAll || typ == "categories" {
+		if res.Categories, err = s.store.SearchCategories(ctx, accessUser, q, 20); err != nil {
+			handleStoreError(w, err)
+			return
+		}
 	}
-	if res.Artists, err = s.store.SearchArtists(ctx, userID, q, 20); err != nil {
-		handleStoreError(w, err)
-		return
+	if searchAll || typ == "playlists" {
+		if res.Playlists, err = s.store.SearchPlaylists(ctx, userID, q, 20); err != nil {
+			handleStoreError(w, err)
+			return
+		}
 	}
-	if res.Playlists, err = s.store.SearchPlaylists(ctx, userID, q, 20); err != nil {
-		handleStoreError(w, err)
-		return
+	// Legacy album/artist results (unused by the current UI).
+	if searchAll {
+		if res.Albums, err = s.store.SearchAlbums(ctx, accessUser, q, 20); err != nil {
+			handleStoreError(w, err)
+			return
+		}
+		if res.Artists, err = s.store.SearchArtists(ctx, accessUser, q, 20); err != nil {
+			handleStoreError(w, err)
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, res)
 }
@@ -139,6 +157,36 @@ func (s *Server) handleCategories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, cats)
+}
+
+// handleCategory returns one category with its songs. Clients may only open
+// categories granted to them (403 otherwise).
+func (s *Server) handleCategory(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := parseID(r)
+	if userID := s.filterUser(r); userID != "" {
+		ok, err := s.store.CanAccessCategory(ctx, userID, id)
+		if err != nil {
+			handleStoreError(w, err)
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusForbidden, "Sem permissão")
+			return
+		}
+	}
+	cat, err := s.store.GetCategory(ctx, id)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	songs, err := s.store.CategorySongs(ctx, id)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	cat.Songs = songs
+	writeJSON(w, http.StatusOK, cat)
 }
 
 // ---------- albums ----------
@@ -897,6 +945,9 @@ func (s *Server) handleAdminUploadSong(w http.ResponseWriter, r *http.Request) {
 	if title != "" || artist != "" {
 		if err := s.store.UpdateSongMeta(r.Context(), song.ID, title, artist); err != nil {
 			s.log.Warn("upload meta update", "err", err)
+		}
+		if fresh, err := s.store.GetSong(r.Context(), song.ID); err == nil {
+			song = fresh
 		}
 	}
 
