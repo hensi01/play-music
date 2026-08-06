@@ -1,16 +1,20 @@
 package server
 
 import (
+	"bytes"
 	"io/fs"
 	"net/http"
 	"path"
 	"strings"
 
+	"play-music/internal/version"
 	"play-music/web"
 )
 
 // handleStatic serves the embedded web UI at / with SPA fallback to
-// index.html.
+// index.html. The asset URLs carry a version query (?v=...) so browsers and
+// CDNs (Cloudflare) always fetch the current build instead of a stale cached
+// copy, and every static response revalidates (Cache-Control: no-cache).
 func (s *Server) handleStatic() http.Handler {
 	fsys, err := fs.Sub(web.Assets, "assets")
 	if err != nil {
@@ -21,6 +25,7 @@ func (s *Server) handleStatic() http.Handler {
 	if err != nil {
 		panic(err)
 	}
+	index = bytes.ReplaceAll(index, []byte("__ASSET_VERSION__"), []byte(version.Version))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -31,10 +36,15 @@ func (s *Server) handleStatic() http.Handler {
 		if p == "." || p == "" {
 			p = "index.html"
 		}
+		w.Header().Set("Cache-Control", "no-cache")
+		if p == "index.html" {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(index)
+			return
+		}
 		if _, err := fs.Stat(fsys, p); err != nil {
 			// SPA fallback: every unknown route serves the app shell.
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Header().Set("Cache-Control", "no-cache")
 			w.Write(index)
 			return
 		}
