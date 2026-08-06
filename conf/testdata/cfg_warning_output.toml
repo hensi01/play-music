@@ -1,7 +1,0 @@
-MusicFolder = "/toml/music"
-LogLevel = "warn"
-ArtistSplitExceptions = ["AC/DC"]
-EnableDownlods = true
-
-[Scanner]
-ArtistJoiner = " • "

@@ -1,76 +1,63 @@
-# Play Music
+# Play Music — UI
 
-Player web de música estilo Spotify, self-hosted. Toca **sua** biblioteca de música hospedada
-no MinIO/S3, servida via Bunny CDN com URLs assinadas, com transcoding via ffmpeg quando necessário.
+Front end (UI) do Play Music, um player web de música estilo Spotify, self-hosted.
+Interface em português brasileiro, tema escuro, com sidebar, player inferior fixo,
+player em tela cheia, playlists, curtidas, histórico, busca e letras sincronizadas.
 
-Baseado no [Navidrome](https://github.com/navidrome/navidrome), com UI nova (React/Vite/Tailwind)
-estilo Spotui/Spotify e API REST própria.
+Este repositório contém **somente a UI** (HTML/CSS/JS vanilla, sem dependências externas).
+A API fica em um backend separado (serviço Play Music), que a UI chama via `baseURL`.
 
-## Recursos
-
-- 🎨 UI estilo Spotify (sidebar, player inferior fixo, player em tela cheia, tema escuro)
-- 🗂️ Biblioteca em **MinIO/S3** (buckets, scanner automático)
-- 🎵 Streaming via **Bunny CDN** com tokens assinados (HMAC-SHA256 ou MD5)
-- 🔄 Transcoding via **ffmpeg** (lê do S3 via pipe) para formatos que o navegador não toca
-- 🧠 **Redis** para sessões, now-playing, rate-limit e lock do scanner
-- 💾 Postgres ou SQLite (sem `DATABASE_URL` usa SQLite em `/data`)
-- ❤️ Curtidas, playlists, histórico, busca, letras sincronizadas (LRC/embutidas)
-- 📝 Interface em português brasileiro
-
-## Arquitetura
+## Estrutura
 
 ```
-Browser → /app (UI) + /api (REST) + /auth/login (JWT)
-               │  stream nativo → 307 para URL assinada
-               ▼
-         Bunny CDN (Pull Zone → S3 origin)
-               ▼
-         MinIO — bucket play-music
+web/assets/
+├── index.html   (app shell + configuração)
+├── style.css
+├── app.js       (UI, roteador hash, telas)
+├── api.js       (cliente HTTP com JWT + baseURL configurável)
+└── player.js    (player de áudio)
 ```
 
-## Rotas da API
+## Configuração da API
 
-| Rota | Função |
-|---|---|
-| `POST /auth/login` · `POST /auth/createAdmin` | Autenticação (JWT) |
-| `GET /api/me` · `GET /api/settings` | Perfil e configurações |
-| `GET /api/home` | Seções estilo Spotify (recentes, novos, mais tocados) |
-| `GET /api/search?q=` | Busca de músicas, álbuns, artistas e playlists |
-| `GET /api/albums` · `/api/albums/{id}` | Álbuns (lista e detalhe com faixas) |
-| `GET /api/artists` · `/api/artists/{id}` | Artistas (detalhe com top + álbuns) |
-| `GET /api/songs/{id}` | Faixa |
-| `CRUD /api/playlists` + tracks | Playlists (criar, adicionar, remover, reordenar) |
-| `GET/PUT/DELETE /api/me/liked` | Curtidas |
-| `GET /api/me/history` · `POST /api/me/history/{id}` | Histórico e contagem de plays |
-| `GET/PUT /api/queue` | Fila persistida |
-| `GET /api/stream/{id}` | 307 → CDN (formato nativo) ou ffmpeg (transcode) |
-| `GET /api/artwork/{id}` | Capas |
-| `GET /api/lyrics/{id}` | Letras sincronizadas |
+Em `web/assets/index.html`, ajuste `window.__APP_CONFIG__.baseURL`:
 
-## Desenvolvimento local
+```js
+window.__APP_CONFIG__ = {
+  version: 'dev',
+  firstTime: false,
+  // URL base da API do backend. Deixe vazio para o mesmo domínio do front end.
+  baseURL: ''
+}
+```
 
-O projeto é 100% Go — a UI (HTML/CSS/JS) fica em `web/assets/` e é embutida no binário via `//go:embed`. Não há Node, npm ou TypeScript.
+- `baseURL` vazio (`''`) — a UI chama `/api/*` e `/auth/*` no mesmo domínio onde está hospedada.
+- `baseURL` preenchido (ex.: `https://music.centralcursoss.com.br`) — a UI aponta para um
+  backend remoto. Nesse caso o backend precisa aceitar CORS (origem do front end) e o acesso
+  via `?jwt=` nos endpoints de stream/artwork.
+
+A autenticação usa JWT: token salvo no `localStorage` e enviado no header
+`X-ND-Authorization` (ou como `?jwt=` em URLs de `<img>`/`<audio>`).
+
+## Como servir
+
+Qualquer servidor estático. Exemplos:
 
 ```bash
-set CGO_ENABLED=1
-set CC=%USERPROFILE%\scoop\apps\gcc\current\bin\gcc.exe   # Windows com GCC
-go build -tags "netgo sqlite_fts5" -o playmusic.exe .
-$env:ND_MUSICFOLDER="caminho/para/sua/musica"; $env:ND_DATAFOLDER="tmp/data"; .\playmusic.exe
+# Python
+python -m http.server 8080 -d web/assets
+
+# Node
+npx serve web/assets -l 8080
+
+# Docker (nginx)
+docker run --rm -p 8080:80 -v "$PWD/web/assets:/usr/share/nginx/html:ro" nginx:alpine
 ```
 
-A UI fica disponível em `http://localhost:4533/app/`.
+Abra `http://localhost:8080` no navegador.
 
-## Deploy no Coolify
+## Observação
 
-Veja [`deploy/COOLIFY.md`](deploy/COOLIFY.md) e [`deploy/coolify.env`](deploy/coolify.env).
-
-## Configuração principal (variáveis `ND_*`)
-
-- `ND_MUSICFOLDER` — URI S3 da biblioteca, ex.
-  `s3://play-music?endpoint=minios3.centralcursoss.com.br&accessKey=...&secretKey=...&secure=true`
-- `ND_S3_ENDPOINT`, `ND_S3_BUCKET`, `ND_S3_ACCESSKEY`, `ND_S3_SECRETKEY`, `ND_S3_SECURE`
-- `ND_REDIS_ENABLED`, `ND_REDIS_URL` — Redis para sessões/estado (opcional)
-- `ND_CDN_ENABLED`, `ND_CDN_BASEURL`, `ND_CDN_TOKENAUTHKEY`, `ND_CDN_TOKENTTL`,
-  `ND_CDN_ADVANCEDAUTH` — Bunny CDN (opcional)
-- `DATABASE_URL` — Postgres (opcional; sem isso usa SQLite em `/data`)
-- `ND_PORT`, `ND_ADDRESS`, `ND_LOGLEVEL`, `ND_SCANNER_SCHEDULE`
+Para servir a UI junto com a API no mesmo domínio (sem `baseURL`), basta hospedar os
+arquivos de `web/assets/` na raiz de um domínio/rota que faça proxy para o backend
+(`/api`, `/auth`, `/rest`, etc.).

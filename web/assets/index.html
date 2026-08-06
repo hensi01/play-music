@@ -4,16 +4,22 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0B0B0F" />
-    <meta name="description" content="Play Music - {{ .Version }}" />
+    <meta name="description" content="Play Music - player web de musica" />
     <title>Play Music</title>
-    <link rel="stylesheet" href="/app/style.css" />
+    <link rel="stylesheet" href="./style.css" />
     <script>
-      window.__APP_CONFIG__ = {{ .AppConfig }}
+      window.__APP_CONFIG__ = {
+        version: 'dev',
+        firstTime: false,
+        // URL base da API do backend (Play Music). Deixe vazio para usar o mesmo
+        // domínio do front end. Ex.: 'https://music.centralcursoss.com.br'
+        baseURL: ''
+      }
     </script>
   </head>
   <body>
     <noscript>Você precisa habilitar o JavaScript para usar o Play Music.</noscript>
     <div id="app"></div>
-    <script type="module" src="/app/app.js"></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>

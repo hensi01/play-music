@@ -12,12 +12,18 @@ export function setToken(token) {
   else localStorage.removeItem(TOKEN_KEY)
 }
 
+// Resolves a path against the configured API base URL (see window.__APP_CONFIG__).
+function resolve(path) {
+  const base = (readAppConfig().baseURL || '').replace(/\/+$/, '')
+  return base + path
+}
+
 export async function apiFetch(path, options = {}) {
   const token = getToken()
   const headers = new Headers(options.headers)
   if (token) headers.set(AUTH_HEADER, `Bearer ${token}`)
 
-  const res = await fetch(path, { ...options, headers })
+  const res = await fetch(resolve(path), { ...options, headers })
 
   const refreshed = res.headers.get(AUTH_HEADER)
   if (refreshed) setToken(refreshed)
@@ -100,7 +106,7 @@ export function artworkUrl(id, size = 300) {
   const q = new URLSearchParams({ size: String(size) })
   const token = getToken()
   if (token) q.set('jwt', token)
-  return `/api/artwork/${id}?${q.toString()}`
+  return resolve(`/api/artwork/${id}?${q.toString()}`)
 }
 
 // Formats browsers can usually play natively; anything else is transcoded to mp3.
@@ -114,7 +120,7 @@ export function streamUrl(song, fallback = false) {
   const token = getToken()
   if (token) q.set('jwt', token)
   const qs = q.toString()
-  return `/api/stream/${song.id}${qs ? `?${qs}` : ''}`
+  return resolve(`/api/stream/${song.id}${qs ? `?${qs}` : ''}`)
 }
 
 export function readAppConfig() {
