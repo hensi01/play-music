@@ -73,7 +73,7 @@ func (s *Store) GetPlaylist(ctx context.Context, userID, id string) (*model.Play
 		WHERE pt.playlist_id=$1`
 	args := []any{id}
 	if s.HasAccessFilter(userID) {
-		base += " AND s.album_id IN " + visibleAlbumSet("$2")
+		base += " AND s.id IN " + visibleSongSet("$2")
 		args = append(args, userID)
 	}
 	base += " ORDER BY pt.position"
@@ -322,7 +322,7 @@ func (s *Store) validateSongAccess(ctx context.Context, userID string, songIDs [
 	base := "SELECT count(*) FROM songs WHERE id = ANY($1)"
 	args := []any{songIDs}
 	if s.HasAccessFilter(userID) {
-		base += " AND album_id IN " + visibleAlbumSet("$2")
+		base += " AND id IN " + visibleSongSet("$2")
 		args = append(args, userID)
 	}
 	var n int

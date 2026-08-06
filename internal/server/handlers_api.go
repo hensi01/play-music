@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"play-music/internal/model"
 	"play-music/internal/phone"
@@ -54,40 +57,32 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				continue
 			}
-			albums, err := s.store.CategoryAlbums(ctx, cid)
+			songs, err := s.store.CategorySongs(ctx, cid)
 			if err != nil {
 				handleStoreError(w, err)
 				return
 			}
-			if len(albums) > 0 {
-				sections = append(sections, model.HomeSection{Title: cat.Name, Albums: albums})
+			if len(songs) > 0 {
+				sections = append(sections, model.HomeSection{Title: cat.Name, Songs: songs})
 			}
 		}
 	} else {
-		// Admin: recently added, most played, liked.
-		recent, err := s.store.RecentlyAddedAlbums(ctx, filter, 12)
+		// Admin: recently added and most played songs.
+		recent, err := s.store.RecentlyAddedSongs(ctx, filter, 24)
 		if err != nil {
 			handleStoreError(w, err)
 			return
 		}
-		top, err := s.store.MostPlayedAlbums(ctx, filter, 12)
-		if err != nil {
-			handleStoreError(w, err)
-			return
-		}
-		liked, err := s.store.LikedAlbums(ctx, filter, 12)
+		top, err := s.store.MostPlayedSongs(ctx, filter, 24)
 		if err != nil {
 			handleStoreError(w, err)
 			return
 		}
 		if len(recent) > 0 {
-			sections = append(sections, model.HomeSection{Title: "Adicionados recentemente", Albums: recent})
+			sections = append(sections, model.HomeSection{Title: "Adicionadas recentemente", Songs: recent})
 		}
 		if len(top) > 0 {
-			sections = append(sections, model.HomeSection{Title: "Mais ouvidas", Albums: top})
-		}
-		if len(liked) > 0 {
-			sections = append(sections, model.HomeSection{Title: "Álbuns curtidos", Albums: liked})
+			sections = append(sections, model.HomeSection{Title: "Mais ouvidas", Songs: top})
 		}
 	}
 	genres, err := s.store.Genres(ctx, filter, 20)
@@ -232,6 +227,16 @@ func (s *Server) handleArtist(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---------- songs ----------
+
+// handleSongs lists every song accessible to the user (Library page).
+func (s *Server) handleSongs(w http.ResponseWriter, r *http.Request) {
+	songs, err := s.store.AllSongs(r.Context(), s.filterUser(r))
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, songs)
+}
 
 func (s *Server) handleSong(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -404,7 +409,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRegisterPlay(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.RegisterPlay(r.Context(), userIDOf(r.Context()), parseID(r)); err != nil {
+	if err := s.store.RegisterPlay(r.Context(), s.filterUser(r), parseID(r)); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -617,30 +622,28 @@ func (s *Server) handleAdminCreateCategory(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleAdminCategoryDetail(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	albumIDs, artistIDs, err := s.store.CategoryDetail(r.Context(), id)
+	songIDs, err := s.store.CategoryDetail(r.Context(), id)
 	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id":        id,
-		"albumIds":  albumIDs,
-		"artistIds": artistIDs,
+		"id":      id,
+		"songIds": songIDs,
 	})
 }
 
 func (s *Server) handleAdminUpdateCategory(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name      string   `json:"name"`
-		AlbumIDs  []string `json:"albumIds"`
-		ArtistIDs []string `json:"artistIds"`
+		Name    string   `json:"name"`
+		SongIDs []string `json:"songIds"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Requisição inválida")
 		return
 	}
 	if err := s.store.UpdateCategory(r.Context(), r.PathValue("id"),
-		strings.TrimSpace(req.Name), req.AlbumIDs, req.ArtistIDs); err != nil {
+		strings.TrimSpace(req.Name), req.SongIDs); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -673,6 +676,34 @@ func (s *Server) handleAdminArtists(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, artists)
+}
+
+// handleAdminSongs lists every song plus the category ids each one belongs to
+// (admin song management screen).
+func (s *Server) handleAdminSongs(w http.ResponseWriter, r *http.Request) {
+	songs, err := s.store.AllSongs(r.Context(), "")
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	cats, err := s.store.CategorySongIDs(r.Context())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"songs":        songs,
+		"categoryIds":  cats,
+		"categoryList": mustCategories(r.Context(), s),
+	})
+}
+
+func mustCategories(ctx context.Context, s *Server) []model.Category {
+	cats, err := s.store.GetCategories(ctx)
+	if err != nil {
+		return []model.Category{}
+	}
+	return cats
 }
 
 // ---------- admin: album photo ----------
@@ -714,4 +745,181 @@ func (s *Server) handleAdminDeletePhoto(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeNoContent(w)
+}
+
+// ---------- admin: song photo ----------
+
+func (s *Server) handleAdminUploadSongPhoto(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxPhotoBytes)
+	if err := r.ParseMultipartForm(maxPhotoBytes); err != nil {
+		writeError(w, http.StatusBadRequest, "Arquivo muito grande (máx 15MB) ou inválido")
+		return
+	}
+	file, _, err := r.FormFile("photo")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Campo 'photo' obrigatório")
+		return
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxPhotoBytes))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Falha ao ler arquivo")
+		return
+	}
+	songID := r.PathValue("id")
+	if ok, err := s.store.SongExists(r.Context(), songID); err != nil || !ok {
+		writeError(w, http.StatusNotFound, "Música não encontrada")
+		return
+	}
+	if err := s.artwork.UploadSongPhoto(r.Context(), songID, data); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeNoContent(w)
+}
+
+func (s *Server) handleAdminDeleteSongPhoto(w http.ResponseWriter, r *http.Request) {
+	if err := s.artwork.DeleteSongPhoto(r.Context(), r.PathValue("id")); err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeNoContent(w)
+}
+
+// ---------- admin: song upload ----------
+
+const maxUploadBytes = 512 << 20 // 512MB
+
+// waitForObject polls the storage until a freshly uploaded object is readable.
+// The MinIO endpoint sits behind a caching proxy that can take a few seconds
+// to expose a newly written object (observed ~6s); without this, the
+// immediate index fails with "Access Denied".
+func (s *Server) waitForObject(ctx context.Context, key string) {
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		ok, err := s.storage.ObjectExists(ctx, key)
+		if err == nil && ok {
+			return
+		}
+		if ctx.Err() != nil || time.Now().After(deadline) {
+			return
+		}
+		select {
+		case <-time.After(2 * time.Second):
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+var audioMimeByExt = map[string]string{
+	".mp3":  "audio/mpeg",
+	".m4a":  "audio/mp4",
+	".aac":  "audio/aac",
+	".ogg":  "audio/ogg",
+	".opus": "audio/ogg",
+	".wav":  "audio/wav",
+	".flac": "audio/flac",
+	".wma":  "audio/x-ms-wma",
+	".aiff": "audio/aiff",
+	".aif":  "audio/aiff",
+	".wv":   "audio/wavpack",
+	".ape":  "audio/x-ape",
+}
+
+// handleAdminUploadSong accepts a multipart form with:
+//   - "song" (file, required) — audio file to add to the library
+//   - "title"/"artist" (optional) — metadata overrides
+//   - "categoryId" (optional) — category the song is assigned to
+//   - "photo" (optional) — song photo (jpg/png/webp)
+//
+// The file is stored under uploads/ in the bucket and indexed immediately.
+func (s *Server) handleAdminUploadSong(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
+	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
+		writeError(w, http.StatusBadRequest, "Arquivo muito grande (máx 512MB) ou inválido")
+		return
+	}
+	file, header, err := r.FormFile("song")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Campo 'song' obrigatório (arquivo de áudio)")
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	contentType := audioMimeByExt[ext]
+	if contentType == "" {
+		writeError(w, http.StatusBadRequest, "Formato de áudio não suportado: "+ext)
+		return
+	}
+
+	// Buffer to a temp file so we know the size before Put.
+	tmp, err := os.CreateTemp("", "pm-upload-*"+ext)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Falha ao processar arquivo")
+		return
+	}
+	defer os.Remove(tmp.Name())
+	size, err := io.Copy(tmp, file)
+	if err != nil || size == 0 {
+		tmp.Close()
+		writeError(w, http.StatusBadRequest, "Falha ao ler arquivo")
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		writeError(w, http.StatusInternalServerError, "Falha ao processar arquivo")
+		return
+	}
+
+	key := "uploads/" + store.NewID() + ext
+	in, err := os.Open(tmp.Name())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Falha ao processar arquivo")
+		return
+	}
+	defer in.Close()
+	if err := s.storage.Put(r.Context(), key, size, contentType, in); err != nil {
+		s.log.Error("upload put", "key", key, "err", err)
+		writeError(w, http.StatusInternalServerError, "Falha ao enviar para o armazenamento")
+		return
+	}
+
+	song, err := s.scanner.IndexFile(r.Context(), key, header.Filename)
+	if err != nil {
+		s.log.Warn("upload index (retry)", "key", key, "err", err)
+		s.waitForObject(r.Context(), key)
+		song, err = s.scanner.IndexFile(r.Context(), key, header.Filename)
+	}
+	if err != nil {
+		s.log.Error("upload index", "key", key, "err", err)
+		writeError(w, http.StatusInternalServerError, "Falha ao indexar a música")
+		return
+	}
+
+	title := strings.TrimSpace(r.FormValue("title"))
+	artist := strings.TrimSpace(r.FormValue("artist"))
+	if title != "" || artist != "" {
+		if err := s.store.UpdateSongMeta(r.Context(), song.ID, title, artist); err != nil {
+			s.log.Warn("upload meta update", "err", err)
+		}
+	}
+
+	if categoryID := strings.TrimSpace(r.FormValue("categoryId")); categoryID != "" {
+		if err := s.store.AddSongToCategory(r.Context(), categoryID, song.ID); err != nil {
+			s.log.Warn("upload category assign", "err", err)
+		}
+	}
+
+	if photo, _, err := r.FormFile("photo"); err == nil {
+		data, err := io.ReadAll(io.LimitReader(photo, maxPhotoBytes))
+		photo.Close()
+		if err == nil && len(data) > 0 {
+			if err := s.artwork.UploadSongPhoto(r.Context(), song.ID, data); err != nil {
+				s.log.Warn("upload photo", "err", err)
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusCreated, song)
 }

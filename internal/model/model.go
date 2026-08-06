@@ -84,8 +84,11 @@ type SearchResults struct {
 }
 
 type HomeSection struct {
-	Title  string  `json:"title"`
-	Albums []Album `json:"albums"`
+	Title string `json:"title"`
+	// Songs is the category/collection content (category -> songs model).
+	Songs []Song `json:"songs,omitempty"`
+	// Albums kept for API compatibility with legacy album-based sections.
+	Albums []Album `json:"albums,omitempty"`
 }
 
 type Genre struct {
@@ -109,10 +112,9 @@ type User struct {
 }
 
 type Category struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	AlbumCount int    `json:"albumCount,omitempty"`
-	ArtistCount int   `json:"artistCount,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	SongCount int    `json:"songCount,omitempty"`
 }
 
 type Settings struct {

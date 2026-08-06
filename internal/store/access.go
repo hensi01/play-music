@@ -7,18 +7,23 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// visibleAlbumSet returns a SQL subquery of album ids a user can access:
-// albums assigned directly to their granted categories UNION albums whose
-// artist is assigned to a granted category. p is the pgx placeholder for the
-// user id (e.g. "$1"). Callers omit the predicate entirely for admins
+// visibleSongSet returns a SQL subquery of song ids a user can access: songs
+// assigned directly to their granted categories. p is the pgx placeholder for
+// the user id (e.g. "$1"). Callers omit the predicate entirely for admins
 // (userID = "").
+func visibleSongSet(p string) string {
+	return `(SELECT cs.song_id FROM category_songs cs
+		JOIN user_categories uc ON uc.category_id = cs.category_id AND uc.user_id = ` + p + `)`
+}
+
+// visibleAlbumSet returns a SQL subquery of album ids that contain at least
+// one accessible song (legacy album/artist endpoints). p is the pgx
+// placeholder for the user id.
 func visibleAlbumSet(p string) string {
-	return `(SELECT ca.album_id FROM category_albums ca
-		JOIN user_categories uc ON uc.category_id = ca.category_id AND uc.user_id = ` + p + `
-		UNION
-		SELECT al.id FROM albums al
-		JOIN category_artists c2 ON c2.artist_id = al.artist_id
-		JOIN user_categories uc2 ON uc2.category_id = c2.category_id AND uc2.user_id = ` + p + `)`
+	return `(SELECT DISTINCT s.album_id FROM songs s
+		JOIN category_songs cs ON cs.song_id = s.id
+		JOIN user_categories uc ON uc.category_id = cs.category_id AND uc.user_id = ` + p + `
+		WHERE s.album_id IS NOT NULL)`
 }
 
 // HasAccessFilter reports whether the query must be filtered by user access.
@@ -27,14 +32,15 @@ func (s *Store) HasAccessFilter(userID string) bool {
 	return userID != ""
 }
 
-// CanAccessAlbum checks whether the user may see/play an album.
+// CanAccessAlbum checks whether the user may see/play an album (any of its
+// songs is assigned to a granted category).
 func (s *Store) CanAccessAlbum(ctx context.Context, userID, albumID string) (bool, error) {
 	if userID == "" {
 		return true, nil
 	}
 	var ok bool
 	err := s.pool.QueryRow(ctx,
-		"SELECT EXISTS(SELECT 1 FROM albums a WHERE a.id=$2 AND a.id IN "+visibleAlbumSet("$1")+")",
+		"SELECT EXISTS(SELECT 1 FROM songs s WHERE s.album_id=$2 AND s.id IN "+visibleSongSet("$1")+")",
 		userID, albumID).Scan(&ok)
 	return ok, err
 }
@@ -46,7 +52,7 @@ func (s *Store) CanAccessSong(ctx context.Context, userID, songID string) (bool,
 	}
 	var ok bool
 	err := s.pool.QueryRow(ctx,
-		"SELECT EXISTS(SELECT 1 FROM songs s WHERE s.id=$2 AND s.album_id IN "+visibleAlbumSet("$1")+")",
+		"SELECT EXISTS(SELECT 1 FROM songs s WHERE s.id=$2 AND s.id IN "+visibleSongSet("$1")+")",
 		userID, songID).Scan(&ok)
 	return ok, err
 }
@@ -67,10 +73,10 @@ func (s *Store) CanAccessEntity(ctx context.Context, userID, entityID string) (b
 	if err != nil || ok {
 		return ok, err
 	}
-	// Artist? (any accessible album)
+	// Artist? (any accessible song)
 	var artistOK bool
 	if err := s.pool.QueryRow(ctx,
-		"SELECT EXISTS(SELECT 1 FROM albums a WHERE a.artist_id=$2 AND a.id IN "+visibleAlbumSet("$1")+")",
+		"SELECT EXISTS(SELECT 1 FROM songs s WHERE s.artist_id=$2 AND s.id IN "+visibleSongSet("$1")+")",
 		userID, entityID).Scan(&artistOK); err != nil {
 		return false, err
 	}
@@ -78,20 +84,20 @@ func (s *Store) CanAccessEntity(ctx context.Context, userID, entityID string) (b
 		return true, nil
 	}
 	// Playlist? (first song accessible) — access to its songs is enforced
-	// elsewhere; artwork here uses the album.
-	var albumID string
+	// elsewhere; artwork here uses the song photo/album.
+	var songID string
 	err = s.pool.QueryRow(ctx, `
-		SELECT s.album_id FROM playlist_tracks pt
+		SELECT s.id FROM playlist_tracks pt
 		JOIN songs s ON s.id = pt.song_id
-		WHERE pt.playlist_id = $1 AND s.album_id IS NOT NULL
-		ORDER BY pt.position LIMIT 1`, entityID).Scan(&albumID)
+		WHERE pt.playlist_id = $1
+		ORDER BY pt.position LIMIT 1`, entityID).Scan(&songID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	return s.CanAccessAlbum(ctx, userID, albumID)
+	return s.CanAccessSong(ctx, userID, songID)
 }
 
 // GrantedCategoryIDs returns the category ids granted to a user.

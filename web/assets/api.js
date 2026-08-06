@@ -90,6 +90,7 @@ export const endpoints = {
   album: (id) => api.get(`/api/albums/${id}`),
   artists: () => api.get('/api/artists'),
   artist: (id) => api.get(`/api/artists/${id}`),
+  songs: () => api.get('/api/songs'),
   song: (id) => api.get(`/api/songs/${id}`),
 
   playlists: () => api.get('/api/playlists'),
@@ -124,8 +125,12 @@ export const endpoints = {
     deleteCategory: (id) => api.del(`/api/admin/categories/${id}`),
     albums: () => api.get('/api/admin/albums'),
     artists: () => api.get('/api/admin/artists'),
+    songs: () => api.get('/api/admin/songs'),
+    uploadSong: (fd) => apiFetch('/api/admin/songs', { method: 'POST', body: fd }),
     uploadPhoto: (id, file) => api.upload(`/api/admin/albums/${id}/photo`, file),
     deletePhoto: (id) => api.del(`/api/admin/albums/${id}/photo`),
+    uploadSongPhoto: (id, file) => api.upload(`/api/admin/songs/${id}/photo`, file),
+    deleteSongPhoto: (id) => api.del(`/api/admin/songs/${id}/photo`),
   },
 }
 

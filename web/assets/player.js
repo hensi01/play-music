@@ -104,7 +104,7 @@ function updateMediaSession() {
     title: state.current.title,
     artist: state.current.artist,
     album: state.current.album,
-    artwork: [{ src: artworkUrl(state.current.albumId, 512), sizes: '512x512' }],
+    artwork: [{ src: artworkUrl(state.current.id, 512), sizes: '512x512' }],
   })
   navigator.mediaSession.setActionHandler('play', () => togglePlay())
   navigator.mediaSession.setActionHandler('pause', () => togglePlay())

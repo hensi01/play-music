@@ -11,6 +11,7 @@ import (
 	"play-music/internal/config"
 	"play-music/internal/lyrics"
 	"play-music/internal/scanner"
+	"play-music/internal/storage"
 	"play-music/internal/store"
 	"play-music/internal/stream"
 )
@@ -20,6 +21,7 @@ type Server struct {
 	store   *store.Store
 	auth    *auth.Auth
 	stream  *stream.Service
+	storage *storage.Storage
 	artwork *artwork.Service
 	lyrics  *lyrics.Service
 	scanner *scanner.Scanner
@@ -31,6 +33,7 @@ type Dependencies struct {
 	Store   *store.Store
 	Auth    *auth.Auth
 	Stream  *stream.Service
+	Storage *storage.Storage
 	Artwork *artwork.Service
 	Lyrics  *lyrics.Service
 	Scanner *scanner.Scanner
@@ -43,6 +46,7 @@ func New(deps Dependencies) *Server {
 		store:   deps.Store,
 		auth:    deps.Auth,
 		stream:  deps.Stream,
+		storage: deps.Storage,
 		artwork: deps.Artwork,
 		lyrics:  deps.Lyrics,
 		scanner: deps.Scanner,
@@ -73,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/albums/{id}", s.requireAuth(http.HandlerFunc(s.handleAlbum)))
 	mux.Handle("GET /api/artists", s.requireAuth(http.HandlerFunc(s.handleArtists)))
 	mux.Handle("GET /api/artists/{id}", s.requireAuth(http.HandlerFunc(s.handleArtist)))
+	mux.Handle("GET /api/songs", s.requireAuth(http.HandlerFunc(s.handleSongs)))
 	mux.Handle("GET /api/songs/{id}", s.requireAuth(http.HandlerFunc(s.handleSong)))
 
 	mux.Handle("GET /api/playlists", s.requireAuth(http.HandlerFunc(s.handlePlaylists)))
@@ -110,8 +115,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("DELETE /api/admin/categories/{id}", s.requireAdmin(http.HandlerFunc(s.handleAdminDeleteCategory)))
 	mux.Handle("GET /api/admin/albums", s.requireAdmin(http.HandlerFunc(s.handleAdminAlbums)))
 	mux.Handle("GET /api/admin/artists", s.requireAdmin(http.HandlerFunc(s.handleAdminArtists)))
+	mux.Handle("GET /api/admin/songs", s.requireAdmin(http.HandlerFunc(s.handleAdminSongs)))
+	mux.Handle("POST /api/admin/songs", s.requireAdmin(http.HandlerFunc(s.handleAdminUploadSong)))
 	mux.Handle("POST /api/admin/albums/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminUploadPhoto)))
 	mux.Handle("DELETE /api/admin/albums/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminDeletePhoto)))
+	mux.Handle("POST /api/admin/songs/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminUploadSongPhoto)))
+	mux.Handle("DELETE /api/admin/songs/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminDeleteSongPhoto)))
 	mux.Handle("POST /api/scan", s.requireAdmin(http.HandlerFunc(s.handleScan)))
 
 	// Static UI.

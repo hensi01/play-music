@@ -92,6 +92,16 @@ func (s *Storage) PresignedURL(ctx context.Context, key string, expiry time.Dura
 	return u.String(), nil
 }
 
+// Put uploads an object to the bucket (used by the admin song upload).
+func (s *Storage) Put(ctx context.Context, key string, size int64, contentType string, reader io.Reader) error {
+	if size < 0 {
+		size = 0
+	}
+	_, err := s.client.PutObject(ctx, s.bucket, key, reader, size,
+		minio.PutObjectOptions{ContentType: contentType})
+	return err
+}
+
 // keyFromURL extracts the object key from a URL path (e.g. "/folder/file.mp3").
 func keyFromURL(raw string) string {
 	u, err := url.Parse(raw)

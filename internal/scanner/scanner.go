@@ -173,23 +173,45 @@ func (s *Scanner) processAudio(ctx context.Context, a audioObj, prev store.SongF
 	if prev.Size == size && mtimeEqual(prev.Mtime, mtime) {
 		return audioResult{skipped: 1}
 	}
+	if _, err := s.indexAudio(ctx, a, prev, filepath.Base(key)); err != nil {
+		s.log.Error("audio index failed", "key", key, "err", err)
+		return audioResult{}
+	}
+	if prev.Size == 0 && prev.Mtime.IsZero() {
+		return audioResult{added: 1}
+	}
+	return audioResult{updated: 1}
+}
+
+// IndexFile downloads and indexes a single object, returning the song record
+// (used right after an admin upload so the song is playable immediately).
+func (s *Scanner) IndexFile(ctx context.Context, key, displayName string) (*model.Song, error) {
+	info, err := s.st.Stat(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return s.indexAudio(ctx, audioObj{key: key, size: info.Size, mtime: info.LastModified}, store.SongFileInfo{}, displayName)
+}
+
+// indexAudio downloads an object, extracts metadata and upserts the song and
+// its embedded artwork. displayName is used as the title fallback when the
+// file has no tags (the temp file name must never leak into the catalog).
+func (s *Scanner) indexAudio(ctx context.Context, a audioObj, prev store.SongFileInfo, displayName string) (*model.Song, error) {
+	key, size, mtime := a.key, a.size, a.mtime
 
 	tmp, err := os.CreateTemp("", "pm-scan-*"+filepath.Ext(key))
 	if err != nil {
-		s.log.Error("temp file", "key", key, "err", err)
-		return audioResult{}
+		return nil, err
 	}
 	defer os.Remove(tmp.Name())
 
 	obj, err := s.st.Open(ctx, key, 0, -1)
 	if err != nil {
-		s.log.Error("download failed", "key", key, "err", err)
-		return audioResult{}
+		return nil, err
 	}
 	if _, err := io.Copy(tmp, obj); err != nil {
 		obj.Close()
-		s.log.Error("download failed", "key", key, "err", err)
-		return audioResult{}
+		return nil, err
 	}
 	obj.Close()
 	tmp.Close()
@@ -198,6 +220,12 @@ func (s *Scanner) processAudio(ctx context.Context, a audioObj, prev store.SongF
 	tags, err := metadata.Read(tmp.Name(), size)
 	if err != nil {
 		s.log.Debug("metadata read failed", "key", key, "err", err)
+	}
+	if displayName == "" {
+		displayName = key
+	}
+	if title := strings.TrimSpace(tags.Title); title == "" || strings.HasPrefix(title, "pm-scan-") {
+		tags.Title = strings.TrimSuffix(filepath.Base(displayName), filepath.Ext(displayName))
 	}
 
 	song := &model.Song{
@@ -241,8 +269,7 @@ func (s *Scanner) processAudio(ctx context.Context, a audioObj, prev store.SongF
 	song.HasCover = tags.Picture != nil
 	id, err := s.store.UpsertSong(ctx, song, mtime, size)
 	if err != nil {
-		s.log.Error("song upsert", "key", key, "err", err)
-		return audioResult{}
+		return nil, err
 	}
 	song.ID = id
 
@@ -255,11 +282,7 @@ func (s *Scanner) processAudio(ctx context.Context, a audioObj, prev store.SongF
 			s.log.Warn("art upsert", "album", albumID, "err", err)
 		}
 	}
-
-	if prev.Size == 0 && prev.Mtime.IsZero() {
-		return audioResult{added: 1}
-	}
-	return audioResult{updated: 1}
+	return song, nil
 }
 
 func (s *Scanner) importFolderCovers(ctx context.Context, coverByFolder map[string]string) error {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"strconv"
 
 	"golang.org/x/crypto/bcrypt"
@@ -40,6 +41,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	if v == nil {
 		return
+	}
+	// Nil slices must serialize as [] (never null): the web UI does
+	// `arr.length` on list endpoints (playlists, albums, search, home).
+	if reflect.TypeOf(v).Kind() == reflect.Slice && reflect.ValueOf(v).IsNil() {
+		v = reflect.MakeSlice(reflect.TypeOf(v), 0, 0).Interface()
 	}
 	json.NewEncoder(w).Encode(v)
 }

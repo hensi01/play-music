@@ -85,6 +85,7 @@ func main() {
 		Store:   st,
 		Auth:    authSvc,
 		Stream:  streamSvc,
+		Storage: strg,
 		Artwork: artSvc,
 		Lyrics:  lyrSvc,
 		Scanner: sc,

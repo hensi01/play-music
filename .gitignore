@@ -17,3 +17,4 @@ openspec/
 .agents
 .playwright-mcp/
 .graphify/
+srv*.log

@@ -59,6 +59,24 @@ func (s *Store) GetSongByPath(ctx context.Context, path string) (*model.Song, er
 	return song, err
 }
 
+// SongExists reports whether the song id exists (admin photo upload).
+func (s *Store) SongExists(ctx context.Context, id string) (bool, error) {
+	var ok bool
+	err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM songs WHERE id=$1)", id).Scan(&ok)
+	return ok, err
+}
+
+// UpdateSongMeta overrides the title/artist of a song (admin upload form).
+func (s *Store) UpdateSongMeta(ctx context.Context, id, title, artist string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE songs SET
+			title=COALESCE(NULLIF($2, ''), title),
+			artist=COALESCE(NULLIF($3, ''), artist),
+			updated_at=now()
+		WHERE id=$1`, id, title, artist)
+	return err
+}
+
 // UpsertSong inserts or updates a song (matched by path) and returns its id.
 func (s *Store) UpsertSong(ctx context.Context, song *model.Song, mtime time.Time, size int64) (string, error) {
 	var id string
@@ -153,7 +171,12 @@ func (s *Store) RegisterPlay(ctx context.Context, userID, songID string) error {
 		if tag.RowsAffected() == 0 {
 			return ErrNotFound
 		}
-		_, err = q.Exec(ctx, "INSERT INTO history(song_id, user_id, played_at) VALUES($1, $2, now())", songID, userID)
+		// Admin plays (userID "") are recorded without an owner.
+		if userID == "" {
+			_, err = q.Exec(ctx, "INSERT INTO history(song_id, user_id, played_at) VALUES($1, NULL, now())", songID)
+		} else {
+			_, err = q.Exec(ctx, "INSERT INTO history(song_id, user_id, played_at) VALUES($1, $2, now())", songID, userID)
+		}
 		return err
 	})
 }
@@ -165,12 +188,69 @@ func (s *Store) SearchSongs(ctx context.Context, userID, q string, limit int) ([
 	args := []any{like}
 	limPh := "$2"
 	if s.HasAccessFilter(userID) {
-		base += " AND s.album_id IN " + visibleAlbumSet("$2")
+		base += " AND s.id IN " + visibleSongSet("$2")
 		args = append(args, userID)
 		limPh = "$3"
 	}
 	base += " ORDER BY s.title LIMIT " + limPh
 	args = append(args, limit)
+	rows, err := s.pool.Query(ctx, base, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return collectSongs(rows)
+}
+
+// RecentlyAddedSongs returns the newest songs (home "Adicionadas recentemente").
+func (s *Store) RecentlyAddedSongs(ctx context.Context, userID string, limit int) ([]model.Song, error) {
+	base := "SELECT " + songCols + " FROM songs s"
+	args := []any{}
+	limPh := "$1"
+	if s.HasAccessFilter(userID) {
+		base += " WHERE s.id IN " + visibleSongSet("$1")
+		args = append(args, userID)
+		limPh = "$2"
+	}
+	base += " ORDER BY s.created_at DESC, s.title LIMIT " + limPh
+	args = append(args, limit)
+	rows, err := s.pool.Query(ctx, base, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return collectSongs(rows)
+}
+
+// MostPlayedSongs returns the most played songs (home "Mais ouvidas").
+func (s *Store) MostPlayedSongs(ctx context.Context, userID string, limit int) ([]model.Song, error) {
+	base := "SELECT " + songCols + " FROM songs s"
+	args := []any{}
+	limPh := "$1"
+	if s.HasAccessFilter(userID) {
+		base += " WHERE s.id IN " + visibleSongSet("$1")
+		args = append(args, userID)
+		limPh = "$2"
+	}
+	base += " ORDER BY s.play_count DESC, s.updated_at DESC, s.title LIMIT " + limPh
+	args = append(args, limit)
+	rows, err := s.pool.Query(ctx, base, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return collectSongs(rows)
+}
+
+// AllSongs returns every song (admin listing; userID "" or filtered).
+func (s *Store) AllSongs(ctx context.Context, userID string) ([]model.Song, error) {
+	base := "SELECT " + songCols + " FROM songs s"
+	args := []any{}
+	if s.HasAccessFilter(userID) {
+		base += " WHERE s.id IN " + visibleSongSet("$1")
+		args = append(args, userID)
+	}
+	base += ` ORDER BY s.title COLLATE "C" ASC`
 	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
@@ -195,7 +275,7 @@ func (s *Store) TopSongsByArtist(ctx context.Context, userID, artistID string, l
 	args := []any{artistID}
 	limPh := "$2"
 	if s.HasAccessFilter(userID) {
-		base += " AND s.album_id IN " + visibleAlbumSet("$2")
+		base += " AND s.id IN " + visibleSongSet("$2")
 		args = append(args, userID)
 		limPh = "$3"
 	}
@@ -214,7 +294,7 @@ func (s *Store) LikedSongs(ctx context.Context, userID string, limit int) ([]mod
 		 JOIN user_likes ul ON ul.entity_type='song' AND ul.entity_id=s.id AND ul.user_id=$1`
 	args := []any{userID, limit}
 	if s.HasAccessFilter(userID) {
-		base += " AND s.album_id IN " + visibleAlbumSet("$1")
+		base += " AND s.id IN " + visibleSongSet("$1")
 	}
 	base += " ORDER BY ul.created_at DESC LIMIT $2"
 	rows, err := s.pool.Query(ctx, base, args...)
@@ -231,7 +311,7 @@ func (s *Store) HistorySongs(ctx context.Context, userID string, limit int) ([]m
 		       GROUP BY song_id ORDER BY last DESC LIMIT $2) h ON h.song_id = s.id`
 	args := []any{userID, limit}
 	if s.HasAccessFilter(userID) {
-		base += " AND s.album_id IN " + visibleAlbumSet("$1")
+		base += " AND s.id IN " + visibleSongSet("$1")
 	}
 	base += " ORDER BY h.last DESC"
 	rows, err := s.pool.Query(ctx, base, args...)

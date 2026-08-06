@@ -110,8 +110,13 @@ func (s *Service) writeImage(w http.ResponseWriter, data []byte) {
 }
 
 // resolve finds artwork for an entity, following the fallback chain:
-// album -> artist (first album) -> playlist (first song album) -> song (album).
+// song (custom photo) -> album -> artist (first album) -> playlist (first
+// song album) -> song album cover.
 func (s *Service) resolve(ctx context.Context, entityID string) (*store.Art, error) {
+	// Custom photo uploaded for a song (or album/artist entity directly).
+	if art, ok, err := s.store.GetArt(ctx, "song", entityID); err != nil || ok {
+		return art, err
+	}
 	if art, ok, err := s.store.GetArt(ctx, "album", entityID); err != nil || ok {
 		return art, err
 	}
@@ -158,6 +163,33 @@ func (s *Service) DeleteAlbumPhoto(ctx context.Context, albumID string) error {
 		return err
 	}
 	s.invalidate(albumID)
+	return nil
+}
+
+// UploadSongPhoto validates and stores a custom photo for a song, overriding
+// the album/embedded fallback. Resized to at most 1024px, re-encoded JPEG.
+func (s *Service) UploadSongPhoto(ctx context.Context, songID string, data []byte) error {
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return errors.New("imagem inválida ou corrompida")
+	}
+	out := s.encode(s.fit(img, 1024))
+	if out == nil {
+		return errors.New("falha ao processar imagem")
+	}
+	if err := s.store.UpsertArt(ctx, "song", songID, out, "image/jpeg"); err != nil {
+		return err
+	}
+	s.invalidate(songID)
+	return nil
+}
+
+// DeleteSongPhoto removes a custom song photo, restoring the fallback art.
+func (s *Service) DeleteSongPhoto(ctx context.Context, songID string) error {
+	if err := s.store.DeleteArt(ctx, "song", songID); err != nil {
+		return err
+	}
+	s.invalidate(songID)
 	return nil
 }
 

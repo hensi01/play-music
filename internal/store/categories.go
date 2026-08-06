@@ -23,8 +23,7 @@ func (s *Store) CreateCategory(ctx context.Context, name string) (*model.Categor
 func (s *Store) GetCategories(ctx context.Context) ([]model.Category, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT c.id, c.name,
-			(SELECT count(*)::int FROM category_albums ca WHERE ca.category_id = c.id) AS album_count,
-			(SELECT count(*)::int FROM category_artists ca WHERE ca.category_id = c.id) AS artist_count
+			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id) AS song_count
 		FROM categories c ORDER BY c.name`)
 	if err != nil {
 		return nil, err
@@ -33,7 +32,7 @@ func (s *Store) GetCategories(ctx context.Context) ([]model.Category, error) {
 	var out []model.Category
 	for rows.Next() {
 		var c model.Category
-		if err := rows.Scan(&c.ID, &c.Name, &c.AlbumCount, &c.ArtistCount); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.SongCount); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -45,89 +44,68 @@ func (s *Store) GetCategory(ctx context.Context, id string) (*model.Category, er
 	var c model.Category
 	err := s.pool.QueryRow(ctx, `
 		SELECT c.id, c.name,
-			(SELECT count(*)::int FROM category_albums ca WHERE ca.category_id = c.id),
-			(SELECT count(*)::int FROM category_artists ca WHERE ca.category_id = c.id)
+			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id)
 		FROM categories c WHERE c.id=$1`, id).
-		Scan(&c.ID, &c.Name, &c.AlbumCount, &c.ArtistCount)
+		Scan(&c.ID, &c.Name, &c.SongCount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	return &c, err
 }
 
-// CategoryDetail returns the assigned album/artist ids (assignment screen).
-func (s *Store) CategoryDetail(ctx context.Context, id string) (albumIDs, artistIDs []string, err error) {
+// CategoryDetail returns the assigned song ids (assignment screen).
+func (s *Store) CategoryDetail(ctx context.Context, id string) (songIDs []string, err error) {
 	if _, err := s.GetCategory(ctx, id); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	rows, err := s.pool.Query(ctx, "SELECT album_id FROM category_albums WHERE category_id=$1", id)
+	rows, err := s.pool.Query(ctx,
+		"SELECT song_id FROM category_songs WHERE category_id=$1 ORDER BY position, song_id", id)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	albumIDs = []string{}
+	defer rows.Close()
+	songIDs = []string{}
 	for rows.Next() {
-		var aid string
-		if err := rows.Scan(&aid); err != nil {
-			rows.Close()
-			return nil, nil, err
+		var sid string
+		if err := rows.Scan(&sid); err != nil {
+			return nil, err
 		}
-		albumIDs = append(albumIDs, aid)
+		songIDs = append(songIDs, sid)
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, nil, err
-	}
-	rows, err = s.pool.Query(ctx, "SELECT artist_id FROM category_artists WHERE category_id=$1", id)
-	if err != nil {
-		return nil, nil, err
-	}
-	artistIDs = []string{}
-	for rows.Next() {
-		var aid string
-		if err := rows.Scan(&aid); err != nil {
-			rows.Close()
-			return nil, nil, err
-		}
-		artistIDs = append(artistIDs, aid)
-	}
-	rows.Close()
-	return albumIDs, artistIDs, rows.Err()
+	return songIDs, rows.Err()
 }
 
-// UpdateCategory renames and/or replaces the album/artist assignments.
-func (s *Store) UpdateCategory(ctx context.Context, id, name string, albumIDs, artistIDs []string) error {
+// UpdateCategory renames and/or replaces the song assignments.
+func (s *Store) UpdateCategory(ctx context.Context, id, name string, songIDs []string) error {
 	return dbTx(ctx, s, func(q queryer) error {
 		if name != "" {
 			if _, err := q.Exec(ctx, "UPDATE categories SET name=$2 WHERE id=$1", id, name); err != nil {
 				return err
 			}
 		}
-		if albumIDs != nil {
-			if _, err := q.Exec(ctx, "DELETE FROM category_albums WHERE category_id=$1", id); err != nil {
+		if songIDs != nil {
+			if _, err := q.Exec(ctx, "DELETE FROM category_songs WHERE category_id=$1", id); err != nil {
 				return err
 			}
-			for _, aid := range albumIDs {
+			for i, sid := range songIDs {
 				if _, err := q.Exec(ctx,
-					"INSERT INTO category_albums (category_id, album_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-					id, aid); err != nil {
-					return err
-				}
-			}
-		}
-		if artistIDs != nil {
-			if _, err := q.Exec(ctx, "DELETE FROM category_artists WHERE category_id=$1", id); err != nil {
-				return err
-			}
-			for _, aid := range artistIDs {
-				if _, err := q.Exec(ctx,
-					"INSERT INTO category_artists (category_id, artist_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-					id, aid); err != nil {
+					"INSERT INTO category_songs (category_id, song_id, position) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+					id, sid, i); err != nil {
 					return err
 				}
 			}
 		}
 		return nil
 	})
+}
+
+// AddSongToCategory assigns a single song to a category (used on upload).
+func (s *Store) AddSongToCategory(ctx context.Context, categoryID, songID string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO category_songs (category_id, song_id, position)
+		VALUES ($1, $2, (SELECT COALESCE(max(position)+1, 0) FROM category_songs WHERE category_id=$1))
+		ON CONFLICT DO NOTHING`, categoryID, songID)
+	return err
 }
 
 func (s *Store) DeleteCategory(ctx context.Context, id string) error {
@@ -141,20 +119,35 @@ func (s *Store) DeleteCategory(ctx context.Context, id string) error {
 	return nil
 }
 
-// CategoryAlbums returns the albums of a category (direct + via artists).
-func (s *Store) CategoryAlbums(ctx context.Context, categoryID string) ([]model.Album, error) {
+// CategorySongs returns the songs assigned to a category, in order.
+func (s *Store) CategorySongs(ctx context.Context, categoryID string) ([]model.Song, error) {
 	rows, err := s.pool.Query(ctx,
-		"SELECT "+albumCols+albumJoin+`
-		 WHERE a.id IN (
-			SELECT album_id FROM category_albums WHERE category_id = $1
-			UNION
-			SELECT al.id FROM albums al
-			JOIN category_artists c ON c.artist_id = al.artist_id AND c.category_id = $1
-		 )
-		 GROUP BY a.id ORDER BY a.name`, categoryID)
+		"SELECT "+songCols+` FROM songs s
+		 WHERE s.id IN (SELECT song_id FROM category_songs cs WHERE cs.category_id=$1)
+		 ORDER BY (SELECT position FROM category_songs cs2 WHERE cs2.category_id=$1 AND cs2.song_id=s.id),
+		          s.title COLLATE "C" ASC`, categoryID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return collectAlbums(rows)
+	return collectSongs(rows)
+}
+
+// CategorySongIDs returns song_id -> category ids for the whole library
+// (admin song listing).
+func (s *Store) CategorySongIDs(ctx context.Context) (map[string][]string, error) {
+	rows, err := s.pool.Query(ctx, "SELECT category_id, song_id FROM category_songs")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]string{}
+	for rows.Next() {
+		var cid, sid string
+		if err := rows.Scan(&cid, &sid); err != nil {
+			return nil, err
+		}
+		out[sid] = append(out[sid], cid)
+	}
+	return out, rows.Err()
 }

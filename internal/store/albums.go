@@ -190,7 +190,7 @@ func (s *Store) Genres(ctx context.Context, userID string, limit int) ([]model.G
 	var args []any
 	limPh := "$1"
 	if s.HasAccessFilter(userID) {
-		base += " AND album_id IN " + visibleAlbumSet("$1")
+		base += " AND id IN " + visibleSongSet("$1")
 		args = append(args, userID)
 		limPh = "$2"
 	}

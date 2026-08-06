@@ -48,10 +48,6 @@ function musicas(n) {
   return `${n} ${n === 1 ? 'música' : 'músicas'}`
 }
 
-function albuns(n) {
-  return `${n} ${n === 1 ? 'álbum' : 'álbuns'}`
-}
-
 function greeting() {
   const h = new Date().getHours()
   if (h < 6) return 'Boa madrugada'
@@ -172,7 +168,7 @@ function navigate(to) {
 // ---------- Track row ----------
 
 function trackRow(song, index, opts = {}) {
-  const { onPlay, showAlbum = true, showArtist = true } = opts
+  const { onPlay } = opts
 
   const numCell = el(
     'div',
@@ -211,15 +207,14 @@ function trackRow(song, index, opts = {}) {
     el(
       'div',
       { class: 'track-main' },
-      el('img', { class: 'track-art', src: artworkUrl(song.albumId, 48), alt: '', loading: 'lazy' }),
+      el('img', { class: 'track-art', src: artworkUrl(song.id, 48), alt: '', loading: 'lazy' }),
       el(
         'div',
         { class: 'track-info' },
         el('p', { class: 'track-title' }, song.title),
-        showArtist ? el('p', { class: 'track-artist' }, song.artist) : null,
+        el('p', { class: 'track-artist' }, song.artist || 'Desconhecido'),
       ),
     ),
-    showAlbum ? el('p', { class: 'track-album' }, song.album) : null,
     el('div', { class: 'track-actions' }, likeBtn, addBtn, el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
   )
 }
@@ -324,6 +319,17 @@ function section(title, children) {
   )
 }
 
+// songCard: a playable card for a song (photo, title, artist).
+function songCard(song, onPlay) {
+  return card({
+    image: artworkUrl(song.id, 300),
+    title: song.title,
+    subtitle: song.artist || 'Desconhecido',
+    onClick: onPlay,
+    onPlay,
+  })
+}
+
 // ---------- Pages ----------
 
 const pages = {
@@ -336,8 +342,6 @@ const pages = {
   '/lyrics': renderLyrics,
   '/settings': renderSettings,
   '/admin': renderAdminPage,
-  '/album/:id': renderAlbum,
-  '/artist/:id': renderArtist,
   '/playlist/:id': renderPlaylist,
 }
 
@@ -378,19 +382,15 @@ async function renderHome(container) {
   try {
     const home = await endpoints.home()
     const sectionsEl = []
-    for (const s of home.sections) {
-      const cards = (s.albums ?? []).map((a) =>
-        card({
-          image: artworkUrl(a.id, 300),
-          title: a.name,
-          subtitle: a.artist,
-          onClick: () => navigate(`/album/${a.id}`),
-          onPlay: () => playAlbum(a),
-        }),
+    for (const s of home.sections ?? []) {
+      const songs = s.songs ?? []
+      if (songs.length === 0) continue
+      const cards = songs.map((song) =>
+        songCard(song, () => player.playContext(songs, songs.indexOf(song))),
       )
       sectionsEl.push(section(s.title, cards))
     }
-    if (home.genres.length > 0) {
+    if ((home.genres ?? []).length > 0) {
       const genreCards = home.genres.map((g) =>
         el(
           'button',
@@ -402,25 +402,16 @@ async function renderHome(container) {
       sectionsEl.push(section('Gêneros', genreCards))
     }
     container.append(...sectionsEl)
-    if (home.sections.length === 0 && home.genres.length === 0) {
+    if ((home.sections ?? []).length === 0 && (home.genres ?? []).length === 0) {
       container.append(
         emptyState2(
           'Sua biblioteca está vazia.',
-          'Adicione músicas à pasta configurada e a varredura as importará automaticamente.',
+          'O administrador precisa fazer upload de músicas e atribuí-las a uma categoria.',
         ),
       )
     }
   } catch (err) {
     container.append(emptyState(err.message))
-  }
-}
-
-async function playAlbum(album) {
-  try {
-    const detail = await endpoints.album(album.id)
-    player.playContext(detail.songs, 0)
-  } catch {
-    /* ignore */
   }
 }
 
@@ -489,26 +480,6 @@ async function renderSearch(container) {
       ),
     )
   }
-  if (results.albums.length > 0) {
-    blocks.push(
-      section(
-        'Álbuns',
-        results.albums.map((a) =>
-          card({ image: artworkUrl(a.id, 300), title: a.name, subtitle: a.artist, onClick: () => navigate(`/album/${a.id}`) }),
-        ),
-      ),
-    )
-  }
-  if (results.artists.length > 0) {
-    blocks.push(
-      section(
-        'Artistas',
-        results.artists.map((ar) =>
-          card({ image: artworkUrl(ar.id, 300), title: ar.name, subtitle: albuns(ar.albumCount), onClick: () => navigate(`/artist/${ar.id}`), square: false }),
-        ),
-      ),
-    )
-  }
   if (results.playlists.length > 0) {
     blocks.push(
       section(
@@ -519,7 +490,7 @@ async function renderSearch(container) {
       ),
     )
   }
-  if (results.songs.length === 0 && results.albums.length === 0 && results.artists.length === 0 && results.playlists.length === 0) {
+  if (results.songs.length === 0 && results.playlists.length === 0) {
     blocks.push(el('p', { class: 'empty-state' }, `Nada encontrado para “${searchQuery}”.`))
   }
   page.append(...blocks)
@@ -527,17 +498,16 @@ async function renderSearch(container) {
 
 // ---------- Library ----------
 
-let libTab = 'albums'
+let libTab = 'songs'
 let libData = null
 let libLoading = false
 
 async function loadLibrary() {
   if (libLoading) return
   libLoading = true
-  const [a, ar, p] = await Promise.allSettled([endpoints.albums(), endpoints.artists(), endpoints.playlists()])
+  const [s, p] = await Promise.allSettled([endpoints.songs(), endpoints.playlists()])
   libData = {
-    albums: a.status === 'fulfilled' ? a.value : [],
-    artists: ar.status === 'fulfilled' ? ar.value : [],
+    songs: s.status === 'fulfilled' ? s.value : [],
     playlists: p.status === 'fulfilled' ? p.value : [],
   }
   libLoading = false
@@ -552,8 +522,7 @@ async function renderLibrary(container) {
     return
   }
   const tabs = [
-    { id: 'albums', label: 'Álbuns' },
-    { id: 'artists', label: 'Artistas' },
+    { id: 'songs', label: 'Músicas' },
     { id: 'playlists', label: 'Playlists' },
   ]
   const tabsEl = el(
@@ -568,166 +537,23 @@ async function renderLibrary(container) {
   page.append(wrap)
   container.append(page)
 
-  if (libTab === 'albums') {
-    if (libData.albums.length === 0) wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhum álbum na biblioteca.'))
-    for (const a of libData.albums) {
-      wrap.append(card({ image: artworkUrl(a.id, 300), title: a.name, subtitle: a.artist, onClick: () => navigate(`/album/${a.id}`) }))
+  if (libTab === 'songs') {
+    if (libData.songs.length === 0) {
+      wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhuma música na biblioteca.'))
+      return
     }
-  } else if (libTab === 'artists') {
-    if (libData.artists.length === 0) wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhum artista na biblioteca.'))
-    for (const ar of libData.artists) {
-      wrap.append(card({ image: artworkUrl(ar.id, 300), title: ar.name, subtitle: albuns(ar.albumCount), onClick: () => navigate(`/artist/${ar.id}`), square: false }))
-    }
+    const rows = libData.songs.map((s, i) =>
+      trackRow(s, i, { onPlay: (_song, idx) => player.playContext(libData.songs, idx) }),
+    )
+    page.append(el('div', { class: 'track-list' }, ...rows))
   } else {
-    if (libData.playlists.length === 0) wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhuma playlist criada.'))
+    if (libData.playlists.length === 0) {
+      wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhuma playlist criada.'))
+      return
+    }
     for (const p of libData.playlists) {
       wrap.append(card({ image: artworkUrl(p.id, 300), title: p.name, subtitle: musicas(p.songCount), onClick: () => navigate(`/playlist/${p.id}`) }))
     }
-  }
-}
-
-// ---------- Album ----------
-
-async function renderAlbum(container, params) {
-  container.innerHTML = ''
-  container.append(spinner())
-  try {
-    const album = await endpoints.album(params.id)
-    const totalDuration = album.songs.reduce((acc, s) => acc + s.duration, 0)
-
-    const likeBtn = el(
-      'button',
-      { class: `btn-icon-lg ${album.liked ? 'liked' : ''}`, 'aria-label': album.liked ? 'Descurtir álbum' : 'Curtir álbum', onclick: () => toggleLike(album.id, likeBtn, true) },
-      icon('heart'),
-    )
-
-    const header = el(
-      'div',
-      { class: 'detail-header horizontal' },
-      el('img', { class: 'detail-art', src: artworkUrl(album.id, 640), alt: '', loading: 'lazy' }),
-      el(
-        'div',
-        { class: 'detail-info' },
-        el('p', { class: 'detail-type' }, 'Álbum'),
-        el('h1', { class: 'detail-title' }, album.name),
-        el(
-          'p',
-          { class: 'detail-meta' },
-          album.artistId
-            ? el('span', { class: 'link', onclick: () => navigate(`/artist/${album.artistId}`) }, album.artist)
-            : String(album.artist),
-          album.year > 0 ? ` • ${album.year}` : '',
-          ` • ${musicas(album.songCount)}`,
-          ` • ${fmtDurationLong(totalDuration)}`,
-        ),
-        el(
-          'div',
-          { class: 'detail-actions' },
-          el(
-            'button',
-            { class: 'btn-accent', disabled: album.songs.length === 0, onclick: () => player.playContext(album.songs, 0) },
-            icon('play'),
-            'Tocar',
-          ),
-          el('button', { class: 'btn-icon-lg', 'aria-label': 'Aleatório', onclick: () => playShuffle(album.songs) }, icon('shuffle')),
-          likeBtn,
-        ),
-      ),
-    )
-
-    const listHeader = el(
-      'div',
-      { class: 'track-list-header' },
-      el('span', {}, '#'),
-      el('span', {}, 'Título'),
-      el('span', {}, 'Álbum'),
-      el('span', {}, 'Duração'),
-    )
-    const rows = album.songs.map((s, i) =>
-      trackRow(s, i, { onPlay: (_song, idx) => player.playContext(album.songs, idx), showAlbum: false }),
-    )
-    const content = el('div', { class: 'detail-content' }, listHeader, el('div', { class: 'track-list' }, ...rows))
-
-    container.innerHTML = ''
-    container.append(el('div', { class: 'page' }, header, content))
-  } catch (err) {
-    container.innerHTML = ''
-    container.append(emptyState(err.message))
-  }
-}
-
-function playShuffle(songs) {
-  const shuffled = [...songs].sort(() => Math.random() - 0.5)
-  player.playContext(shuffled, 0)
-}
-
-// ---------- Artist ----------
-
-async function renderArtist(container, params) {
-  container.innerHTML = ''
-  container.append(spinner())
-  try {
-    const artist = await endpoints.artist(params.id)
-    const likeBtn = el(
-      'button',
-      { class: `btn-icon-lg ${artist.liked ? 'liked' : ''}`, 'aria-label': artist.liked ? 'Deixar de seguir' : 'Seguir', onclick: () => toggleLike(artist.id, likeBtn, true) },
-      icon('heart'),
-    )
-
-    const header = el(
-      'div',
-      { class: 'detail-header horizontal' },
-      el('img', { class: 'detail-art round', src: artworkUrl(artist.id, 480), alt: '', loading: 'lazy' }),
-      el(
-        'div',
-        { class: 'detail-info' },
-        el('p', { class: 'detail-type' }, 'Artista'),
-        el('h1', { class: 'detail-title' }, artist.name),
-        el('p', { class: 'detail-meta' }, `${albuns(artist.albumCount)} • ${musicas(artist.songCount)}`),
-        el(
-          'div',
-          { class: 'detail-actions' },
-          el(
-            'button',
-            { class: 'btn-accent', disabled: artist.topSongs.length === 0, onclick: () => player.playContext(artist.topSongs, 0) },
-            icon('play'),
-            'Tocar',
-          ),
-          likeBtn,
-        ),
-      ),
-    )
-
-    const blocks = []
-    if (artist.topSongs.length > 0) {
-      const rows = artist.topSongs.map((s, i) =>
-        trackRow(s, i, { onPlay: (_song, idx) => player.playContext(artist.topSongs, idx) }),
-      )
-      blocks.push(
-        el('div', { class: 'detail-content section-block' },
-          el('h2', {}, 'Mais tocadas'),
-          el('div', { class: 'track-list' }, ...rows),
-        ),
-      )
-    }
-    if (artist.albums.length > 0) {
-      blocks.push(
-        el('div', { class: 'detail-content section-block' },
-          el('h2', {}, 'Álbuns'),
-          el('div', { class: 'card-wrap' },
-            ...artist.albums.map((a) =>
-              card({ image: artworkUrl(a.id, 300), title: a.name, subtitle: a.year ? String(a.year) : artist.name, onClick: () => navigate(`/album/${a.id}`) }),
-            ),
-          ),
-        ),
-      )
-    }
-
-    container.innerHTML = ''
-    container.append(el('div', { class: 'page' }, header, ...blocks))
-  } catch (err) {
-    container.innerHTML = ''
-    container.append(emptyState(err.message))
   }
 }
 
@@ -930,7 +756,7 @@ async function renderLyrics(container) {
     el(
       'div',
       { class: 'lyrics-header' },
-      el('img', { class: 'lyrics-art', src: artworkUrl(current.albumId, 96), alt: '' }),
+      el('img', { class: 'lyrics-art', src: artworkUrl(current.id, 96), alt: '' }),
       el('div', {},
         el('h1', { class: 'lyrics-title' }, current.title),
         el('p', { class: 'lyrics-artist' }, current.artist),
@@ -1134,7 +960,7 @@ async function loadPlaylists() {
     return
   }
   try {
-    playlistsCache = await endpoints.playlists()
+    playlistsCache = (await endpoints.playlists()) ?? []
   } catch {
     playlistsCache = []
   }
@@ -1176,7 +1002,7 @@ function sidebarContent(onNavigate) {
     el(
       'div',
       { class: 'sidebar-playlists' },
-      playlistsCache.length === 0
+      (playlistsCache ?? []).length === 0
         ? el('p', { class: 'playlists-empty' }, 'Nenhuma playlist ainda')
         : playlistsCache.map((pl) =>
             el(
@@ -1236,10 +1062,10 @@ function bottomBar() {
     el(
       'div',
       { class: 'now-playing' },
-      el('img', { class: 'now-playing-art', src: artworkUrl(current.albumId, 64), alt: '', onclick: () => navigate(`/album/${current.albumId}`) }),
+      el('img', { class: 'now-playing-art', src: artworkUrl(current.id, 64), alt: '' }),
       el('div', { class: 'now-playing-info' },
         el('p', { class: 'now-playing-title' }, current.title),
-        el('p', { class: 'now-playing-artist', onclick: () => navigate(`/artist/${current.artistId}`) }, current.artist),
+        el('p', { class: 'now-playing-artist' }, current.artist || 'Desconhecido'),
       ),
       likeBtn,
     ),
@@ -1333,13 +1159,13 @@ function fullscreenPlayer() {
     el(
       'div',
       { class: 'fullscreen-content' },
-      el('img', { class: 'fullscreen-art', src: artworkUrl(current.albumId, 640), alt: 'Capa do álbum' }),
+      el('img', { class: 'fullscreen-art', src: artworkUrl(current.id, 640), alt: 'Capa da música' }),
       el(
         'div',
         { class: 'fullscreen-track-info' },
         el('div', { style: 'min-width:0' },
           el('h2', { class: 'fullscreen-title' }, current.title),
-          el('p', { class: 'fullscreen-artist', onclick: () => navigate(`/artist/${current.artistId}`) }, current.artist),
+          el('p', { class: 'fullscreen-artist' }, current.artist || 'Desconhecido'),
         ),
         el(
           'button',
@@ -1450,6 +1276,7 @@ player.subscribe(refreshPlayerBar)
 // ---------- Init ----------
 
 window.addEventListener('hashchange', render)
+window.addEventListener('pm:rerender', render)
 window.addEventListener('pm:playlists-changed', () => {
   if (auth.user) void loadPlaylists()
 })
