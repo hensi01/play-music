@@ -1,0 +1,10 @@
+.git
+.github
+.playwright-mcp
+.agents
+*.md
+.gitignore
+.env
+docker-compose.yml
+var
+tmp
