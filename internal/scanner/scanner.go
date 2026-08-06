@@ -273,6 +273,18 @@ func (s *Scanner) indexAudio(ctx context.Context, a audioObj, prev store.SongFil
 	}
 	song.ID = id
 
+	// Genres become categories automatically: each song with a genre tag is
+	// assigned to a category named after it (created on demand).
+	if strings.TrimSpace(song.Genre) != "" {
+		if catID, cerr := s.store.GetOrCreateCategory(ctx, song.Genre); cerr != nil {
+			s.log.Warn("category from genre", "genre", song.Genre, "err", cerr)
+		} else if catID != "" {
+			if aerr := s.store.AddSongToCategory(ctx, catID, song.ID); aerr != nil {
+				s.log.Warn("assign song to category", "genre", song.Genre, "err", aerr)
+			}
+		}
+	}
+
 	if tags.Picture != nil && len(tags.Picture.Data) > 0 {
 		mime := tags.Picture.MIMEType
 		if mime == "" {

@@ -390,19 +390,8 @@ async function renderHome(container) {
       )
       sectionsEl.push(section(s.title, cards))
     }
-    if ((home.genres ?? []).length > 0) {
-      const genreCards = home.genres.map((g) =>
-        el(
-          'button',
-          { class: 'genre-card', onclick: () => navigate(`/search?genre=${encodeURIComponent(g.name)}`) },
-          g.name,
-          el('span', { class: 'genre-count' }, musicas(g.songCount)),
-        ),
-      )
-      sectionsEl.push(section('Gêneros', genreCards))
-    }
     container.append(...sectionsEl)
-    if ((home.sections ?? []).length === 0 && (home.genres ?? []).length === 0) {
+    if ((home.sections ?? []).length === 0) {
       container.append(
         emptyState2(
           'Sua biblioteca está vazia.',

@@ -85,12 +85,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 			sections = append(sections, model.HomeSection{Title: "Mais ouvidas", Songs: top})
 		}
 	}
-	genres, err := s.store.Genres(ctx, filter, 20)
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, model.Home{Sections: sections, Genres: genres})
+	writeJSON(w, http.StatusOK, model.Home{Sections: sections, Genres: []model.Genre{}})
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {

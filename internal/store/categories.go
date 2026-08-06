@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -18,6 +19,31 @@ func (s *Store) CreateCategory(ctx context.Context, name string) (*model.Categor
 		return nil, err
 	}
 	return c, nil
+}
+
+// GetOrCreateCategory resolves a category name to its id, creating it if
+// needed (used to auto-create categories from song genres).
+func (s *Store) GetOrCreateCategory(ctx context.Context, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", nil
+	}
+	var id string
+	err := s.pool.QueryRow(ctx, `
+		WITH ins AS (
+			INSERT INTO categories (id, name, created_at)
+			VALUES ($1, $2, now())
+			ON CONFLICT (lower(name)) DO NOTHING
+			RETURNING id
+		)
+		SELECT id FROM ins
+		UNION ALL
+		SELECT id FROM categories WHERE lower(name) = lower($2)
+		LIMIT 1`, newID(), name).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
 }
 
 func (s *Store) GetCategories(ctx context.Context) ([]model.Category, error) {
