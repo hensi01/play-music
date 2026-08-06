@@ -134,7 +134,16 @@ func (s *Store) DeleteMissing(ctx context.Context, keep []string) (int64, error)
 	return deleted, err
 }
 
-func (s *Store) RegisterPlay(ctx context.Context, songID string) error {
+// RegisterPlay records a play event and increments the play counter.
+// The song must be accessible to the user.
+func (s *Store) RegisterPlay(ctx context.Context, userID, songID string) error {
+	ok, err := s.CanAccessSong(ctx, userID, songID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrForbidden
+	}
 	return dbTx(ctx, s, func(q queryer) error {
 		tag, err := q.Exec(ctx, `
 			UPDATE songs SET play_count=play_count+1, last_played_at=now() WHERE id=$1`, songID)
@@ -144,17 +153,25 @@ func (s *Store) RegisterPlay(ctx context.Context, songID string) error {
 		if tag.RowsAffected() == 0 {
 			return ErrNotFound
 		}
-		_, err = q.Exec(ctx, "INSERT INTO history(song_id) VALUES($1)", songID)
+		_, err = q.Exec(ctx, "INSERT INTO history(song_id, user_id, played_at) VALUES($1, $2, now())", songID, userID)
 		return err
 	})
 }
 
-func (s *Store) SearchSongs(ctx context.Context, q string, limit int) ([]model.Song, error) {
+func (s *Store) SearchSongs(ctx context.Context, userID, q string, limit int) ([]model.Song, error) {
 	like := likePattern(q)
-	rows, err := s.pool.Query(ctx,
-		"SELECT "+songCols+` FROM songs s
-		 WHERE s.title ILIKE $1 ESCAPE '\' OR s.artist ILIKE $1 ESCAPE '\' OR s.album ILIKE $1 ESCAPE '\'
-		 ORDER BY s.title LIMIT $2`, like, limit)
+	base := "SELECT " + songCols + ` FROM songs s
+		 WHERE (s.title ILIKE $1 ESCAPE '\' OR s.artist ILIKE $1 ESCAPE '\' OR s.album ILIKE $1 ESCAPE '\')`
+	args := []any{like}
+	limPh := "$2"
+	if s.HasAccessFilter(userID) {
+		base += " AND s.album_id IN " + visibleAlbumSet("$2")
+		args = append(args, userID)
+		limPh = "$3"
+	}
+	base += " ORDER BY s.title LIMIT " + limPh
+	args = append(args, limit)
+	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -173,10 +190,18 @@ func (s *Store) SongsByAlbum(ctx context.Context, albumID string) ([]model.Song,
 	return collectSongs(rows)
 }
 
-func (s *Store) TopSongsByArtist(ctx context.Context, artistID string, limit int) ([]model.Song, error) {
-	rows, err := s.pool.Query(ctx,
-		"SELECT "+songCols+` FROM songs s WHERE s.artist_id=$1
-		 ORDER BY s.play_count DESC, s.updated_at DESC LIMIT $2`, artistID, limit)
+func (s *Store) TopSongsByArtist(ctx context.Context, userID, artistID string, limit int) ([]model.Song, error) {
+	base := "SELECT " + songCols + ` FROM songs s WHERE s.artist_id=$1`
+	args := []any{artistID}
+	limPh := "$2"
+	if s.HasAccessFilter(userID) {
+		base += " AND s.album_id IN " + visibleAlbumSet("$2")
+		args = append(args, userID)
+		limPh = "$3"
+	}
+	base += ` ORDER BY s.play_count DESC, s.updated_at DESC LIMIT ` + limPh
+	args = append(args, limit)
+	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -184,11 +209,15 @@ func (s *Store) TopSongsByArtist(ctx context.Context, artistID string, limit int
 	return collectSongs(rows)
 }
 
-func (s *Store) LikedSongs(ctx context.Context, limit int) ([]model.Song, error) {
-	rows, err := s.pool.Query(ctx,
-		"SELECT "+songCols+` FROM songs s
-		 JOIN user_likes ul ON ul.entity_type='song' AND ul.entity_id=s.id
-		 ORDER BY ul.created_at DESC LIMIT $1`, limit)
+func (s *Store) LikedSongs(ctx context.Context, userID string, limit int) ([]model.Song, error) {
+	base := "SELECT " + songCols + ` FROM songs s
+		 JOIN user_likes ul ON ul.entity_type='song' AND ul.entity_id=s.id AND ul.user_id=$1`
+	args := []any{userID, limit}
+	if s.HasAccessFilter(userID) {
+		base += " AND s.album_id IN " + visibleAlbumSet("$1")
+	}
+	base += " ORDER BY ul.created_at DESC LIMIT $2"
+	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -196,12 +225,16 @@ func (s *Store) LikedSongs(ctx context.Context, limit int) ([]model.Song, error)
 	return collectSongs(rows)
 }
 
-func (s *Store) HistorySongs(ctx context.Context, limit int) ([]model.Song, error) {
-	rows, err := s.pool.Query(ctx,
-		"SELECT "+songCols+` FROM songs s
-		 JOIN (SELECT song_id, max(played_at) AS last FROM history GROUP BY song_id
-		       ORDER BY last DESC LIMIT $1) h ON h.song_id = s.id
-		 ORDER BY h.last DESC`, limit)
+func (s *Store) HistorySongs(ctx context.Context, userID string, limit int) ([]model.Song, error) {
+	base := "SELECT " + songCols + ` FROM songs s
+		 JOIN (SELECT song_id, max(played_at) AS last FROM history WHERE user_id=$1
+		       GROUP BY song_id ORDER BY last DESC LIMIT $2) h ON h.song_id = s.id`
+	args := []any{userID, limit}
+	if s.HasAccessFilter(userID) {
+		base += " AND s.album_id IN " + visibleAlbumSet("$1")
+	}
+	base += " ORDER BY h.last DESC"
+	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
 	}

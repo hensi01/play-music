@@ -10,6 +10,10 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
+// ErrForbidden is returned when the user has no access to the entity or owns
+// neither the resource (e.g. someone else's playlist).
+var ErrForbidden = errors.New("forbidden")
+
 type queryer interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)

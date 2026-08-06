@@ -146,9 +146,13 @@ func (s *Scanner) Run(ctx context.Context) Result {
 		res.Deleted = int(deleted)
 	}
 
-	// Pass 5: import playlists.
+	// Pass 5: import playlists (owned by the admin user).
+	adminID, err := s.store.GetAdminID(ctx)
+	if err != nil {
+		s.log.Warn("no admin user for playlist import", "err", err)
+	}
 	for _, m3u := range m3uFiles {
-		if err := s.importM3U(ctx, m3u); err != nil {
+		if err := s.importM3U(ctx, m3u, adminID); err != nil {
 			s.log.Warn("m3u import failed", "file", m3u, "err", err)
 		}
 	}
@@ -290,7 +294,7 @@ func (s *Scanner) importFolderCovers(ctx context.Context, coverByFolder map[stri
 }
 
 // importM3U parses an .m3u file and (re)creates the matching playlist.
-func (s *Scanner) importM3U(ctx context.Context, key string) error {
+func (s *Scanner) importM3U(ctx context.Context, key, adminID string) error {
 	base := filepath.Base(key)
 	if strings.HasPrefix(base, ".") {
 		return nil
@@ -325,7 +329,7 @@ func (s *Scanner) importM3U(ctx context.Context, key string) error {
 		}
 		paths = append(paths, entry)
 	}
-	if err := s.store.ImportPlaylist(ctx, name, "admin", paths); err != nil {
+	if err := s.store.ImportPlaylist(ctx, adminID, name, "admin", paths); err != nil {
 		return err
 	}
 	s.log.Info("playlist imported", "name", name, "tracks", len(paths))

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -60,13 +61,13 @@ func (s *Server) Handler() http.Handler {
 
 	// Auth (public).
 	mux.HandleFunc("POST /auth/login", s.handleLogin)
-	mux.HandleFunc("POST /auth/createAdmin", s.handleLogin)
 
 	// API (JWT required).
 	mux.Handle("GET /api/me", s.requireAuth(http.HandlerFunc(s.handleMe)))
 	mux.Handle("GET /api/settings", s.requireAuth(http.HandlerFunc(s.handleSettings)))
 	mux.Handle("GET /api/home", s.requireAuth(http.HandlerFunc(s.handleHome)))
 	mux.Handle("GET /api/search", s.requireAuth(http.HandlerFunc(s.handleSearch)))
+	mux.Handle("GET /api/categories", s.requireAuth(http.HandlerFunc(s.handleCategories)))
 
 	mux.Handle("GET /api/albums", s.requireAuth(http.HandlerFunc(s.handleAlbums)))
 	mux.Handle("GET /api/albums/{id}", s.requireAuth(http.HandlerFunc(s.handleAlbum)))
@@ -93,12 +94,25 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("PUT /api/queue", s.requireAuth(http.HandlerFunc(s.handleSaveQueue)))
 	mux.Handle("GET /api/lyrics/{id}", s.requireAuth(http.HandlerFunc(s.handleLyrics)))
 
-	// Media (JWT via header or ?jwt= query).
+	// Media (JWT via header or ?jwt= query) — access-guarded.
 	mux.Handle("GET /api/artwork/{id}", s.requireAuth(http.HandlerFunc(s.handleArtwork)))
 	mux.Handle("GET /api/stream/{id}", s.requireAuth(http.HandlerFunc(s.handleStream)))
 
-	// Manual scan trigger (not used by the UI, handy for testing).
-	mux.Handle("POST /api/scan", s.requireAuth(http.HandlerFunc(s.handleScan)))
+	// Admin (JWT + is_admin).
+	mux.Handle("GET /api/admin/users", s.requireAdmin(http.HandlerFunc(s.handleAdminListUsers)))
+	mux.Handle("POST /api/admin/users", s.requireAdmin(http.HandlerFunc(s.handleAdminCreateUser)))
+	mux.Handle("PUT /api/admin/users/{id}", s.requireAdmin(http.HandlerFunc(s.handleAdminUpdateUser)))
+	mux.Handle("DELETE /api/admin/users/{id}", s.requireAdmin(http.HandlerFunc(s.handleAdminDeleteUser)))
+	mux.Handle("GET /api/admin/categories", s.requireAdmin(http.HandlerFunc(s.handleAdminListCategories)))
+	mux.Handle("POST /api/admin/categories", s.requireAdmin(http.HandlerFunc(s.handleAdminCreateCategory)))
+	mux.Handle("GET /api/admin/categories/{id}", s.requireAdmin(http.HandlerFunc(s.handleAdminCategoryDetail)))
+	mux.Handle("PUT /api/admin/categories/{id}", s.requireAdmin(http.HandlerFunc(s.handleAdminUpdateCategory)))
+	mux.Handle("DELETE /api/admin/categories/{id}", s.requireAdmin(http.HandlerFunc(s.handleAdminDeleteCategory)))
+	mux.Handle("GET /api/admin/albums", s.requireAdmin(http.HandlerFunc(s.handleAdminAlbums)))
+	mux.Handle("GET /api/admin/artists", s.requireAdmin(http.HandlerFunc(s.handleAdminArtists)))
+	mux.Handle("POST /api/admin/albums/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminUploadPhoto)))
+	mux.Handle("DELETE /api/admin/albums/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminDeletePhoto)))
+	mux.Handle("POST /api/scan", s.requireAdmin(http.HandlerFunc(s.handleScan)))
 
 	// Static UI.
 	mux.Handle("/", s.handleStatic())
@@ -106,8 +120,8 @@ func (s *Server) Handler() http.Handler {
 	return s.middleware(mux)
 }
 
-// requireAuth validates the JWT (header or ?jwt=) and refreshes it in the
-// X-ND-Authorization response header when past half its lifetime.
+// requireAuth validates the JWT (header or ?jwt=), stores the user in the
+// context and refreshes the token when past half its lifetime.
 func (s *Server) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := s.auth.TokenFromRequest(r)
@@ -121,11 +135,41 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 			return
 		}
 		if s.auth.NeedsRefresh(claims) {
-			if fresh, err := s.auth.Sign(r.Context(), claims.Username); err == nil {
+			if fresh, err := s.auth.Sign(r.Context(), modelUserFromClaims(claims)); err == nil {
 				w.Header().Set(auth.HeaderName, fresh)
 			}
 		}
-		next.ServeHTTP(w, r)
+		ctx := context.WithValue(r.Context(), ctxUserID, claims.UserID)
+		ctx = context.WithValue(ctx, ctxIsAdmin, claims.IsAdmin)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// requireAdmin requires a valid JWT with the admin flag.
+func (s *Server) requireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := s.auth.TokenFromRequest(r)
+		if token == "" {
+			writeError(w, http.StatusUnauthorized, "Não autenticado")
+			return
+		}
+		claims, err := s.auth.Parse(token)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "Não autenticado")
+			return
+		}
+		if !claims.IsAdmin {
+			writeError(w, http.StatusForbidden, "Sem permissão")
+			return
+		}
+		if s.auth.NeedsRefresh(claims) {
+			if fresh, err := s.auth.Sign(r.Context(), modelUserFromClaims(claims)); err == nil {
+				w.Header().Set(auth.HeaderName, fresh)
+			}
+		}
+		ctx := context.WithValue(r.Context(), ctxUserID, claims.UserID)
+		ctx = context.WithValue(ctx, ctxIsAdmin, true)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

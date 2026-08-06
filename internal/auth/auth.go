@@ -2,13 +2,13 @@ package auth
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 
 	"play-music/internal/config"
 	"play-music/internal/model"
@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	// Header carries the bearer token; the response header may carry a
+	// HeaderName carries the bearer token; the response header may carry a
 	// refreshed token (the web UI relies on X-ND-Authorization).
 	HeaderName = "X-ND-Authorization"
 
@@ -24,67 +24,114 @@ const (
 )
 
 type Claims struct {
-	Username string `json:"username"`
+	UserID   string `json:"uid"`
+	Username string `json:"username,omitempty"`
+	Phone    string `json:"phone,omitempty"`
 	Name     string `json:"name"`
 	IsAdmin  bool   `json:"isAdmin"`
 	jwt.RegisteredClaims
 }
 
 type Auth struct {
-	cfg        *config.Config
-	store      *store.Store
-	secret     []byte
-	adminHash  []byte
+	cfg    *config.Config
+	store  *store.Store
+	secret []byte
 }
 
+// New loads the JWT secret and bootstraps the admin account from the
+// environment on first boot (single source: ND_ADMINUSERNAME/ND_ADMINPASSWORD).
 func New(ctx context.Context, cfg *config.Config, st *store.Store) (*Auth, error) {
 	secret, err := st.GetOrCreateSecret(ctx)
 	if err != nil {
 		return nil, err
 	}
 	a := &Auth{cfg: cfg, store: st, secret: secret}
-	if cfg.AdminPassword != "" {
-		a.adminHash = []byte(cfg.AdminPassword)
+	if err := a.bootstrapAdmin(ctx); err != nil {
+		return nil, err
 	}
 	return a, nil
 }
 
-// AdminUser returns the single admin account (credentials from the env).
-func (a *Auth) AdminUser() model.User {
-	return model.User{
-		ID:       "1",
+func (a *Auth) bootstrapAdmin(ctx context.Context) error {
+	has, err := a.store.HasAdmin(ctx)
+	if err != nil {
+		return err
+	}
+	if has {
+		return nil
+	}
+	if a.cfg.AdminUsername == "" || a.cfg.AdminPassword == "" {
+		return errors.New("nenhum administrador existe e ND_ADMINUSERNAME/ND_ADMINPASSWORD não estão configuradas")
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(a.cfg.AdminPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	admin := &model.User{
+		ID:       store.NewID(),
 		Username: a.cfg.AdminUsername,
 		Name:     a.cfg.AdminUsername,
 		IsAdmin:  true,
 	}
+	if err := a.store.CreateUser(ctx, admin, string(hash), nil); err != nil {
+		return err
+	}
+	// Migrate legacy rows (playlists, likes, history, queue) to the admin.
+	return a.store.BackfillLegacy(ctx, admin.ID)
 }
 
-// Login validates the credentials (single source: the environment) and returns
-// the user plus a signed token.
-func (a *Auth) Login(ctx context.Context, username, password string) (model.User, string, error) {
-	if a.cfg.AdminUsername == "" || a.cfg.AdminPassword == "" {
-		return model.User{}, "", errors.New("credenciais de administrador não configuradas")
-	}
-	userOK := subtle.ConstantTimeCompare([]byte(username), []byte(a.cfg.AdminUsername)) == 1
-	passOK := subtle.ConstantTimeCompare([]byte(password), a.adminHash) == 1
-	if !userOK || !passOK {
+// LoginUsername validates admin credentials (username from env-created account).
+func (a *Auth) LoginUsername(ctx context.Context, username, password string) (model.User, string, error) {
+	u, hash, err := a.store.GetUserByUsername(ctx, username)
+	if errors.Is(err, store.ErrNotFound) {
 		return model.User{}, "", errors.New("usuário ou senha inválidos")
 	}
-	token, err := a.Sign(ctx, username)
 	if err != nil {
 		return model.User{}, "", err
 	}
-	return a.AdminUser(), token, nil
+	if !u.IsAdmin {
+		return model.User{}, "", errors.New("usuário ou senha inválidos")
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
+		return model.User{}, "", errors.New("usuário ou senha inválidos")
+	}
+	token, err := a.Sign(ctx, *u)
+	if err != nil {
+		return model.User{}, "", err
+	}
+	return *u, token, nil
 }
 
-func (a *Auth) Sign(ctx context.Context, username string) (string, error) {
+// LoginPhone authenticates a client by phone number only (no password —
+// access is granted exclusively by the admin creating the account).
+func (a *Auth) LoginPhone(ctx context.Context, phone string) (model.User, string, error) {
+	u, _, err := a.store.GetUserByPhone(ctx, phone)
+	if errors.Is(err, store.ErrNotFound) {
+		return model.User{}, "", errors.New("telefone não cadastrado")
+	}
+	if err != nil {
+		return model.User{}, "", err
+	}
+	if u.IsAdmin {
+		return model.User{}, "", errors.New("telefone não cadastrado")
+	}
+	token, err := a.Sign(ctx, *u)
+	if err != nil {
+		return model.User{}, "", err
+	}
+	return *u, token, nil
+}
+
+func (a *Auth) Sign(ctx context.Context, u model.User) (string, error) {
 	now := time.Now()
 	claims := Claims{
-		Username: username,
-		Name:     username,
-		IsAdmin:  true,
+		UserID:  u.ID,
+		Username: u.Username,
+		Phone:   u.Phone,
+		Name:    u.Name,
+		IsAdmin: u.IsAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   username,
+			Subject:   u.ID,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(tokenTTL)),
 		},

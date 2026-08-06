@@ -34,9 +34,17 @@ func (s *Store) GetOrCreateArtist(ctx context.Context, name string) (string, err
 	return id, err
 }
 
-func (s *Store) GetArtists(ctx context.Context) ([]model.Artist, error) {
-	rows, err := s.pool.Query(ctx,
-		"SELECT "+artistCols+" FROM artists a ORDER BY a.name COLLATE \"C\" ASC")
+// GetArtists lists artists that have at least one accessible album.
+func (s *Store) GetArtists(ctx context.Context, userID string) ([]model.Artist, error) {
+	base := "SELECT " + artistCols + ` FROM artists a
+		WHERE EXISTS (SELECT 1 FROM albums al WHERE al.artist_id=a.id)`
+	var args []any
+	if s.HasAccessFilter(userID) {
+		base += " AND EXISTS (SELECT 1 FROM albums al2 WHERE al2.artist_id=a.id AND al2.id IN " + visibleAlbumSet("$1") + ")"
+		args = append(args, userID)
+	}
+	base += ` ORDER BY a.name COLLATE "C" ASC`
+	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -53,11 +61,20 @@ func (s *Store) GetArtist(ctx context.Context, id string) (*model.Artist, error)
 	return artist, err
 }
 
-func (s *Store) SearchArtists(ctx context.Context, q string, limit int) ([]model.Artist, error) {
+func (s *Store) SearchArtists(ctx context.Context, userID, q string, limit int) ([]model.Artist, error) {
 	like := likePattern(q)
-	rows, err := s.pool.Query(ctx,
-		"SELECT "+artistCols+` FROM artists a
-		 WHERE a.name ILIKE $1 ESCAPE '\' ORDER BY a.name LIMIT $2`, like, limit)
+	base := "SELECT " + artistCols + ` FROM artists a
+		WHERE a.name ILIKE $1 ESCAPE '\'`
+	args := []any{like}
+	limPh := "$2"
+	if s.HasAccessFilter(userID) {
+		base += " AND EXISTS (SELECT 1 FROM albums al WHERE al.artist_id=a.id AND al.id IN " + visibleAlbumSet("$2") + ")"
+		args = append(args, userID)
+		limPh = "$3"
+	}
+	base += " ORDER BY a.name LIMIT " + limPh
+	args = append(args, limit)
+	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
 	}

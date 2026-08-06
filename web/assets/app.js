@@ -1,7 +1,8 @@
 // Play Music web UI — vanilla JS, hash-based router.
 
-import { api, endpoints, artworkUrl, getToken, setToken, readAppConfig } from './api.js'
+import { api, endpoints, artworkUrl, getToken, setToken, readAppConfig, applyPhoneMask, phoneMask } from './api.js'
 import * as player from './player.js'
+import { renderAdmin } from './admin.js'
 
 const appConfig = readAppConfig()
 
@@ -129,14 +130,18 @@ async function refreshAuth() {
   }
 }
 
-async function doLogin(username, password, firstTime) {
-  const res = await api.fetch('/auth/' + (firstTime ? 'createAdmin' : 'login'), {
+async function doLogin(mode, credential, password) {
+  const body = mode === 'client' ? { phone: credential } : { username: credential, password }
+  const res = await api.fetch('/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify(body),
   })
   setToken(res.token)
-  setAuth({ user: { id: res.id, username: res.username, name: res.name, isAdmin: res.isAdmin }, loading: false })
+  setAuth({
+    user: { id: res.id, username: res.username, phone: res.phone, name: res.name, isAdmin: res.isAdmin },
+    loading: false,
+  })
 }
 
 function doLogout() {
@@ -146,7 +151,9 @@ function doLogout() {
 }
 
 window.addEventListener('pm:unauthorized', () => {
-  setAuth({ user: null })
+  // Sessão expirada/inválida durante o uso: desloga. Durante uma tentativa de
+  // login falha (401), o usuário já está deslogado — preserva a mensagem de erro.
+  if (auth.user) setAuth({ user: null })
 })
 
 // ---------- Router (hash-based) ----------
@@ -191,6 +198,12 @@ function trackRow(song, index, opts = {}) {
     icon('heart'),
   )
 
+  const addBtn = el(
+    'button',
+    { class: 'track-add', 'aria-label': 'Adicionar à playlist', onclick: (e) => { e.stopPropagation(); openPlaylistPicker(song) } },
+    icon('plus'),
+  )
+
   return el(
     'div',
     { class: 'track-row' },
@@ -207,8 +220,65 @@ function trackRow(song, index, opts = {}) {
       ),
     ),
     showAlbum ? el('p', { class: 'track-album' }, song.album) : null,
-    el('div', { class: 'track-actions' }, likeBtn, el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
+    el('div', { class: 'track-actions' }, likeBtn, addBtn, el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
   )
+}
+
+// ---------- Add to playlist ----------
+
+function openPlaylistPicker(song) {
+  const overlay = el(
+    'div',
+    { class: 'modal-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove() } },
+    el(
+      'div',
+      { class: 'modal' },
+      el('h3', {}, 'Adicionar à playlist'),
+      el('p', { class: 'modal-sub' }, `${song.title}${song.artist ? ` — ${song.artist}` : ''}`),
+      playlistsCache.length === 0
+        ? el('p', { class: 'modal-empty' }, 'Nenhuma playlist ainda.')
+        : playlistsCache.map((pl) =>
+            el(
+              'button',
+              {
+                class: 'modal-item',
+                onclick: async () => {
+                  try {
+                    await endpoints.addPlaylistTracks(pl.id, [song.id])
+                    alert(`Adicionada à playlist “${pl.name}”.`)
+                    void loadPlaylists()
+                  } catch (err) {
+                    alert(err.message)
+                  }
+                  overlay.remove()
+                },
+              },
+              pl.name,
+            ),
+          ),
+      el(
+        'button',
+        {
+          class: 'modal-item new',
+          onclick: async () => {
+            overlay.remove()
+            const name = window.prompt('Nome da nova playlist:')
+            if (!name?.trim()) return
+            try {
+              await endpoints.createPlaylist(name.trim(), [song.id])
+              window.dispatchEvent(new Event('pm:playlists-changed'))
+              alert('Playlist criada com a música.')
+            } catch (err) {
+              alert(err.message)
+            }
+          },
+        },
+        'Nova playlist',
+      ),
+      el('button', { class: 'modal-close', onclick: () => overlay.remove() }, 'Cancelar'),
+    ),
+  )
+  document.body.append(overlay)
 }
 
 async function toggleLike(songId, btn) {
@@ -265,9 +335,19 @@ const pages = {
   '/queue': renderQueue,
   '/lyrics': renderLyrics,
   '/settings': renderSettings,
+  '/admin': renderAdminPage,
   '/album/:id': renderAlbum,
   '/artist/:id': renderArtist,
   '/playlist/:id': renderPlaylist,
+}
+
+async function renderAdminPage(container) {
+  if (!auth.user?.isAdmin) {
+    navigate('/')
+    return
+  }
+  container.innerHTML = ''
+  container.append(renderAdmin())
 }
 
 function matchRoute(path) {
@@ -911,7 +991,7 @@ async function renderSettings(container) {
     el('p', { class: 'settings-text' },
       'Conectado como ',
       el('strong', {}, auth.user?.name ?? ''),
-      ` (@${auth.user?.username ?? ''})`,
+      ` (${auth.user?.username ? '@' + auth.user.username : (auth.user?.phone ? phoneMask(auth.user.phone) : '')})`,
     ),
     el(
       'div',
@@ -961,13 +1041,28 @@ async function createPlaylist() {
 
 // ---------- Login ----------
 
+let loginMode = 'client' // 'client' | 'admin'
+
 function renderLogin(container) {
-  const firstTime = appConfig.firstTime
-  const usernameInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Usuário', autofocus: true, autocomplete: 'username' })
-  const passwordInput = el('input', { class: 'form-input', type: 'password', placeholder: 'Senha', autocomplete: 'current-password' })
-  const confirmInput = firstTime ? el('input', { class: 'form-input', type: 'password', placeholder: 'Confirmar senha', autocomplete: 'new-password' }) : null
+  const toggle = el(
+    'div',
+    { class: 'login-toggle' },
+    el('button', { class: `login-toggle-btn ${loginMode === 'client' ? 'active' : ''}`, onclick: () => { loginMode = 'client'; render() } }, 'Cliente'),
+    el('button', { class: `login-toggle-btn ${loginMode === 'admin' ? 'active' : ''}`, onclick: () => { loginMode = 'admin'; render() } }, 'Administrador'),
+  )
+
+  const phoneInput = loginMode === 'client'
+    ? el('input', { class: 'form-input', type: 'tel', inputmode: 'numeric', placeholder: 'Telefone (99) 99999-9999', autofocus: true, autocomplete: 'tel' })
+    : null
+  if (phoneInput) phoneInput.addEventListener('input', () => applyPhoneMask(phoneInput))
+  const usernameInput = loginMode === 'admin'
+    ? el('input', { class: 'form-input', type: 'text', placeholder: 'Usuário', autofocus: true, autocomplete: 'username' })
+    : null
+  const passwordInput = loginMode === 'admin'
+    ? el('input', { class: 'form-input', type: 'password', placeholder: 'Senha', autocomplete: 'current-password' })
+    : null
   const errorEl = el('p', { class: 'login-error' })
-  const submitBtn = el('button', { class: 'login-submit', type: 'submit' }, firstTime ? 'Criar conta' : 'Entrar')
+  const submitBtn = el('button', { class: 'login-submit', type: 'submit' }, 'Entrar')
 
   const form = el(
     'form',
@@ -976,28 +1071,32 @@ function renderLogin(container) {
       onsubmit: async (e) => {
         e.preventDefault()
         errorEl.textContent = ''
-        const username = usernameInput.value
-        const password = passwordInput.value
-        if (firstTime && password !== confirmInput.value) {
-          errorEl.textContent = 'As senhas não conferem.'
+        if (loginMode === 'client') {
+          if (!phoneInput.value.trim()) {
+            errorEl.textContent = 'Informe seu telefone.'
+            return
+          }
+        } else if (!usernameInput.value.trim() || !passwordInput.value) {
+          errorEl.textContent = 'Informe usuário e senha.'
           return
         }
         submitBtn.disabled = true
         submitBtn.textContent = 'Aguarde…'
         try {
-          await doLogin(username, password, firstTime)
+          if (loginMode === 'client') await doLogin('client', phoneInput.value.trim())
+          else await doLogin('admin', usernameInput.value.trim(), passwordInput.value)
           navigate('/')
         } catch (err) {
           errorEl.textContent = err instanceof Error ? err.message : 'Erro ao entrar'
         } finally {
           submitBtn.disabled = false
-          submitBtn.textContent = firstTime ? 'Criar conta' : 'Entrar'
+          submitBtn.textContent = 'Entrar'
         }
       },
     },
+    phoneInput,
     usernameInput,
     passwordInput,
-    confirmInput,
     errorEl,
     submitBtn,
   )
@@ -1010,12 +1109,13 @@ function renderLogin(container) {
       el(
         'div',
         { class: 'login-box' },
+        toggle,
         el(
           'div',
           { class: 'login-brand' },
           icon('music'),
           el('h1', {}, 'Play Music'),
-          el('p', {}, firstTime ? 'Crie a conta de administrador' : 'Entre para ouvir sua música'),
+          el('p', {}, loginMode === 'client' ? 'Entre com seu telefone para ouvir' : 'Acesso administrativo'),
         ),
         form,
       ),
@@ -1070,6 +1170,7 @@ function sidebarContent(onNavigate) {
       nav('/library', 'Sua Biblioteca', 'library'),
       nav('/liked', 'Curtidas', 'heart'),
       nav('/history', 'Histórico', 'clock'),
+      auth.user?.isAdmin ? nav('/admin', 'Administração', 'settings') : null,
     ),
     el('div', { class: 'sidebar-playlists-label' }, el('span', {}, 'Playlists'), el('span', { html: icons.list })),
     el(
@@ -1093,7 +1194,7 @@ function sidebarContent(onNavigate) {
         { class: 'sidebar-user' },
         el('div', { class: 'sidebar-user-info' },
           el('p', { class: 'sidebar-user-name' }, auth.user?.name ?? auth.user?.username ?? ''),
-          el('p', { class: 'sidebar-user-handle' }, `@${auth.user?.username ?? ''}`),
+          el('p', { class: 'sidebar-user-handle' }, auth.user?.username ? `@${auth.user.username}` : (auth.user?.phone ? phoneMask(auth.user.phone) : '')),
         ),
         el('div', { style: 'display:flex;gap:4px' },
           el('button', { class: 'icon-btn', 'aria-label': 'Configurações', onclick: () => { onNavigate?.(); navigate('/settings') } }, icon('settings')),

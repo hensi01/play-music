@@ -99,6 +99,13 @@ func (s *Store) UpsertArt(ctx context.Context, entityType, entityID string, data
 	return err
 }
 
+// DeleteArt removes a custom artwork (e.g. uploaded album photo).
+func (s *Store) DeleteArt(ctx context.Context, entityType, entityID string) error {
+	_, err := s.pool.Exec(ctx,
+		"DELETE FROM artworks WHERE entity_type=$1 AND entity_id=$2", entityType, entityID)
+	return err
+}
+
 func (s *Store) AlbumsWithoutArt(ctx context.Context) ([]string, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT a.id FROM albums a

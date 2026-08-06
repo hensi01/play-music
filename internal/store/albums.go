@@ -36,10 +36,15 @@ func (s *Store) GetOrCreateAlbum(ctx context.Context, name, artist, artistID str
 	return id, err
 }
 
-func (s *Store) GetAlbums(ctx context.Context) ([]model.Album, error) {
-	rows, err := s.pool.Query(ctx,
-		"SELECT "+albumCols+albumJoin+
-			` GROUP BY a.id ORDER BY a.name COLLATE "C" ASC, a.created_at`)
+func (s *Store) GetAlbums(ctx context.Context, userID string) ([]model.Album, error) {
+	base := "SELECT " + albumCols + albumJoin
+	var args []any
+	if s.HasAccessFilter(userID) {
+		base += " WHERE a.id IN " + visibleAlbumSet("$1")
+		args = append(args, userID)
+	}
+	base += ` GROUP BY a.id ORDER BY a.name COLLATE "C" ASC, a.created_at`
+	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -57,11 +62,26 @@ func (s *Store) GetAlbum(ctx context.Context, id string) (*model.Album, error) {
 	return album, err
 }
 
-func (s *Store) RecentlyAddedAlbums(ctx context.Context, limit int) ([]model.Album, error) {
-	rows, err := s.pool.Query(ctx,
-		"SELECT "+albumCols+albumJoin+
-			` WHERE EXISTS (SELECT 1 FROM songs s2 WHERE s2.album_id=a.id)
-		   GROUP BY a.id ORDER BY a.created_at DESC, a.name LIMIT $1`, limit)
+// AlbumExists reports whether the album id exists (admin photo upload).
+func (s *Store) AlbumExists(ctx context.Context, id string) (bool, error) {
+	var ok bool
+	err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM albums WHERE id=$1)", id).Scan(&ok)
+	return ok, err
+}
+
+func (s *Store) RecentlyAddedAlbums(ctx context.Context, userID string, limit int) ([]model.Album, error) {
+	base := "SELECT " + albumCols + albumJoin +
+		` WHERE EXISTS (SELECT 1 FROM songs s2 WHERE s2.album_id=a.id)`
+	var args []any
+	limPh := "$1"
+	if s.HasAccessFilter(userID) {
+		base += " AND a.id IN " + visibleAlbumSet("$1")
+		args = append(args, userID)
+		limPh = "$2"
+	}
+	base += " GROUP BY a.id ORDER BY a.created_at DESC, a.name LIMIT " + limPh
+	args = append(args, limit)
+	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -69,11 +89,19 @@ func (s *Store) RecentlyAddedAlbums(ctx context.Context, limit int) ([]model.Alb
 	return collectAlbums(rows)
 }
 
-func (s *Store) MostPlayedAlbums(ctx context.Context, limit int) ([]model.Album, error) {
-	rows, err := s.pool.Query(ctx,
-		"SELECT "+albumCols+albumJoin+
-			` GROUP BY a.id
-		   ORDER BY COALESCE(SUM(s.play_count), 0) DESC, a.name LIMIT $1`, limit)
+func (s *Store) MostPlayedAlbums(ctx context.Context, userID string, limit int) ([]model.Album, error) {
+	base := "SELECT " + albumCols + albumJoin
+	var args []any
+	limPh := "$1"
+	if s.HasAccessFilter(userID) {
+		base += " WHERE a.id IN " + visibleAlbumSet("$1")
+		args = append(args, userID)
+		limPh = "$2"
+	}
+	base += ` GROUP BY a.id
+		ORDER BY COALESCE(SUM(s.play_count), 0) DESC, a.name LIMIT ` + limPh
+	args = append(args, limit)
+	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -81,11 +109,15 @@ func (s *Store) MostPlayedAlbums(ctx context.Context, limit int) ([]model.Album,
 	return collectAlbums(rows)
 }
 
-func (s *Store) LikedAlbums(ctx context.Context, limit int) ([]model.Album, error) {
-	rows, err := s.pool.Query(ctx,
-		"SELECT "+albumCols+albumJoin+
-			` JOIN user_likes ul ON ul.entity_type='album' AND ul.entity_id=a.id
-		   GROUP BY a.id, ul.created_at ORDER BY ul.created_at DESC LIMIT $1`, limit)
+func (s *Store) LikedAlbums(ctx context.Context, userID string, limit int) ([]model.Album, error) {
+	base := "SELECT " + albumCols + albumJoin +
+		` JOIN user_likes ul ON ul.entity_type='album' AND ul.entity_id=a.id AND ul.user_id=$1`
+	args := []any{userID, limit}
+	if s.HasAccessFilter(userID) {
+		base += " WHERE a.id IN " + visibleAlbumSet("$1")
+	}
+	base += " GROUP BY a.id, ul.created_at ORDER BY ul.created_at DESC LIMIT $2"
+	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -93,12 +125,20 @@ func (s *Store) LikedAlbums(ctx context.Context, limit int) ([]model.Album, erro
 	return collectAlbums(rows)
 }
 
-func (s *Store) SearchAlbums(ctx context.Context, q string, limit int) ([]model.Album, error) {
+func (s *Store) SearchAlbums(ctx context.Context, userID, q string, limit int) ([]model.Album, error) {
 	like := likePattern(q)
-	rows, err := s.pool.Query(ctx,
-		"SELECT "+albumCols+albumJoin+
-			` WHERE a.name ILIKE $1 ESCAPE '\' OR a.artist ILIKE $1 ESCAPE '\'
-		   GROUP BY a.id ORDER BY a.name LIMIT $2`, like, limit)
+	base := "SELECT " + albumCols + albumJoin +
+		` WHERE (a.name ILIKE $1 ESCAPE '\' OR a.artist ILIKE $1 ESCAPE '\')`
+	args := []any{like}
+	limPh := "$2"
+	if s.HasAccessFilter(userID) {
+		base += " AND a.id IN " + visibleAlbumSet("$2")
+		args = append(args, userID)
+		limPh = "$3"
+	}
+	base += " GROUP BY a.id ORDER BY a.name LIMIT " + limPh
+	args = append(args, limit)
+	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -106,12 +146,16 @@ func (s *Store) SearchAlbums(ctx context.Context, q string, limit int) ([]model.
 	return collectAlbums(rows)
 }
 
-// AlbumsByArtist returns the albums of an artist (for the artist detail page).
-func (s *Store) AlbumsByArtist(ctx context.Context, artistID string) ([]model.Album, error) {
-	rows, err := s.pool.Query(ctx,
-		"SELECT "+albumCols+albumJoin+
-			" WHERE a.artist_id=$1 GROUP BY a.id ORDER BY a.year, a.name",
-		artistID)
+// AlbumsByArtist returns the accessible albums of an artist (artist detail).
+func (s *Store) AlbumsByArtist(ctx context.Context, userID, artistID string) ([]model.Album, error) {
+	base := "SELECT " + albumCols + albumJoin + " WHERE a.artist_id=$1"
+	args := []any{artistID}
+	if s.HasAccessFilter(userID) {
+		base += " AND a.id IN " + visibleAlbumSet("$2")
+		args = append(args, userID)
+	}
+	base += " GROUP BY a.id ORDER BY a.year, a.name"
+	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +163,7 @@ func (s *Store) AlbumsByArtist(ctx context.Context, artistID string) ([]model.Al
 	return collectAlbums(rows)
 }
 
-// TopAlbumsByArtist: first album of an artist (used for artist artwork).
+// FirstAlbumByArtist: first album of an artist (used for artist artwork).
 func (s *Store) FirstAlbumByArtist(ctx context.Context, artistID string) (string, error) {
 	var id string
 	err := s.pool.QueryRow(ctx,
@@ -141,10 +185,18 @@ func (s *Store) FirstSongAlbum(ctx context.Context, songID string) (string, erro
 	return id, err
 }
 
-func (s *Store) Genres(ctx context.Context, limit int) ([]model.Genre, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT genre, count(*)::int AS n FROM songs
-		 WHERE genre <> '' GROUP BY genre ORDER BY n DESC, genre LIMIT $1`, limit)
+func (s *Store) Genres(ctx context.Context, userID string, limit int) ([]model.Genre, error) {
+	base := `SELECT genre, count(*)::int AS n FROM songs WHERE genre <> ''`
+	var args []any
+	limPh := "$1"
+	if s.HasAccessFilter(userID) {
+		base += " AND album_id IN " + visibleAlbumSet("$1")
+		args = append(args, userID)
+		limPh = "$2"
+	}
+	base += " GROUP BY genre ORDER BY n DESC, genre LIMIT " + limPh
+	args = append(args, limit)
+	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
 	}

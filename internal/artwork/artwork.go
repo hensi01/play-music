@@ -3,6 +3,7 @@ package artwork
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -132,18 +133,67 @@ func (s *Service) resolve(ctx context.Context, entityID string) (*store.Art, err
 	return nil, nil
 }
 
+// UploadAlbumPhoto validates and stores a custom album photo, overriding the
+// embedded cover. The image is resized to at most 1024px and re-encoded as
+// JPEG; every cached size is invalidated so the new photo shows immediately.
+func (s *Service) UploadAlbumPhoto(ctx context.Context, albumID string, data []byte) error {
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return errors.New("imagem inválida ou corrompida")
+	}
+	out := s.encode(s.fit(img, 1024))
+	if out == nil {
+		return errors.New("falha ao processar imagem")
+	}
+	if err := s.store.UpsertArt(ctx, "album", albumID, out, "image/jpeg"); err != nil {
+		return err
+	}
+	s.invalidate(albumID)
+	return nil
+}
+
+// DeleteAlbumPhoto removes a custom photo, restoring the embedded cover.
+func (s *Service) DeleteAlbumPhoto(ctx context.Context, albumID string) error {
+	if err := s.store.DeleteArt(ctx, "album", albumID); err != nil {
+		return err
+	}
+	s.invalidate(albumID)
+	return nil
+}
+
+// invalidate clears every cached size (disk + redis) for an entity.
+func (s *Service) invalidate(entityID string) {
+	matches, _ := filepath.Glob(filepath.Join(s.dir, entityID+"-*.jpg"))
+	for _, m := range matches {
+		os.Remove(m)
+	}
+	if rc, ok := s.cache.(*redisCache); ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		keys, err := rc.client.Keys(ctx, "pm:art:"+entityID+"-*").Result()
+		if err == nil && len(keys) > 0 {
+			rc.client.Del(ctx, keys...)
+		}
+	}
+}
+
 func (s *Service) resize(data []byte, size int) []byte {
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil
 	}
+	return s.encode(s.fit(img, size))
+}
+
+// fit scales an image to fit within a square of `size`, keeping aspect ratio.
+func (s *Service) fit(img image.Image, size int) image.Image {
 	bounds := img.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
 	if w == 0 || h == 0 {
 		return nil
 	}
 	if w <= size && h <= size {
-		return s.encode(img)
+		return img
 	}
 	ratio := float64(size) / float64(max(w, h))
 	nw, nh := int(float64(w)*ratio), int(float64(h)*ratio)
@@ -155,7 +205,7 @@ func (s *Service) resize(data []byte, size int) []byte {
 	}
 	dst := image.NewRGBA(image.Rect(0, 0, nw, nh))
 	xdraw.CatmullRom.Scale(dst, dst.Bounds(), img, bounds, xdraw.Over, nil)
-	return s.encode(dst)
+	return dst
 }
 
 func (s *Service) encode(img image.Image) []byte {

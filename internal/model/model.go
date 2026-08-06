@@ -60,6 +60,7 @@ type Playlist struct {
 	Name      string          `json:"name"`
 	Comment   string          `json:"comment,omitempty"`
 	Owner     string          `json:"owner"`
+	UserID    string          `json:"-"`
 	SongCount int             `json:"songCount"`
 	Duration  float64         `json:"duration,omitempty"`
 	Songs     []PlaylistEntry `json:"songs,omitempty"`
@@ -98,10 +99,20 @@ type Home struct {
 }
 
 type User struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	Name     string `json:"name"`
-	IsAdmin  bool   `json:"isAdmin"`
+	ID         string     `json:"id"`
+	Username   string     `json:"username,omitempty"`
+	Phone      string     `json:"phone,omitempty"`
+	Name       string     `json:"name"`
+	IsAdmin    bool       `json:"isAdmin"`
+	Categories []Category `json:"categories,omitempty"`
+	CreatedAt  time.Time  `json:"createdAt,omitempty"`
+}
+
+type Category struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	AlbumCount int    `json:"albumCount,omitempty"`
+	ArtistCount int   `json:"artistCount,omitempty"`
 }
 
 type Settings struct {

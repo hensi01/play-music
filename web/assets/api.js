@@ -31,7 +31,14 @@ export async function apiFetch(path, options = {}) {
   if (res.status === 401) {
     setToken(null)
     window.dispatchEvent(new Event('pm:unauthorized'))
-    throw new Error('Não autenticado')
+    let msg = 'Não autenticado'
+    try {
+      const body = await res.json()
+      if (body?.error) msg = body.error
+    } catch {
+      /* not json */
+    }
+    throw new Error(msg)
   }
 
   if (!res.ok) {
@@ -65,6 +72,11 @@ export const api = {
       body: body === undefined ? undefined : JSON.stringify(body),
     }),
   del: (path) => apiFetch(path, { method: 'DELETE' }),
+  upload: (path, file) => {
+    const fd = new FormData()
+    fd.append('photo', file)
+    return apiFetch(path, { method: 'POST', body: fd })
+  },
 }
 
 export const endpoints = {
@@ -72,6 +84,7 @@ export const endpoints = {
   settings: () => api.get('/api/settings'),
   home: () => api.get('/api/home'),
   search: (q) => api.get(`/api/search?q=${encodeURIComponent(q)}`),
+  categories: () => api.get('/api/categories'),
 
   albums: (params = '') => api.get(`/api/albums${params}`),
   album: (id) => api.get(`/api/albums/${id}`),
@@ -98,6 +111,22 @@ export const endpoints = {
   saveQueue: (q) => api.put('/api/queue', q),
 
   lyrics: (id) => api.get(`/api/lyrics/${id}`),
+
+  admin: {
+    users: () => api.get('/api/admin/users'),
+    createUser: (u) => api.post('/api/admin/users', u),
+    updateUser: (id, u) => api.put(`/api/admin/users/${id}`, u),
+    deleteUser: (id) => api.del(`/api/admin/users/${id}`),
+    categories: () => api.get('/api/admin/categories'),
+    category: (id) => api.get(`/api/admin/categories/${id}`),
+    createCategory: (name) => api.post('/api/admin/categories', { name }),
+    updateCategory: (id, body) => api.put(`/api/admin/categories/${id}`, body),
+    deleteCategory: (id) => api.del(`/api/admin/categories/${id}`),
+    albums: () => api.get('/api/admin/albums'),
+    artists: () => api.get('/api/admin/artists'),
+    uploadPhoto: (id, file) => api.upload(`/api/admin/albums/${id}/photo`, file),
+    deletePhoto: (id) => api.del(`/api/admin/albums/${id}/photo`),
+  },
 }
 
 export function artworkUrl(id, size = 300) {
@@ -121,6 +150,35 @@ export function streamUrl(song, fallback = false) {
   if (token) q.set('jwt', token)
   const qs = q.toString()
   return resolve(`/api/stream/${song.id}${qs ? `?${qs}` : ''}`)
+}
+
+// Phone mask: formats input as (99) 99999-9999 / (99) 9999-9999.
+export function phoneMask(raw) {
+  const digits = raw.replace(/\D/g, '').slice(0, 11)
+  let out = ''
+  for (let i = 0; i < digits.length; i++) {
+    if (i === 0) out += '('
+    else if (i === 2) out += ' '
+    else if (i === 6 && digits.length === 10) out += '-'
+    else if (i === 7 && digits.length > 10) out += '-'
+    out += digits[i]
+    if (i === 1) out += ')'
+  }
+  return out
+}
+
+// applyPhoneMask remasks an input on every keystroke, keeping the caret
+// anchored to the same digit position (formatting chars shift it otherwise).
+export function applyPhoneMask(input) {
+  const caret = input.selectionStart ?? input.value.length
+  const before = input.value.slice(0, caret).replace(/\D/g, '').length
+  input.value = phoneMask(input.value)
+  let pos = 0
+  let digits = 0
+  for (; pos < input.value.length && digits < before; pos++) {
+    if (/\d/.test(input.value[pos])) digits++
+  }
+  input.setSelectionRange(pos, pos)
 }
 
 export function readAppConfig() {

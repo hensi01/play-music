@@ -4,13 +4,21 @@ Play Music é um player web de música estilo Spotify, self-hosted, com interfac
 em português brasileiro, tema escuro, sidebar, player inferior fixo, player em
 tela cheia, playlists, curtidas, histórico, busca e letras sincronizadas.
 
+**Multiusuário por categorias**: o administrador cria categorias (ex.: Cristão,
+Rock), atribui álbuns e artistas a elas e libera categorias por cliente. Cada
+cliente acessa com o **telefone `(99) 99999-9999` apenas** (sem senha — o acesso
+vem da conta criada pelo admin) e só enxerga e reproduz o conteúdo das
+categorias liberadas — inclusive `stream`/`artwork` (403 fora do acesso).
+Playlists são pessoais e só aceitam músicas liberadas.
+
 Este repositório contém:
 
 - **Backend em Go** (`main.go` + `internal/`) — API REST, varredura da biblioteca
   (S3/MinIO), stream (CDN Bunny ou URLs presignadas do MinIO), transcodificação
-  com ffmpeg, artwork, letras e autenticação JWT.
+  com ffmpeg, artwork (inclui upload de foto por álbum), letras, autenticação
+  JWT, usuários e controle de acesso por categoria.
 - **UI vanilla JS** (`web/assets/`) — embutida no binário via `go:embed` e
-  servida na raiz do mesmo domínio.
+  servida na raiz do mesmo domínio. Inclui página de administração (`#/admin`).
 
 ## Requisitos
 
@@ -53,25 +61,40 @@ indexa o bucket (músicas + capas + playlists `.m3u`). O servidor escuta em
 
 ## API
 
-Autenticação: `POST /auth/login` (ou `/auth/createAdmin`) com
-`{username, password}` → `{token, id, username, name, isAdmin}`. O JWT viaja no
-header `X-ND-Authorization: Bearer <token>` (ou `?jwt=` em URLs de `<img>`/`<audio>`);
+Autenticação: `POST /auth/login` com `{username, password}` (administrador) ou
+`{phone}` (cliente — **somente o telefone**, aceito com ou sem máscara;
+desconhecido → 401)
+→ `{token, id, name, phone, isAdmin}`. O JWT viaja no header
+`X-ND-Authorization: Bearer <token>` (ou `?jwt=` em URLs de `<img>`/`<audio>`);
 o header de resposta pode trazer um token renovado.
 
-Rotas principais (todas exigem JWT, exceto `/auth/*`):
+O administrador inicial é criado no primeiro boot a partir de
+`ND_ADMINUSERNAME`/`ND_ADMINPASSWORD`.
 
-- `GET /api/me`, `GET /api/settings`, `GET /api/home`, `GET /api/search?q=`
+Rotas principais (todas exigem JWT, exceto `/auth/login`):
+
+- `GET /api/me`, `GET /api/settings`, `GET /api/home` (cliente: seções por
+  categoria liberada), `GET /api/search?q=`, `GET /api/categories`
 - `GET /api/albums`, `GET /api/albums/{id}`, `GET /api/artists`, `GET /api/artists/{id}`, `GET /api/songs/{id}`
-- `GET|POST /api/playlists`, `GET|PUT|DELETE /api/playlists/{id}`,
-  `POST /api/playlists/{id}/tracks`, `DELETE /api/playlists/{id}/tracks/{entryId}`,
+- Playlists pessoais: `GET|POST /api/playlists`, `GET|PUT|DELETE /api/playlists/{id}`,
+  `POST /api/playlists/{id}/tracks` (só músicas liberadas), `DELETE /api/playlists/{id}/tracks/{entryId}`,
   `PUT /api/playlists/{id}/tracks` (reordenação `{from, to}`)
-- `GET /api/me/liked`, `PUT|DELETE /api/me/liked/{id}`
-- `GET /api/me/history`, `POST /api/me/history/{id}` (registra reprodução)
-- `GET|PUT /api/queue`
-- `GET /api/lyrics/{id}`
-- `GET /api/artwork/{id}?size=N`
-- `GET /api/stream/{id}?format=mp3` (redirect CDN/MinIO ou transcode)
-- `POST /api/scan` (varredura manual, opcional)
+- `GET /api/me/liked`, `PUT|DELETE /api/me/liked/{id}` (por usuário)
+- `GET /api/me/history`, `POST /api/me/history/{id}` (por usuário)
+- `GET|PUT /api/queue` (por usuário)
+- `GET /api/lyrics/{id}`, `GET /api/artwork/{id}?size=N`, `GET /api/stream/{id}?format=mp3`
+
+Admin (JWT + `is_admin`):
+
+- `GET|POST /api/admin/users`, `PUT|DELETE /api/admin/users/{id}` (criar/editar
+  clientes com telefone, senha opcional e categorias liberadas — o cliente
+  entra só com o telefone)
+- `GET|POST /api/admin/categories`, `GET|PUT|DELETE /api/admin/categories/{id}`
+  (atribuição de álbuns e artistas via `{name, albumIds, artistIds}`)
+- `GET /api/admin/albums`, `GET /api/admin/artists`
+- `POST /api/admin/albums/{id}/photo` (multipart `photo`, máx 15MB),
+  `DELETE /api/admin/albums/{id}/photo` (volta à capa embutida)
+- `POST /api/scan` (varredura manual)
 
 ## Estrutura
 
@@ -79,17 +102,18 @@ Rotas principais (todas exigem JWT, exceto `/auth/*`):
 main.go                 (inicialização, migrations, cron, HTTP server)
 internal/config/        (leitura do .env)
 internal/db/            (pgxpool + migrations SQL embutidas)
-internal/store/         (repositórios PostgreSQL)
+internal/store/         (repositórios PostgreSQL + controle de acesso)
 internal/storage/       (cliente MinIO/S3)
 internal/scanner/       (varredura do bucket: áudio, capas, .m3u)
 internal/metadata/      (tags via dhowden/tag + ffprobe)
 internal/stream/        (URLs assinadas Bunny CDN / presigned MinIO + transcode)
-internal/artwork/       (capas: resize + cache disco/Redis)
+internal/artwork/       (capas: resize + cache disco/Redis + upload de foto)
 internal/lyrics/        (letras embutidas + .lrc sincronizadas)
-internal/auth/          (JWT HS256, credenciais do env)
-internal/server/        (mux, middlewares CORS/auth, handlers, static)
+internal/phone/         (normalização/máscara de telefone BR)
+internal/auth/          (JWT HS256, bootstrap do admin via env, login telefone/usuário)
+internal/server/        (mux, middlewares CORS/auth/admin, handlers, static)
 web/embed.go            (UI embutida)
-web/assets/             (front end vanilla JS)
+web/assets/             (front end vanilla JS + página de administração)
 ```
 
 ## Observação
