@@ -86,6 +86,8 @@ const icons = {
   playSmall: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
   prev: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><rect x="5" y="4" width="2.5" height="16" rx="1"/></svg>',
   next: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><rect x="16.5" y="4" width="2.5" height="16" rx="1"/></svg>',
+  rewind5: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C7.5 2 3.85 4.86 2.55 8.86H5.1c.98-2.68 3.57-4.61 6.55-4.61 3.87 0 7 3.13 7 7s-3.13 7-7 7c-2.98 0-5.57-1.93-6.55-4.61H2.55C3.85 19.14 7.5 22 11.99 22c5.52 0 10-4.48 10-10s-4.48-10-10-10z"/><text x="12" y="15.5" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">5</text></svg>',
+  forward5: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><g transform="scale(-1,1) translate(-24,0)"><path d="M11.99 2C7.5 2 3.85 4.86 2.55 8.86H5.1c.98-2.68 3.57-4.61 6.55-4.61 3.87 0 7 3.13 7 7s-3.13 7-7 7c-2.98 0-5.57-1.93-6.55-4.61H2.55C3.85 19.14 7.5 22 11.99 22c5.52 0 10-4.48 10-10s-4.48-10-10-10z"/><text x="12" y="15.5" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">5</text></g></svg>',
   shuffle: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.8-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/><path d="m18 14 4 4-4 4"/></svg>',
   repeat: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>',
   volume: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>',
@@ -102,7 +104,9 @@ const icons = {
 function icon(name) {
   const wrap = document.createElement('span')
   wrap.innerHTML = icons[name] || ''
-  return wrap.firstChild
+  const node = wrap.firstChild
+  if (node) node.dataset.icon = name
+  return node
 }
 
 // ---------- Auth state ----------
@@ -685,7 +689,7 @@ async function renderPlaylist(container, params) {
   container.append(spinner())
   try {
     const playlist = await endpoints.playlist(params.id)
-    const songs = playlist.songs.map((ps) => ps.song)
+    const songs = (playlist.songs ?? []).map((ps) => ps.song)
 
     const header = el(
       'div',
@@ -712,7 +716,7 @@ async function renderPlaylist(container, params) {
     )
 
     const content = el('div', { class: 'detail-content' })
-    if (playlist.songs.length === 0) {
+    if ((playlist.songs ?? []).length === 0) {
       content.append(
         emptyState2(
           'Esta playlist está vazia.',
@@ -1209,7 +1213,10 @@ function sidebarContent(onNavigate) {
 
 // ---------- Bottom bar ----------
 
-function bottomBar() {
+// refs holds live element references so progress/volume updates can mutate
+// the DOM in place instead of rebuilding the whole bar (rebuilding every
+// 50ms was destroying the seek track mid-gesture and breaking clicks/drags).
+function bottomBar(refs) {
   const { current, playing, progress, duration, volume, shuffle, repeat } = player.getPlayerState()
   if (!current) return null
 
@@ -1218,26 +1225,45 @@ function bottomBar() {
   const progressPercent = totalDuration > 0 ? (safeProgress / totalDuration) * 100 : 0
 
   const progressFill = el('div', { class: 'progress-fill', style: `width:${progressPercent}%` })
+  const curTime = el('span', { class: 'progress-time' }, fmtDuration(safeProgress))
+  const durTime = el('span', { class: 'progress-time' }, fmtDuration(totalDuration))
+  refs.fill = progressFill
+  refs.cur = curTime
+  refs.dur = durTime
   const progressTrack = el(
     'div',
-    { class: 'progress-track', role: 'slider', 'aria-valuemin': 0, 'aria-valuemax': totalDuration, 'aria-valuenow': safeProgress, onclick: seekFromEvent },
+    { class: 'progress-track', role: 'slider', 'aria-valuemin': 0, 'aria-valuemax': totalDuration, 'aria-valuenow': safeProgress },
     progressFill,
   )
 
   const likeBtn = el(
     'button',
-    { class: `icon-btn ${current.liked ? 'liked' : ''}`, style: current.liked ? 'color:var(--accent)' : '', 'aria-label': current.liked ? 'Descurtir' : 'Curtir', onclick: toggleLikeCurrent },
+    { class: `icon-btn ${current.liked ? 'liked' : ''}`, style: current.liked ? 'color:var(--accent)' : '', 'aria-label': current.liked ? 'Descurtir' : 'Curtir', onclick: (e) => { e.stopPropagation(); toggleLikeCurrent() } },
     icon('heart'),
   )
 
-  const volumeIcon = volume === 0 ? icon('volumeX') : icon('volume')
+  const volIcon = el('span', { class: 'vol-icon' }, volume === 0 ? icon('volumeX') : icon('volume'))
+  refs.volIcon = volIcon
+  const volInput = el('input', {
+    class: 'volume-slider',
+    type: 'range',
+    min: 0,
+    max: 1,
+    step: 0.01,
+    value: volume,
+    'aria-label': 'Volume',
+    oninput: (e) => player.setVolume(parseFloat(e.target.value)),
+  })
+  refs.volInput = volInput
+
+  const openFullscreen = () => player.setFullScreen(true)
 
   return el(
     'div',
     { class: 'bottom-bar' },
     el(
       'div',
-      { class: 'now-playing' },
+      { class: 'now-playing', onclick: openFullscreen },
       el('img', { class: 'now-playing-art', src: artworkUrl(current.id, 64), alt: '' }),
       el('div', { class: 'now-playing-info' },
         el('p', { class: 'now-playing-title' }, current.title),
@@ -1253,55 +1279,77 @@ function bottomBar() {
         { class: 'player-buttons' },
         el('button', { class: `player-btn ${shuffle ? 'active' : ''}`, 'aria-label': 'Aleatório', onclick: player.toggleShuffle }, icon('shuffle')),
         el('button', { class: 'player-btn', 'aria-label': 'Anterior', onclick: player.prev }, icon('prev')),
+        el('button', { class: 'player-btn', 'aria-label': 'Retroceder 5 segundos', onclick: () => player.seekBy(-5) }, icon('rewind5')),
         el('button', { class: 'player-btn-main', 'aria-label': playing ? 'Pausar' : 'Tocar', onclick: player.togglePlay }, playing ? icon('pause') : icon('play')),
+        el('button', { class: 'player-btn', 'aria-label': 'Avançar 5 segundos', onclick: () => player.seekBy(5) }, icon('forward5')),
         el('button', { class: 'player-btn', 'aria-label': 'Próxima', onclick: player.next }, icon('next')),
         el('button', { class: `player-btn ${repeat ? 'active' : ''}`, 'aria-label': 'Repetir', onclick: player.toggleRepeat }, icon('repeat')),
       ),
       el(
         'div',
         { class: 'player-progress' },
-        el('span', { class: 'progress-time' }, fmtDuration(safeProgress)),
+        curTime,
         progressTrack,
-        el('span', { class: 'progress-time' }, fmtDuration(totalDuration)),
-      ),
-      el(
-        'div',
-        { class: 'player-extra' },
-        el('button', { class: 'icon-btn', 'aria-label': 'Fila', onclick: () => navigate('/queue') }, icon('list')),
-        el('button', { class: 'icon-btn', 'aria-label': 'Letras', onclick: () => navigate('/lyrics') }, el('span', { style: 'font-size:12px;font-weight:700' }, 'LYR')),
-        el('button', { class: 'icon-btn', 'aria-label': 'Tela cheia', onclick: () => player.setFullScreen(true) }, icon('max')),
+        durTime,
       ),
     ),
     el(
       'div',
       { class: 'player-volume' },
-      volumeIcon,
-      el('input', {
-        class: 'volume-slider',
-        type: 'range',
-        min: 0,
-        max: 1,
-        step: 0.01,
-        value: volume,
-        'aria-label': 'Volume',
-        oninput: (e) => player.setVolume(parseFloat(e.target.value)),
-      }),
+      volIcon,
+      volInput,
       el('button', { class: 'icon-btn', 'aria-label': 'Fila', onclick: () => navigate('/queue') }, icon('list')),
       el('button', { class: 'icon-btn', 'aria-label': 'Letras', onclick: () => navigate('/lyrics') }, el('span', { style: 'font-size:12px;font-weight:700;letter-spacing:0.05em' }, 'LYR')),
-      el('button', { class: 'icon-btn', 'aria-label': 'Tela cheia', onclick: () => player.setFullScreen(true) }, icon('max')),
+      el('button', { class: 'icon-btn', 'aria-label': 'Tela cheia', onclick: openFullscreen }, icon('max')),
     ),
   )
 }
 
-function seekFromEvent(e) {
-  const rect = e.currentTarget.getBoundingClientRect()
+// Delegated seek: pointerdown/move/up on the document. Works on click, drag
+// and touch, and survives the bar being rebuilt (listeners live on
+// document, not on the ephemeral track element).
+let seekDrag = null
+
+function seekToClientX(clientX, track) {
+  if (!track) return
+  const rect = track.getBoundingClientRect()
   if (rect.width === 0) return
-  const state = player.getPlayerState()
-  const totalDuration = player.resolveDuration(state.duration, state.current?.duration ?? 0)
+  const st = player.getPlayerState()
+  const totalDuration = player.resolveDuration(st.duration, st.current?.duration ?? 0)
   if (totalDuration === 0) return
-  const ratio = (e.clientX - rect.left) / rect.width
+  const ratio = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1)
   player.seek(ratio * totalDuration)
+  updateBarInPlace()
 }
+
+document.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse' && e.button !== 0) return
+  const track = e.target.closest && e.target.closest('.progress-track')
+  if (!track) return
+  seekDrag = { pointerId: e.pointerId, track }
+  track.classList.add('dragging')
+  seekToClientX(e.clientX, track)
+  try {
+    track.setPointerCapture(e.pointerId)
+  } catch {
+    /* not supported */
+  }
+  e.preventDefault()
+})
+
+document.addEventListener('pointermove', (e) => {
+  if (seekDrag && e.pointerId === seekDrag.pointerId) seekToClientX(e.clientX, seekDrag.track)
+})
+
+function endSeekDrag(e) {
+  if (!seekDrag || e.pointerId !== seekDrag.pointerId) return
+  seekToClientX(e.clientX, seekDrag.track)
+  seekDrag.track.classList.remove('dragging')
+  seekDrag = null
+}
+
+document.addEventListener('pointerup', endSeekDrag)
+document.addEventListener('pointercancel', endSeekDrag)
 
 function toggleLikeCurrent() {
   const state = player.getPlayerState()
@@ -1315,13 +1363,20 @@ function toggleLikeCurrent() {
 
 // ---------- Fullscreen player ----------
 
-function fullscreenPlayer() {
+function fullscreenPlayer(refs) {
   const { current, playing, progress, duration, shuffle, repeat } = player.getPlayerState()
   if (!current) return null
 
   const totalDuration = player.resolveDuration(duration, current.duration)
   const safeProgress = Number.isFinite(progress) ? Math.min(Math.max(progress, 0), totalDuration) : 0
   const progressPercent = totalDuration > 0 ? (safeProgress / totalDuration) * 100 : 0
+
+  const progressFill = el('div', { class: 'progress-fill', style: `width:${progressPercent}%` })
+  const curTime = el('span', { class: 'progress-time' }, fmtDuration(safeProgress))
+  const durTime = el('span', { class: 'progress-time' }, fmtDuration(totalDuration))
+  refs.fill = progressFill
+  refs.cur = curTime
+  refs.dur = durTime
 
   return el(
     'div',
@@ -1330,7 +1385,12 @@ function fullscreenPlayer() {
       'div',
       { class: 'fullscreen-top' },
       el('button', { class: 'icon-btn', 'aria-label': 'Fechar', onclick: () => player.setFullScreen(false) }, icon('chevronDown')),
-      el('button', { class: 'icon-btn', 'aria-label': 'Fila', onclick: () => navigate('/queue') }, icon('list')),
+      el(
+        'div',
+        { style: 'display:flex;gap:8px' },
+        el('button', { class: 'icon-btn', 'aria-label': 'Letras', onclick: () => navigate('/lyrics') }, el('span', { style: 'font-size:12px;font-weight:700' }, 'LYR')),
+        el('button', { class: 'icon-btn', 'aria-label': 'Fila', onclick: () => navigate('/queue') }, icon('list')),
+      ),
     ),
     el(
       'div',
@@ -1352,16 +1412,18 @@ function fullscreenPlayer() {
       el(
         'div',
         { class: 'player-progress', style: 'max-width:384px' },
-        el('span', { class: 'progress-time' }, fmtDuration(safeProgress)),
-        el('div', { class: 'progress-track', onclick: seekFromEvent }, el('div', { class: 'progress-fill', style: `width:${progressPercent}%` })),
-        el('span', { class: 'progress-time' }, fmtDuration(totalDuration)),
+        curTime,
+        el('div', { class: 'progress-track', role: 'slider', 'aria-valuemin': 0, 'aria-valuemax': totalDuration, 'aria-valuenow': safeProgress }, progressFill),
+        durTime,
       ),
       el(
         'div',
         { class: 'fullscreen-buttons' },
         el('button', { class: `player-btn ${shuffle ? 'active' : ''}`, 'aria-label': 'Aleatório', onclick: player.toggleShuffle }, icon('shuffle')),
         el('button', { class: 'player-btn', 'aria-label': 'Anterior', onclick: player.prev }, icon('prev')),
+        el('button', { class: 'player-btn', 'aria-label': 'Retroceder 5 segundos', onclick: () => player.seekBy(-5) }, icon('rewind5')),
         el('button', { class: 'fullscreen-btn-main', 'aria-label': playing ? 'Pausar' : 'Tocar', onclick: player.togglePlay }, playing ? icon('pause') : icon('play')),
+        el('button', { class: 'player-btn', 'aria-label': 'Avançar 5 segundos', onclick: () => player.seekBy(5) }, icon('forward5')),
         el('button', { class: 'player-btn', 'aria-label': 'Próxima', onclick: player.next }, icon('next')),
         el('button', { class: `player-btn ${repeat ? 'active' : ''}`, 'aria-label': 'Repetir', onclick: player.toggleRepeat }, icon('repeat')),
       ),
@@ -1414,6 +1476,17 @@ function render() {
   root.innerHTML = ''
   root.append(app)
 
+  if (menuOpen) {
+    root.append(
+      el(
+        'div',
+        { class: 'mobile-overlay open' },
+        el('div', { class: 'mobile-overlay-backdrop', onclick: onNavigate }),
+        el('aside', { class: 'mobile-sidebar' }, sidebarContent(onNavigate)),
+      ),
+    )
+  }
+
   const pageEl = document.getElementById('page-content')
   const { path, params } = parseHash()
   const { fn, params: routeParams } = matchRoute(path)
@@ -1422,32 +1495,109 @@ function render() {
   renderPlayerBar()
 }
 
+// ---------- Player UI updates (structural rebuild vs in-place) ----------
+
+// The bar is rebuilt only when something structural changes (track, play
+// state, shuffle/repeat/like, fullscreen). Progress ticks update the existing
+// DOM in place, so the seek track and volume slider are never destroyed under
+// an active gesture.
+let barKey = null
+let barRefs = null
+
+function structuralKey() {
+  const s = player.getPlayerState()
+  return [s.fullScreen, s.current?.id ?? '', s.playing, s.shuffle, s.repeat, s.current?.liked ?? false].join('|')
+}
+
 function renderPlayerBar() {
   const barHost = document.getElementById('player-bar')
   const fullHost = document.getElementById('player-full')
   if (!barHost) return
   const { fullScreen } = player.getPlayerState()
   barHost.innerHTML = ''
-  barHost.append(bottomBar() ?? '')
   fullHost.innerHTML = ''
-  if (fullScreen) fullHost.append(fullscreenPlayer())
+  barRefs = { fill: null, cur: null, dur: null, volIcon: null, volInput: null }
+  const bar = fullScreen ? fullscreenPlayer(barRefs) : bottomBar(barRefs)
+  if (bar) (fullScreen ? fullHost : barHost).append(bar)
+  barKey = structuralKey()
+  updateBarInPlace()
 }
 
-// ---------- Player UI updates (in-place, no full re-render) ----------
+function updateBarInPlace() {
+  if (!barRefs) return
+  const s = player.getPlayerState()
+  const total = player.resolveDuration(s.duration, s.current?.duration ?? 0)
+  const prog = Number.isFinite(s.progress) ? Math.min(Math.max(s.progress, 0), total) : 0
+  const pct = total > 0 ? (prog / total) * 100 : 0
+  if (barRefs.fill) barRefs.fill.style.width = `${pct}%`
+  if (barRefs.cur) barRefs.cur.textContent = fmtDuration(prog)
+  if (barRefs.dur) barRefs.dur.textContent = fmtDuration(total)
+  if (barRefs.volIcon) {
+    const want = s.volume === 0 ? 'volumeX' : 'volume'
+    if ((barRefs.volIcon.dataset.icon || '') !== want) {
+      barRefs.volIcon.innerHTML = icons[want]
+      barRefs.volIcon.dataset.icon = want
+    }
+  }
+  if (barRefs.volInput && Math.abs(parseFloat(barRefs.volInput.value) - s.volume) > 0.005) {
+    barRefs.volInput.value = String(s.volume)
+  }
+}
 
-// Trailing-edge debounce: limits re-renders to one per 50ms window but always
-// renders the final state, so the last event is never dropped.
 let barRenderTimer = null
 function refreshPlayerBar() {
-  if (barRenderTimer) return
-  barRenderTimer = setTimeout(() => {
-    barRenderTimer = null
-    renderPlayerBar()
-    updateLyricsHighlight()
-  }, 50)
+  const key = structuralKey()
+  if (key !== barKey) {
+    if (barRenderTimer) return
+    barRenderTimer = setTimeout(() => {
+      barRenderTimer = null
+      renderPlayerBar()
+      updateLyricsHighlight()
+    }, 50)
+    return
+  }
+  updateBarInPlace()
+  updateLyricsHighlight()
 }
 
 player.subscribe(refreshPlayerBar)
+
+// ---------- Keyboard shortcuts ----------
+
+document.addEventListener('keydown', (e) => {
+  if (e.altKey || e.ctrlKey || e.metaKey) return
+  if (e.key === 'Escape' && menuOpen) {
+    menuOpen = false
+    render()
+    return
+  }
+  const t = e.target
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+  const s = player.getPlayerState()
+  if (!s.current) return
+  switch (e.key) {
+    case 'ArrowLeft':
+      e.preventDefault()
+      player.seekBy(-5)
+      break
+    case 'ArrowRight':
+      e.preventDefault()
+      player.seekBy(5)
+      break
+    case 'ArrowUp':
+      e.preventDefault()
+      player.setVolume(Math.min(1, s.volume + 0.1))
+      break
+    case 'ArrowDown':
+      e.preventDefault()
+      player.setVolume(Math.max(0, s.volume - 0.1))
+      break
+    case ' ':
+      e.preventDefault()
+      player.togglePlay()
+      break
+  }
+})
 
 // ---------- Init ----------
 

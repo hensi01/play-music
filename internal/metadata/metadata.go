@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -77,6 +78,14 @@ func Read(path string, size int64) (*Tags, error) {
 		t.Lyrics = strings.TrimSpace(strings.ReplaceAll(t.Lyrics, "\r\n", "\n"))
 	}
 
+	// Untagged WAV files: duration/sample rate/bitrate straight from the RIFF
+	// header (no ffprobe required).
+	if strings.EqualFold(filepath.Ext(path), ".wav") && t.Duration <= 0 {
+		if d, sr, br := probeWAV(f); d > 0 || sr > 0 || br > 0 {
+			t.Duration, t.SampleRate, t.Bitrate = d, sr, br
+		}
+	}
+
 	// Duration / technical data via ffprobe when available.
 	ffprobe := ProbePath(ffmpegConfigured)
 	if ffprobe != "" {
@@ -117,6 +126,44 @@ func clean(s string) string {
 		return s
 	}
 	return strings.ReplaceAll(s, "\x00", "")
+}
+
+// ---------- WAV header probing ----------
+
+// probeWAV reads the RIFF/WAVE header and returns (duration seconds, sample
+// rate, bitrate). Works for plain PCM WAVs without any tag metadata.
+func probeWAV(f *os.File) (float64, int, int) {
+	buf := make([]byte, 4096)
+	n, err := f.ReadAt(buf, 0)
+	if err != nil && n < 12 {
+		return 0, 0, 0
+	}
+	buf = buf[:n]
+	if string(buf[0:4]) != "RIFF" || string(buf[8:12]) != "WAVE" {
+		return 0, 0, 0
+	}
+	var duration float64
+	var sampleRate, bitrate int
+	var byteRate uint32
+	off := 12
+	for off+8 <= n {
+		size := int(binary.LittleEndian.Uint32(buf[off+4 : off+8]))
+		switch string(buf[off : off+4]) {
+		case "fmt ":
+			if off+26 <= n {
+				sampleRate = int(binary.LittleEndian.Uint32(buf[off+12 : off+16]))
+				byteRate = binary.LittleEndian.Uint32(buf[off+16 : off+20])
+				bitrate = int(byteRate * 8)
+			}
+		case "data":
+			if byteRate > 0 && size > 0 {
+				duration = float64(size) / float64(byteRate)
+			}
+			return duration, sampleRate, bitrate
+		}
+		off += 8 + size + (size & 1)
+	}
+	return duration, sampleRate, bitrate
 }
 
 // ---------- ffprobe ----------

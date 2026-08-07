@@ -313,7 +313,7 @@ func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePlaylist(w http.ResponseWriter, r *http.Request) {
-	pl, err := s.store.GetPlaylist(r.Context(), userIDOf(r.Context()), parseID(r))
+	pl, err := s.store.GetPlaylist(r.Context(), userIDOf(r.Context()), s.filterUser(r), parseID(r))
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -340,7 +340,7 @@ func (s *Server) handleCreatePlaylist(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Nome da playlist é obrigatório")
 		return
 	}
-	pl, err := s.store.CreatePlaylist(r.Context(), userIDOf(r.Context()), strings.TrimSpace(req.Name), req.Comment, req.SongIDs)
+	pl, err := s.store.CreatePlaylist(r.Context(), userIDOf(r.Context()), s.filterUser(r), strings.TrimSpace(req.Name), req.Comment, req.SongIDs)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -381,7 +381,7 @@ func (s *Server) handleAddPlaylistTracks(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "Requisição inválida")
 		return
 	}
-	if err := s.store.AddPlaylistTracks(r.Context(), userIDOf(r.Context()), parseID(r), req.SongIDs); err != nil {
+	if err := s.store.AddPlaylistTracks(r.Context(), userIDOf(r.Context()), s.filterUser(r), parseID(r), req.SongIDs); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -452,7 +452,9 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRegisterPlay(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.RegisterPlay(r.Context(), s.filterUser(r), parseID(r)); err != nil {
+	// History is owner-scoped (like likes/playlists): must use the real user
+	// id even for admins, otherwise plays get recorded under "".
+	if err := s.store.RegisterPlay(r.Context(), userIDOf(r.Context()), s.filterUser(r), parseID(r)); err != nil {
 		handleStoreError(w, err)
 		return
 	}

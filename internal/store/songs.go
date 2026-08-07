@@ -154,8 +154,10 @@ func (s *Store) DeleteMissing(ctx context.Context, keep []string) (int64, error)
 
 // RegisterPlay records a play event and increments the play counter.
 // The song must be accessible to the user.
-func (s *Store) RegisterPlay(ctx context.Context, userID, songID string) error {
-	ok, err := s.CanAccessSong(ctx, userID, songID)
+// RegisterPlay bumps the play count and records history for userID.
+// accessUserID drives the song access check ("" for admins/unspecified).
+func (s *Store) RegisterPlay(ctx context.Context, userID, accessUserID, songID string) error {
+	ok, err := s.CanAccessSong(ctx, accessUserID, songID)
 	if err != nil {
 		return err
 	}

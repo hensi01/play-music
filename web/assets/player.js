@@ -31,6 +31,9 @@ const state = {
   shuffle: false,
   repeat: false,
   fullScreen: false,
+  // Seek requested before the metadata (duration) was available; applied as
+  // soon as the duration loads.
+  pendingSeek: null,
 }
 
 const listeners = new Set()
@@ -59,9 +62,14 @@ audio.addEventListener('timeupdate', () => {
   }
 })
 
-const updateDuration = () => set({ duration: resolvedTrackDuration() })
+const updateDuration = () => {
+  set({ duration: resolvedTrackDuration() })
+  // Apply a seek that arrived before the metadata was available.
+  if (state.pendingSeek != null) seek(state.pendingSeek)
+}
 audio.addEventListener('loadedmetadata', updateDuration)
 audio.addEventListener('durationchange', updateDuration)
+audio.addEventListener('canplay', updateDuration)
 audio.addEventListener('play', () => {
   switching = false
   set({ playing: true })
@@ -172,6 +180,7 @@ function updateMediaSessionPosition() {
 function loadAndPlay(song) {
   fallbackUsed = false
   switching = true
+  state.pendingSeek = null
   set({ progress: 0, duration: resolveDuration(song.duration), playing: true })
   setMediaSessionPlaybackState(true)
   audio.src = streamUrl(song)
@@ -242,11 +251,37 @@ export function prev() {
 }
 
 export function seek(seconds) {
+  if (!Number.isFinite(seconds)) return
   const duration = resolveDuration(audio.duration, state.duration, state.current?.duration ?? 0)
-  if (duration === 0 || !Number.isFinite(seconds)) return
+  if (duration === 0) {
+    // Metadata not loaded yet (or the stream reports no duration): use the
+    // seekable range as a last resort, otherwise defer until metadata loads.
+    let seekable = 0
+    try {
+      const sr = audio.seekable
+      if (sr && sr.length > 0) seekable = sr.end(sr.length - 1)
+    } catch {
+      /* not available */
+    }
+    if (seekable > 0) {
+      const target = Math.min(Math.max(seconds, 0), seekable)
+      audio.currentTime = target
+      set({ progress: target, duration: seekable })
+      state.pendingSeek = null
+      return
+    }
+    state.pendingSeek = seconds
+    return
+  }
+  state.pendingSeek = null
   const target = Math.min(Math.max(seconds, 0), duration)
   audio.currentTime = target
   set({ progress: target })
+}
+
+// Nudge playback by delta seconds (e.g. the +5s / -5s buttons and keyboard).
+export function seekBy(delta) {
+  if (Number.isFinite(audio.currentTime)) seek(audio.currentTime + delta)
 }
 
 export function setVolume(v) {

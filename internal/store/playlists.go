@@ -56,7 +56,8 @@ func (s *Store) SearchPlaylists(ctx context.Context, userID, q string, limit int
 
 // GetPlaylist returns the playlist if the user owns it. Songs the user cannot
 // access are hidden (entries are kept so re-granting restores them).
-func (s *Store) GetPlaylist(ctx context.Context, userID, id string) (*model.Playlist, error) {
+// accessUserID drives the access filter ("" for admins/unspecified).
+func (s *Store) GetPlaylist(ctx context.Context, userID, accessUserID, id string) (*model.Playlist, error) {
 	var p model.Playlist
 	err := s.pool.QueryRow(ctx,
 		"SELECT "+playlistCols+" FROM playlists p WHERE p.id=$1 AND p.user_id=$2", id, userID).
@@ -73,9 +74,9 @@ func (s *Store) GetPlaylist(ctx context.Context, userID, id string) (*model.Play
 		JOIN songs s ON s.id=pt.song_id
 		WHERE pt.playlist_id=$1`
 	args := []any{id}
-	if s.HasAccessFilter(userID) {
+	if s.HasAccessFilter(accessUserID) {
 		base += " AND s.id IN " + visibleSongSet("$2")
-		args = append(args, userID)
+		args = append(args, accessUserID)
 	}
 	base += " ORDER BY pt.position"
 	rows, err := s.pool.Query(ctx, base, args...)
@@ -103,8 +104,10 @@ func (s *Store) GetPlaylist(ctx context.Context, userID, id string) (*model.Play
 	return &p, nil
 }
 
-func (s *Store) CreatePlaylist(ctx context.Context, userID, name, comment string, songIDs []string) (*model.Playlist, error) {
-	if err := s.validateSongAccess(ctx, userID, songIDs); err != nil {
+// CreatePlaylist creates a playlist owned by userID. accessUserID drives the
+// song access filter ("" for admins/unspecified, per filterUser in the server).
+func (s *Store) CreatePlaylist(ctx context.Context, userID, accessUserID, name, comment string, songIDs []string) (*model.Playlist, error) {
+	if err := s.validateSongAccess(ctx, accessUserID, songIDs); err != nil {
 		return nil, err
 	}
 	id := newID()
@@ -119,7 +122,7 @@ func (s *Store) CreatePlaylist(ctx context.Context, userID, name, comment string
 	if err != nil {
 		return nil, err
 	}
-	return s.GetPlaylist(ctx, userID, id)
+	return s.GetPlaylist(ctx, userID, accessUserID, id)
 }
 
 func (s *Store) UpdatePlaylist(ctx context.Context, userID, id string, patch *model.Playlist) error {
@@ -147,7 +150,9 @@ func (s *Store) DeletePlaylist(ctx context.Context, userID, id string) error {
 	return nil
 }
 
-func (s *Store) AddPlaylistTracks(ctx context.Context, userID, id string, songIDs []string) error {
+// AddPlaylistTracks appends songs to a playlist owned by userID.
+// accessUserID drives the song access filter ("" for admins/unspecified).
+func (s *Store) AddPlaylistTracks(ctx context.Context, userID, accessUserID, id string, songIDs []string) error {
 	exists, err := s.playlistOwned(ctx, userID, id)
 	if err != nil {
 		return err
@@ -155,7 +160,7 @@ func (s *Store) AddPlaylistTracks(ctx context.Context, userID, id string, songID
 	if !exists {
 		return ErrNotFound
 	}
-	if err := s.validateSongAccess(ctx, userID, songIDs); err != nil {
+	if err := s.validateSongAccess(ctx, accessUserID, songIDs); err != nil {
 		return err
 	}
 	return dbTx(ctx, s, func(q queryer) error {
