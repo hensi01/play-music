@@ -80,6 +80,7 @@ const icons = {
   settings: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
   logout: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>',
   list: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>',
+  cart: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>',
   play: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
   pause: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
   playSmall: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
@@ -928,6 +929,55 @@ async function renderSettings(container) {
     /* ignore */
   }
 
+  // Clients: the account page only shows the phone and the playlists.
+  if (!auth.user?.isAdmin) {
+    const phoneCard = el(
+      'section',
+      { class: 'settings-card' },
+      el('h2', {}, 'Conta'),
+      el('p', { class: 'settings-text' },
+        'Telefone: ',
+        el('strong', {}, phoneMask(auth.user?.phone ?? '')),
+      ),
+    )
+    const playlistsCard = el('section', { class: 'settings-card' }, el('h2', {}, 'Playlists'))
+    const pl = playlistsCache ?? []
+    if (pl.length === 0) {
+      playlistsCard.append(el('p', { class: 'settings-text' }, 'Nenhuma playlist ainda.'))
+    } else {
+      const list = el('div', { class: 'settings-playlists' })
+      for (const p of pl) {
+        list.append(
+          el(
+            'button',
+            { class: 'settings-playlist-item', onclick: () => navigate(`/playlist/${p.id}`) },
+            icon('list'),
+            el('span', { style: 'flex:1;min-width:0;text-align:left' }, p.name),
+            el('span', { style: 'color:var(--faint);font-size:12px' }, musicas(p.songCount)),
+          ),
+        )
+      }
+      playlistsCard.append(list)
+    }
+    playlistsCard.append(
+      el(
+        'div',
+        { class: 'settings-actions' },
+        el('button', { class: 'btn-accent', onclick: () => createPlaylist() }, icon('plus'), 'Nova playlist'),
+        el('button', { class: 'btn-secondary', onclick: doLogout }, icon('logout'), 'Sair'),
+      ),
+    )
+    container.innerHTML = ''
+    container.append(
+      el('div', { class: 'settings-page' },
+        el('h1', { class: 'page-title' }, 'Minha Conta'),
+        phoneCard,
+        playlistsCard,
+      ),
+    )
+    return
+  }
+
   const accountCard = el(
     'section',
     { class: 'settings-card' },
@@ -1114,6 +1164,12 @@ function sidebarContent(onNavigate) {
       nav('/library', 'Sua Biblioteca', 'library'),
       nav('/liked', 'Curtidas', 'heart'),
       nav('/history', 'Histórico', 'clock'),
+      el(
+        'a',
+        { class: 'nav-link', href: './loja.html', onclick: () => { onNavigate?.() } },
+        icon('cart'),
+        'Loja',
+      ),
       auth.user?.isAdmin ? nav('/admin', 'Administração', 'settings') : null,
     ),
     el('div', { class: 'sidebar-playlists-label' }, el('span', {}, 'Playlists'), el('span', { html: icons.list })),

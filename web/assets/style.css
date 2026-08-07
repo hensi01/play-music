@@ -1401,6 +1401,128 @@ img {
   margin-top: 16px;
 }
 
+.settings-playlists {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.settings-playlist-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border-radius: 10px;
+  background: var(--surface2);
+  border: none;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #fff;
+  cursor: pointer;
+}
+
+.settings-playlist-item:hover {
+  box-shadow: 0 0 0 1px var(--grid);
+}
+
+/* ---------- Upload form (admin) ---------- */
+
+.modal-upload {
+  max-width: 480px;
+}
+
+.upload-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.upload-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--subtext);
+}
+
+.upload-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.upload-file-input {
+  display: none;
+}
+
+.upload-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 120px;
+  border: 1.5px dashed var(--grid);
+  border-radius: 14px;
+  background: var(--surface2);
+  cursor: pointer;
+  text-align: center;
+  padding: 16px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone.drag {
+  border-color: var(--accent);
+  background: rgba(29, 185, 84, 0.06);
+}
+
+.upload-dropzone.error {
+  border-color: rgb(248, 113, 113);
+}
+
+.upload-dropzone-icon {
+  font-size: 28px;
+  color: var(--accent);
+}
+
+.upload-dropzone-title {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.upload-dropzone-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.upload-photo-drop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1.5px dashed var(--grid);
+  border-radius: 12px;
+  background: var(--surface2);
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--subtext);
+  cursor: pointer;
+}
+
+.upload-photo-drop:hover {
+  border-color: var(--accent);
+}
+
+.upload-info {
+  font-size: 12px;
+  color: var(--subtext);
+  margin: 8px 0 0;
+}
+
 .btn-secondary {
   display: inline-flex;
   align-items: center;

@@ -357,26 +357,68 @@ function fmtDur(seconds) {
 }
 
 function uploadForm() {
-  const fileInput = el('input', { class: 'form-input', type: 'file', accept: 'audio/*', required: true })
-  const titleInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Título (opcional — usa as tags do arquivo)' })
-  const artistInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Artista (opcional)' })
+  const fileInput = el('input', { class: 'upload-file-input', type: 'file', accept: 'audio/*' })
+  const dropzone = el(
+    'div',
+    { class: 'upload-dropzone' },
+    el('span', { class: 'upload-dropzone-icon', html: '&#9835;' }),
+    el('p', { class: 'upload-dropzone-title' }, 'Arraste o arquivo de áudio ou clique para escolher'),
+    el('p', { class: 'upload-dropzone-hint' }, 'mp3, m4a, flac, ogg, wav…'),
+  )
+  dropzone.addEventListener('click', () => fileInput.click())
+  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag') })
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'))
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault()
+    dropzone.classList.remove('drag')
+    if (e.dataTransfer.files.length) fileInput.files = e.dataTransfer.files
+    updateFile()
+  })
+  fileInput.addEventListener('change', updateFile)
+  function updateFile() {
+    const f = fileInput.files[0]
+    if (!f) return
+    dropzone.classList.add('has-file')
+    dropzone.querySelector('.upload-dropzone-title').textContent = f.name
+    dropzone.querySelector('.upload-dropzone-hint').textContent = `${(f.size / 1024 / 1024).toFixed(2)} MB`
+  }
+
+  const titleInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Ex.: Louvor da Manhã', autocomplete: 'off' })
+  const artistInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Ex.: Ministério Coral', autocomplete: 'off' })
   const catSelect = el('select', { class: 'form-input' },
     el('option', { value: '' }, 'Sem categoria'),
     ...adminState.categories.map((c) => el('option', { value: c.id }, c.name)),
   )
-  const photoInput = el('input', { class: 'form-input', type: 'file', accept: 'image/*' })
+  const photoInput = el('input', { class: 'upload-file-input', type: 'file', accept: 'image/*' })
+  const photoDrop = el(
+    'div',
+    { class: 'upload-photo-drop' },
+    el('span', { html: '&#128247;' }),
+    el('span', {}, 'Adicionar foto da música'),
+  )
+  photoDrop.addEventListener('click', () => photoInput.click())
+  photoInput.addEventListener('change', () => {
+    const f = photoInput.files[0]
+    if (f) photoDrop.querySelector('span:last-child').textContent = f.name
+  })
   const statusEl = el('p', { class: 'login-error' })
 
+  const field = (label, control) =>
+    el('label', { class: 'upload-field' }, el('span', { class: 'upload-label' }, label), control)
+
   const overlay = el('div', { class: 'modal-overlay' },
-    el('div', { class: 'modal' },
+    el('div', { class: 'modal modal-upload' },
       el('h3', {}, 'Enviar música'),
-      el('div', { class: 'modal-section-label' }, 'Arquivo de áudio (mp3, m4a, flac…)'),
+      el('div', { class: 'modal-section-label' }, 'Arquivo de áudio'),
+      dropzone,
       fileInput,
-      titleInput,
-      artistInput,
-      el('div', { class: 'modal-section-label' }, 'Categoria'),
-      catSelect,
+      el('div', { class: 'upload-grid' },
+        field('Título (opcional)', titleInput),
+        field('Artista (opcional)', artistInput),
+      ),
+      field('Categoria', catSelect),
       el('div', { class: 'modal-section-label' }, 'Foto da música (opcional)'),
+      photoDrop,
       photoInput,
       statusEl,
       el('div', { class: 'modal-actions' },
@@ -392,6 +434,7 @@ function uploadForm() {
     const file = fileInput.files[0]
     if (!file) {
       statusEl.textContent = 'Selecione um arquivo de áudio.'
+      dropzone.classList.add('error')
       return
     }
     const fd = new FormData()
@@ -405,6 +448,8 @@ function uploadForm() {
     btn.disabled = true
     btn.textContent = 'Enviando…'
     statusEl.textContent = 'Enviando e indexando…'
+    statusEl.classList.remove('login-error')
+    statusEl.classList.add('upload-info')
     try {
       await endpoints.admin.uploadSong(fd)
       overlay.remove()
@@ -412,6 +457,8 @@ function uploadForm() {
       refreshApp()
     } catch (err) {
       statusEl.textContent = err.message
+      statusEl.classList.remove('upload-info')
+      statusEl.classList.add('login-error')
       btn.disabled = false
       btn.textContent = 'Enviar'
     }

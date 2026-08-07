@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0B0B0F" />
+    <title>Loja — Play Music</title>
+    <style>
+      :root {
+        --bg: #0b0b0f;
+        --surface: #1c1c24;
+        --surface2: #1a1a1f;
+        --grid: #2a2a2a;
+        --accent: #1db954;
+        --subtext: #a0a0a8;
+        --faint: #6b6b76;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: #fff;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+        min-height: 100vh;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 16px 24px;
+        border-bottom: 1px solid rgba(42, 42, 42, 0.5);
+        background: var(--surface);
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+      .brand { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; }
+      .brand svg { color: var(--accent); }
+      .login-box { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .login-box input {
+        border-radius: 9999px;
+        background: var(--surface2);
+        border: none;
+        outline: none;
+        padding: 9px 14px;
+        font-size: 14px;
+        color: #fff;
+        box-shadow: 0 0 0 1px var(--grid);
+        width: 190px;
+      }
+      .login-box button, .buy-btn, .back-btn {
+        border-radius: 9999px;
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 700;
+        padding: 9px 20px;
+      }
+      .login-box button { background: var(--accent); color: #fff; }
+      .user-chip { font-size: 13px; color: var(--subtext); }
+      .user-chip strong { color: #fff; }
+      main { max-width: 1080px; margin: 0 auto; padding: 24px; }
+      h1 { font-size: 26px; margin: 8px 0 4px; }
+      .subtitle { color: var(--subtext); margin: 0 0 24px; }
+      h2 { font-size: 18px; margin: 28px 0 14px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+      .card {
+        background: var(--surface);
+        border: 0.8px solid var(--grid);
+        border-radius: 16px;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .card .thumb {
+        height: 120px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #24242e, #101018);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 40px;
+      }
+      .card h3 { margin: 4px 0 0; font-size: 16px; }
+      .card .desc { margin: 0; font-size: 13px; color: var(--subtext); min-height: 18px; }
+      .price { font-size: 22px; font-weight: 800; color: var(--accent); }
+      .buy-btn { background: var(--accent); color: #fff; width: 100%; text-align: center; text-decoration: none; padding: 11px 20px; }
+      .buy-btn:hover { filter: brightness(1.1); }
+      .pack-badge {
+        align-self: flex-start;
+        border-radius: 9999px;
+        background: rgba(29, 185, 84, 0.15);
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        padding: 4px 10px;
+      }
+      .back-btn { background: var(--surface2); color: var(--subtext); text-decoration: none; display: inline-block; margin-top: 28px; }
+      .back-btn:hover { color: #fff; }
+      .empty { color: var(--faint); font-size: 14px; }
+      .msg { font-size: 13px; color: #f87171; min-height: 18px; }
+      .ok { color: var(--accent); }
+      footer { text-align: center; color: var(--faint); font-size: 12px; padding: 24px; }
+      @media (max-width: 560px) {
+        .topbar { flex-direction: column; align-items: stretch; }
+        .login-box input { width: 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <span class="brand">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        Play Music — Loja
+      </span>
+      <div class="login-box" id="loginBox">
+        <span class="msg" id="loginMsg"></span>
+        <input id="phoneInput" type="tel" inputmode="numeric" placeholder="(99) 99999-9999" />
+        <button id="loginBtn">Entrar</button>
+      </div>
+    </header>
+
+    <main>
+      <h1>Escolha suas categorias</h1>
+      <p class="subtitle">Compre a categoria e ouça todas as músicas dela no Play Music.</p>
+
+      <section>
+        <h2>Categorias</h2>
+        <div class="grid" id="catGrid"></div>
+      </section>
+
+      <section id="packsSection">
+        <h2>Packs</h2>
+        <div class="grid" id="packsGrid"></div>
+      </section>
+
+      <a class="back-btn" href="/">← Voltar para o Play Music</a>
+    </main>
+
+    <footer>Play Music &middot; Loja de categorias</footer>
+
+    <script>
+      // =====================================================================
+      // ===================== CONFIGURAÇÃO DA LOJA =========================
+      // Edite aqui os preços e os links de checkout (externos).
+      // A chave é o NOME da categoria (como aparece no app). Preços e links
+      // só aparecem NESTA página.
+      // =====================================================================
+      const STORE_CONFIG = {
+        // preço/link por categoria: { 'Nome da Categoria': { price: 'R$ 9,90', url: 'https://...' } }
+        categories: {
+          'Cristão': { price: 'R$ 9,90', url: 'https://checkout.exemplo.com/cristao' },
+        },
+        // packs: { name, price, url, categories: ['Nome1', 'Nome2'], desc }
+        packs: [
+          {
+            name: 'Pacote Completo',
+            price: 'R$ 19,90',
+            url: 'https://checkout.exemplo.com/pacote-completo',
+            categories: ['Cristão'],
+            desc: 'Todas as categorias por um preço especial.',
+          },
+        ],
+      }
+      // =====================================================================
+
+      const TOKEN_KEY = 'pm_token'
+      const $ = (sel) => document.querySelector(sel)
+
+      function getToken() { return localStorage.getItem(TOKEN_KEY) }
+
+      async function api(path, opts = {}) {
+        const headers = new Headers(opts.headers || {})
+        const token = getToken()
+        if (token) headers.set('X-ND-Authorization', 'Bearer ' + token)
+        const res = await fetch(path, { ...opts, headers })
+        if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); renderUser() }
+        if (!res.ok) {
+          let msg = 'HTTP ' + res.status
+          try { const b = await res.json(); if (b.error) msg = b.error } catch {}
+          throw new Error(msg)
+        }
+        if (res.status === 204) return undefined
+        return res.json()
+      }
+
+      const fmt = (n) => (n === 1 ? '1 música' : n + ' músicas')
+
+      function esc(s) {
+        return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+      }
+
+      function renderUser() {
+        const box = $('#loginBox')
+        const token = getToken()
+        if (!token) { box.innerHTML = '<span class="msg" id="loginMsg"></span><input id="phoneInput" type="tel" inputmode="numeric" placeholder="(99) 99999-9999" /><button id="loginBtn">Entrar</button>'; bindLogin(); return }
+        api('/api/me').then((u) => {
+          box.innerHTML = '<span class="user-chip">Conectado: <strong>' + esc(u.name || u.phone || '') + '</strong></span>'
+        }).catch(() => {
+          localStorage.removeItem(TOKEN_KEY)
+          renderUser()
+        })
+      }
+
+      function bindLogin() {
+        const btn = $('#loginBtn')
+        const input = $('#phoneInput')
+        const msg = $('#loginMsg')
+        input.addEventListener('input', () => {
+          let d = input.value.replace(/\D/g, '').slice(0, 11)
+          let out = ''
+          for (let i = 0; i < d.length; i++) {
+            if (i === 0) out += '('
+            else if (i === 2) out += ' '
+            else if (i === 6 && d.length === 10) out += '-'
+            else if (i === 7 && d.length > 10) out += '-'
+            out += d[i]
+            if (i === 1) out += ')'
+          }
+          input.value = out
+        })
+        btn.addEventListener('click', async () => {
+          msg.textContent = ''
+          const phone = input.value.trim()
+          if (!phone) { msg.textContent = 'Informe seu telefone.'; return }
+          btn.disabled = true
+          btn.textContent = 'Entrando…'
+          try {
+            // Cria a conta pelo telefone (sem liberar categorias aqui; a
+            // liberação acontece após o pagamento externo via API).
+            const b = await api('/api/store/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phone, categoryIds: [] }),
+            })
+            localStorage.setItem(TOKEN_KEY, b.token)
+            msg.textContent = 'Conta pronta!'
+            msg.classList.add('ok')
+            renderUser()
+          } catch (e) {
+            msg.textContent = e.message
+          } finally {
+            btn.disabled = false
+            btn.textContent = 'Entrar'
+          }
+        })
+      }
+
+      function categoryCard(c) {
+        const cfg = STORE_CONFIG.categories[c.name] || STORE_CONFIG.categories[c.id]
+        const price = cfg ? cfg.price : 'Consultar'
+        const url = cfg ? cfg.url : null
+        return (
+          '<div class="card">' +
+            '<div class="thumb">&#9835;</div>' +
+            '<h3>' + esc(c.name) + '</h3>' +
+            '<p class="desc">' + fmt(c.songCount || 0) + '</p>' +
+            '<span class="price">' + esc(price) + '</span>' +
+            (url
+              ? '<a class="buy-btn" href="' + esc(url) + '" target="_blank" rel="noopener">Comprar</a>'
+              : '<span class="desc">Sem link de checkout configurado.</span>') +
+          '</div>'
+        )
+      }
+
+      function packCard(p) {
+        return (
+          '<div class="card">' +
+            '<span class="pack-badge">Pack</span>' +
+            '<div class="thumb">&#127873;</div>' +
+            '<h3>' + esc(p.name) + '</h3>' +
+            '<p class="desc">' + esc(p.desc || p.categories.join(', ')) + '</p>' +
+            '<span class="price">' + esc(p.price) + '</span>' +
+            '<a class="buy-btn" href="' + esc(p.url) + '" target="_blank" rel="noopener">Comprar pack</a>' +
+          '</div>'
+        )
+      }
+
+      async function load() {
+        renderUser()
+        try {
+          const cats = await api('/api/store/categories')
+          const grid = $('#catGrid')
+          grid.innerHTML = ''
+          if (!cats.length) { grid.innerHTML = '<p class="empty">Nenhuma categoria disponível ainda.</p>' }
+          for (const c of cats) grid.insertAdjacentHTML('beforeend', categoryCard(c))
+
+          const packs = STORE_CONFIG.packs || []
+          const packsGrid = $('#packsGrid')
+          packsGrid.innerHTML = ''
+          if (packs.length) {
+            for (const p of packs) packsGrid.insertAdjacentHTML('beforeend', packCard(p))
+          } else {
+            $('#packsSection').style.display = 'none'
+          }
+        } catch (e) {
+          $('#catGrid').innerHTML = '<p class="empty">Erro ao carregar: ' + esc(e.message) + '</p>'
+        }
+      }
+
+      load()
+    </script>
+  </body>
+</html>

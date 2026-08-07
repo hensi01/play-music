@@ -66,6 +66,11 @@ func (s *Server) Handler() http.Handler {
 	// Auth (public).
 	mux.HandleFunc("POST /auth/login", s.handleLogin)
 
+	// Store (public): phone registration + category releases after checkout.
+	mux.HandleFunc("GET /api/store/categories", s.handleStoreCategories)
+	mux.HandleFunc("POST /api/store/register", s.handleStoreRegister)
+	mux.Handle("POST /api/store/purchase", s.requireAuth(http.HandlerFunc(s.handleStorePurchase)))
+
 	// API (JWT required).
 	mux.Handle("GET /api/me", s.requireAuth(http.HandlerFunc(s.handleMe)))
 	mux.Handle("GET /api/settings", s.requireAuth(http.HandlerFunc(s.handleSettings)))

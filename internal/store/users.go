@@ -40,6 +40,22 @@ func (s *Store) CreateUser(ctx context.Context, u *model.User, passwordHash stri
 	})
 }
 
+// GrantUserCategories adds categories to a user without removing the ones
+// they already have (store purchases / releases).
+func (s *Store) GrantUserCategories(ctx context.Context, userID string, categoryIDs []string) error {
+	for _, cid := range categoryIDs {
+		if cid == "" {
+			continue
+		}
+		if _, err := s.pool.Exec(ctx, `
+			INSERT INTO user_categories (user_id, category_id, created_at)
+			VALUES ($1, $2, now()) ON CONFLICT DO NOTHING`, userID, cid); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // GetUserByUsername returns the user with hash for username login.
 func (s *Store) GetUserByUsername(ctx context.Context, username string) (*model.User, string, error) {
 	u, err := scanUser(s.pool.QueryRow(ctx,

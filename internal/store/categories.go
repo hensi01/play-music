@@ -11,10 +11,21 @@ import (
 )
 
 func (s *Store) CreateCategory(ctx context.Context, name string) (*model.Category, error) {
-	c := &model.Category{ID: newID(), Name: name}
-	_, err := s.pool.Exec(ctx,
-		"INSERT INTO categories (id, name, created_at) VALUES ($1, $2, now()) ON CONFLICT (lower(name)) DO NOTHING",
-		c.ID, name)
+	c := &model.Category{Name: name}
+	err := s.pool.QueryRow(ctx, `
+		WITH ins AS (
+			INSERT INTO categories (id, name, created_at)
+			VALUES ($1, $2, now())
+			ON CONFLICT (lower(name)) DO NOTHING
+			RETURNING id
+		)
+		SELECT id FROM ins
+		UNION ALL
+		SELECT id FROM categories WHERE lower(name) = lower($2)
+		LIMIT 1`, newID(), name).Scan(&c.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
 		return nil, err
 	}
