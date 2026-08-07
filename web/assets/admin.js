@@ -121,8 +121,8 @@ function userForm(existing) {
     }),
   )
 
-  const adminBtn = el('button', { class: 'login-toggle-btn', onclick: () => { isAdmin = true; sync() } }, 'Administrador')
-  const clientBtn = el('button', { class: 'login-toggle-btn', onclick: () => { isAdmin = false; sync() } }, 'Cliente')
+  const adminBtn = el('button', { class: 'login-toggle-btn', 'aria-pressed': isAdmin ? 'true' : 'false', onclick: () => { isAdmin = true; sync() } }, 'Administrador')
+  const clientBtn = el('button', { class: 'login-toggle-btn', 'aria-pressed': !isAdmin ? 'true' : 'false', onclick: () => { isAdmin = false; sync() } }, 'Cliente')
 
   function sync() {
     adminBtn.classList.toggle('active', isAdmin)

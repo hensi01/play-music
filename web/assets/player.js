@@ -5,6 +5,7 @@ import { endpoints, streamUrl, artworkUrl } from './api.js'
 
 const audio = new Audio()
 audio.preload = 'auto'
+audio.volume = 0.8
 
 let fallbackUsed = false
 // True while the audio element is being handed a new track (src swap). The
@@ -114,6 +115,10 @@ function playAudio() {
   const p = audio.play()
   if (p && typeof p.catch === 'function') {
     p.catch(() => {
+      // During a src swap the previous track's play() promise rejects with an
+      // AbortError; ignore it (the swap's own pause/play events settle state),
+      // and never clear `switching` here or the load-algorithm pause event
+      // would stop being consumed — desyncing the UI from the audio element.
       if (!switching) {
         set({ playing: false })
         setMediaSessionPlaybackState(false)
@@ -131,8 +136,8 @@ function updateMediaSession() {
     album: state.current.album,
     artwork: [{ src: artworkUrl(state.current.id, 512), sizes: '512x512' }],
   })
-  navigator.mediaSession.setActionHandler('play', () => togglePlay())
-  navigator.mediaSession.setActionHandler('pause', () => togglePlay())
+  navigator.mediaSession.setActionHandler('play', () => playAudio())
+  navigator.mediaSession.setActionHandler('pause', () => audio.pause())
   navigator.mediaSession.setActionHandler('previoustrack', () => prev())
   navigator.mediaSession.setActionHandler('nexttrack', () => next())
   navigator.mediaSession.setActionHandler('seekbackward', (d) => {
@@ -224,7 +229,7 @@ export function next() {
       // playing the last track while the UI state reports paused.
       audio.pause()
       switching = false
-      set({ playing: false, currentIndex: queue.length, progress: 0 })
+      set({ playing: false, currentIndex: Math.max(0, queue.length - 1), progress: 0 })
       return
     }
     idx = 0
@@ -240,7 +245,10 @@ export function prev() {
   if (queue.length === 0) return
   // Restart the current track if it has been playing for a while.
   if (progress > 3) {
-    audio.currentTime = 0
+    if (audio.readyState > 0) {
+      audio.currentTime = 0
+    }
+    set({ progress: 0 })
     return
   }
   const idx = currentIndex > 0 ? currentIndex - 1 : 0
@@ -253,7 +261,7 @@ export function prev() {
 export function seek(seconds) {
   if (!Number.isFinite(seconds)) return
   const duration = resolveDuration(audio.duration, state.duration, state.current?.duration ?? 0)
-  if (duration === 0) {
+  if (duration === 0 || audio.readyState === 0) {
     // Metadata not loaded yet (or the stream reports no duration): use the
     // seekable range as a last resort, otherwise defer until metadata loads.
     let seekable = 0
@@ -263,7 +271,7 @@ export function seek(seconds) {
     } catch {
       /* not available */
     }
-    if (seekable > 0) {
+    if (seekable > 0 && audio.readyState > 0) {
       const target = Math.min(Math.max(seconds, 0), seekable)
       audio.currentTime = target
       set({ progress: target, duration: seekable })
@@ -271,11 +279,14 @@ export function seek(seconds) {
       return
     }
     state.pendingSeek = seconds
+    set({ progress: Math.max(seconds, 0) })
     return
   }
   state.pendingSeek = null
   const target = Math.min(Math.max(seconds, 0), duration)
-  audio.currentTime = target
+  if (audio.readyState > 0) {
+    audio.currentTime = target
+  }
   set({ progress: target })
 }
 

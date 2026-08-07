@@ -84,6 +84,10 @@ func handleStoreError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusForbidden, "Sem permissão")
 		return
 	}
+	if errors.Is(err, store.ErrDuplicate) {
+		writeError(w, http.StatusConflict, "Já existe um usuário com esse e-mail, usuário ou telefone")
+		return
+	}
 	slog.Error("internal error", "err", err)
 	writeError(w, http.StatusInternalServerError, "Erro interno")
 }

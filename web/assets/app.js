@@ -1005,8 +1005,8 @@ function renderLogin(container) {
   const toggle = el(
     'div',
     { class: 'login-toggle' },
-    el('button', { class: `login-toggle-btn ${loginMode === 'client' ? 'active' : ''}`, onclick: () => { loginMode = 'client'; render() } }, 'Cliente'),
-    el('button', { class: `login-toggle-btn ${loginMode === 'admin' ? 'active' : ''}`, onclick: () => { loginMode = 'admin'; render() } }, 'Administrador'),
+    el('button', { class: `login-toggle-btn ${loginMode === 'client' ? 'active' : ''}`, 'aria-pressed': loginMode === 'client' ? 'true' : 'false', onclick: () => { loginMode = 'client'; render() } }, 'Cliente'),
+    el('button', { class: `login-toggle-btn ${loginMode === 'admin' ? 'active' : ''}`, 'aria-pressed': loginMode === 'admin' ? 'true' : 'false', onclick: () => { loginMode = 'admin'; render() } }, 'Administrador'),
   )
 
   const phoneInput = loginMode === 'client'
@@ -1196,7 +1196,7 @@ function bottomBar(refs) {
 
   const likeBtn = el(
     'button',
-    { class: `icon-btn ${current.liked ? 'liked' : ''}`, style: current.liked ? 'color:var(--accent)' : '', 'aria-label': current.liked ? 'Descurtir' : 'Curtir', onclick: (e) => { e.stopPropagation(); toggleLikeCurrent() } },
+    { class: `icon-btn ${current.liked ? 'liked' : ''}`, style: current.liked ? 'color:var(--accent)' : '', 'aria-label': current.liked ? 'Descurtir' : 'Curtir', 'aria-pressed': current.liked ? 'true' : 'false', onclick: (e) => { e.stopPropagation(); toggleLikeCurrent() } },
     icon('heart'),
   )
 
@@ -1235,13 +1235,13 @@ function bottomBar(refs) {
       el(
         'div',
         { class: 'player-buttons' },
-        el('button', { class: `player-btn ${shuffle ? 'active' : ''}`, 'aria-label': 'Aleatório', onclick: player.toggleShuffle }, icon('shuffle')),
+        el('button', { class: `player-btn ${shuffle ? 'active' : ''}`, 'aria-label': 'Aleatório', 'aria-pressed': shuffle ? 'true' : 'false', onclick: player.toggleShuffle }, icon('shuffle')),
         el('button', { class: 'player-btn', 'aria-label': 'Anterior', onclick: player.prev }, icon('prev')),
         el('button', { class: 'player-btn', 'aria-label': 'Retroceder 5 segundos', onclick: () => player.seekBy(-5) }, icon('rewind5')),
-        el('button', { class: 'player-btn-main', 'aria-label': playing ? 'Pausar' : 'Tocar', onclick: player.togglePlay }, playing ? icon('pause') : icon('play')),
+        el('button', { class: 'player-btn-main', 'aria-label': playing ? 'Pausar' : 'Tocar', 'aria-pressed': playing ? 'true' : 'false', onclick: player.togglePlay }, playing ? icon('pause') : icon('play')),
         el('button', { class: 'player-btn', 'aria-label': 'Avançar 5 segundos', onclick: () => player.seekBy(5) }, icon('forward5')),
         el('button', { class: 'player-btn', 'aria-label': 'Próxima', onclick: player.next }, icon('next')),
-        el('button', { class: `player-btn ${repeat ? 'active' : ''}`, 'aria-label': 'Repetir', onclick: player.toggleRepeat }, icon('repeat')),
+        el('button', { class: `player-btn ${repeat ? 'active' : ''}`, 'aria-label': 'Repetir', 'aria-pressed': repeat ? 'true' : 'false', onclick: player.toggleRepeat }, icon('repeat')),
       ),
       el(
         'div',
@@ -1361,7 +1361,7 @@ function fullscreenPlayer(refs) {
         ),
         el(
           'button',
-          { class: `btn-icon-lg ${current.liked ? 'liked' : ''}`, 'aria-label': current.liked ? 'Descurtir' : 'Curtir', onclick: toggleLikeCurrent },
+          { class: `btn-icon-lg ${current.liked ? 'liked' : ''}`, 'aria-label': current.liked ? 'Descurtir' : 'Curtir', 'aria-pressed': current.liked ? 'true' : 'false', onclick: toggleLikeCurrent },
           icon('heart'),
         ),
       ),
@@ -1375,13 +1375,13 @@ function fullscreenPlayer(refs) {
       el(
         'div',
         { class: 'fullscreen-buttons' },
-        el('button', { class: `player-btn ${shuffle ? 'active' : ''}`, 'aria-label': 'Aleatório', onclick: player.toggleShuffle }, icon('shuffle')),
+        el('button', { class: `player-btn ${shuffle ? 'active' : ''}`, 'aria-label': 'Aleatório', 'aria-pressed': shuffle ? 'true' : 'false', onclick: player.toggleShuffle }, icon('shuffle')),
         el('button', { class: 'player-btn', 'aria-label': 'Anterior', onclick: player.prev }, icon('prev')),
         el('button', { class: 'player-btn', 'aria-label': 'Retroceder 5 segundos', onclick: () => player.seekBy(-5) }, icon('rewind5')),
-        el('button', { class: 'fullscreen-btn-main', 'aria-label': playing ? 'Pausar' : 'Tocar', onclick: player.togglePlay }, playing ? icon('pause') : icon('play')),
+        el('button', { class: 'fullscreen-btn-main', 'aria-label': playing ? 'Pausar' : 'Tocar', 'aria-pressed': playing ? 'true' : 'false', onclick: player.togglePlay }, playing ? icon('pause') : icon('play')),
         el('button', { class: 'player-btn', 'aria-label': 'Avançar 5 segundos', onclick: () => player.seekBy(5) }, icon('forward5')),
         el('button', { class: 'player-btn', 'aria-label': 'Próxima', onclick: player.next }, icon('next')),
-        el('button', { class: `player-btn ${repeat ? 'active' : ''}`, 'aria-label': 'Repetir', onclick: player.toggleRepeat }, icon('repeat')),
+        el('button', { class: `player-btn ${repeat ? 'active' : ''}`, 'aria-label': 'Repetir', 'aria-pressed': repeat ? 'true' : 'false', onclick: player.toggleRepeat }, icon('repeat')),
       ),
     ),
   )

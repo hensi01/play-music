@@ -32,7 +32,7 @@ func scanUser(row pgx.Row) (*model.User, error) {
 
 // CreateUser creates a user with a pre-hashed password and category grants.
 func (s *Store) CreateUser(ctx context.Context, u *model.User, passwordHash string, categoryIDs []string) error {
-	return dbTx(ctx, s, func(q queryer) error {
+	err := dbTx(ctx, s, func(q queryer) error {
 		if _, err := q.Exec(ctx, `
 			INSERT INTO users (id, username, email, phone, name, password_hash, is_admin, created_at)
 			VALUES ($1, NULLIF($2, ''), $3, NULLIF($4, ''), $5, $6, $7, now())`,
@@ -41,6 +41,10 @@ func (s *Store) CreateUser(ctx context.Context, u *model.User, passwordHash stri
 		}
 		return setUserCategories(ctx, q, u.ID, categoryIDs)
 	})
+	if isUniqueViolation(err) {
+		return ErrDuplicate
+	}
+	return err
 }
 
 // GrantUserCategories adds categories to a user without removing the ones
@@ -165,7 +169,7 @@ type UserPatch struct {
 // pointer (even "") sets/clears the value (needed when switching a user
 // between admin and client). Password/categories are explicit.
 func (s *Store) UpdateUser(ctx context.Context, id string, p UserPatch) error {
-	return dbTx(ctx, s, func(q queryer) error {
+	err := dbTx(ctx, s, func(q queryer) error {
 		if p.Name != "" {
 			if _, err := q.Exec(ctx, "UPDATE users SET name=$2 WHERE id=$1", id, p.Name); err != nil {
 				return err
@@ -203,6 +207,10 @@ func (s *Store) UpdateUser(ctx context.Context, id string, p UserPatch) error {
 		}
 		return nil
 	})
+	if isUniqueViolation(err) {
+		return ErrDuplicate
+	}
+	return err
 }
 
 func (s *Store) DeleteUser(ctx context.Context, id string) error {
