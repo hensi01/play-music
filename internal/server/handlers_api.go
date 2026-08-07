@@ -416,7 +416,9 @@ func (s *Server) handleReorderPlaylistTracks(w http.ResponseWriter, r *http.Requ
 // ---------- liked ----------
 
 func (s *Server) handleLiked(w http.ResponseWriter, r *http.Request) {
-	songs, err := s.store.LikedSongs(r.Context(), userIDOf(r.Context()), 100)
+	// Likes are owner-scoped: the real user id is the owner; the access
+	// filter uses filterUser so admins ("" ) see everything they liked.
+	songs, err := s.store.LikedSongs(r.Context(), userIDOf(r.Context()), s.filterUser(r), 100)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -443,7 +445,10 @@ func (s *Server) handleUnlike(w http.ResponseWriter, r *http.Request) {
 // ---------- history ----------
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
-	songs, err := s.store.HistorySongs(r.Context(), userIDOf(r.Context()), 50)
+	// History is owner-scoped (like likes/playlists): the real user id owns
+	// the history rows; the access filter uses filterUser so admins ("")
+	// see their whole history.
+	songs, err := s.store.HistorySongs(r.Context(), userIDOf(r.Context()), s.filterUser(r), 50)
 	if err != nil {
 		handleStoreError(w, err)
 		return

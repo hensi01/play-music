@@ -293,14 +293,20 @@ func (s *Store) TopSongsByArtist(ctx context.Context, userID, artistID string, l
 	return collectSongs(rows)
 }
 
-func (s *Store) LikedSongs(ctx context.Context, userID string, limit int) ([]model.Song, error) {
+// LikedSongs returns the songs the user liked. ownerID scopes the likes;
+// accessUserID drives the song access filter ("" for admins/unspecified).
+func (s *Store) LikedSongs(ctx context.Context, ownerID, accessUserID string, limit int) ([]model.Song, error) {
 	base := "SELECT " + songCols + ` FROM songs s
 		 JOIN user_likes ul ON ul.entity_type='song' AND ul.entity_id=s.id AND ul.user_id=$1`
-	args := []any{userID, limit}
-	if s.HasAccessFilter(userID) {
-		base += " AND s.id IN " + visibleSongSet("$1")
+	args := []any{ownerID}
+	limPh := "$2"
+	if s.HasAccessFilter(accessUserID) {
+		base += " AND s.id IN " + visibleSongSet("$2")
+		args = append(args, accessUserID)
+		limPh = "$3"
 	}
-	base += " ORDER BY ul.created_at DESC LIMIT $2"
+	base += " ORDER BY ul.created_at DESC LIMIT " + limPh
+	args = append(args, limit)
 	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
@@ -309,13 +315,16 @@ func (s *Store) LikedSongs(ctx context.Context, userID string, limit int) ([]mod
 	return collectSongs(rows)
 }
 
-func (s *Store) HistorySongs(ctx context.Context, userID string, limit int) ([]model.Song, error) {
+// HistorySongs returns the most recently played songs of ownerID. Access is
+// filtered by accessUserID ("" for admins/unspecified).
+func (s *Store) HistorySongs(ctx context.Context, ownerID, accessUserID string, limit int) ([]model.Song, error) {
 	base := "SELECT " + songCols + ` FROM songs s
 		 JOIN (SELECT song_id, max(played_at) AS last FROM history WHERE user_id=$1
 		       GROUP BY song_id ORDER BY last DESC LIMIT $2) h ON h.song_id = s.id`
-	args := []any{userID, limit}
-	if s.HasAccessFilter(userID) {
-		base += " AND s.id IN " + visibleSongSet("$1")
+	args := []any{ownerID, limit}
+	if s.HasAccessFilter(accessUserID) {
+		base += " AND s.id IN " + visibleSongSet("$3")
+		args = append(args, accessUserID)
 	}
 	base += " ORDER BY h.last DESC"
 	rows, err := s.pool.Query(ctx, base, args...)

@@ -26,9 +26,10 @@ func (s *Server) handleArtwork(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleStream serves GET /api/stream/{id}?format=mp3. Non-admin users can
-// only stream songs from granted categories. Native formats are redirected to
-// a signed URL (Bunny CDN or MinIO presigned); other formats (or an explicit
-// format=mp3) are transcoded with ffmpeg.
+// only stream songs from granted categories. Native formats are served
+// directly through this server with HTTP Range support (so seeking works
+// even though the Bunny CDN ignores Range requests for uncached content);
+// other formats (or an explicit format=mp3) are transcoded with ffmpeg.
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	songID := parseID(r)
@@ -68,10 +69,10 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url, err := s.stream.StreamURL(ctx, song)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Falha ao gerar URL de reprodução")
-		return
+	// Native format: proxy the bytes with Range support instead of
+	// redirecting to the CDN (whose pull zone drops Range on uncached
+	// content, breaking seek in <audio>).
+	if err := s.stream.ServeNative(ctx, w, r, song); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 	}
-	http.Redirect(w, r, url, http.StatusFound)
 }

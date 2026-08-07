@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -116,6 +117,91 @@ func (s *Service) StreamURL(ctx context.Context, song *model.Song) (string, erro
 		return s.CDNURL(song.Path), nil
 	}
 	return s.st.PresignedURL(ctx, song.Path, 15*time.Minute)
+}
+
+// mimeByFormat maps a stored song format to its Content-Type for ServeNative.
+var mimeByFormat = map[string]string{
+	"mp3": "audio/mpeg", "m4a": "audio/mp4", "aac": "audio/aac",
+	"ogg": "audio/ogg", "opus": "audio/ogg", "wav": "audio/wav",
+	"flac": "audio/flac",
+}
+
+// ServeNative streams a native-format song through w with full HTTP Range
+// support (206 responses), reading from the origin storage with ranged GETs.
+//
+// The Bunny CDN pull zone ignores Range requests for uncached content, which
+// makes <audio> seekable ranges empty and silently breaks seeking; proxying
+// the bytes through this server restores seeking regardless of the CDN.
+func (s *Service) ServeNative(ctx context.Context, w http.ResponseWriter, r *http.Request, song *model.Song) error {
+	info, err := s.st.Stat(ctx, song.Path)
+	if err != nil {
+		return err
+	}
+	if mime := mimeByFormat[song.Format]; mime != "" {
+		w.Header().Set("Content-Type", mime)
+	}
+	w.Header().Set("Accept-Ranges", "bytes")
+	reader := &objectSeeker{ctx: r.Context(), st: s.st, key: song.Path, size: info.Size}
+	http.ServeContent(w, r, filepath.Base(song.Path), info.LastModified, reader)
+	return nil
+}
+
+// objectSeeker is an io.ReadSeeker over an S3 object backed by ranged GETs.
+// Each seek lazily opens a new ranged request, so ServeContent can seek
+// around a large file without downloading it.
+type objectSeeker struct {
+	ctx    context.Context
+	st     *storage.Storage
+	key    string
+	size   int64
+	offset int64
+	rc     io.ReadCloser
+}
+
+func (o *objectSeeker) Read(p []byte) (int, error) {
+	if o.offset >= o.size {
+		return 0, io.EOF
+	}
+	if o.rc == nil {
+		rc, err := o.st.Open(o.ctx, o.key, o.offset, -1)
+		if err != nil {
+			return 0, err
+		}
+		o.rc = rc
+	}
+	n, err := o.rc.Read(p)
+	o.offset += int64(n)
+	if err == io.EOF {
+		o.close()
+	}
+	return n, err
+}
+
+func (o *objectSeeker) Seek(offset int64, whence int) (int64, error) {
+	var target int64
+	switch whence {
+	case io.SeekStart:
+		target = offset
+	case io.SeekCurrent:
+		target = o.offset + offset
+	case io.SeekEnd:
+		target = o.size + offset
+	default:
+		return 0, fmt.Errorf("objectSeeker: invalid whence %d", whence)
+	}
+	if target < 0 {
+		return 0, fmt.Errorf("objectSeeker: negative position %d", target)
+	}
+	o.close()
+	o.offset = target
+	return target, nil
+}
+
+func (o *objectSeeker) close() {
+	if o.rc != nil {
+		o.rc.Close()
+		o.rc = nil
+	}
 }
 
 // Transcode writes an mp3 version of the song to w, using the on-disk cache

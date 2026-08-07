@@ -433,28 +433,82 @@ async function renderHome(container) {
 
 // ---------- Search ----------
 
-let searchBusy = false
+// searchSeq guards against stale responses: only the latest request may
+// write results (typing fast can leave several requests in flight).
+let searchSeq = 0
 let searchResults = null
 let searchQuery = ''
 let searchType = 'all'
 
+// runSearch updates ONLY the #search-results container. It must never call
+// render() — rebuilding the page would destroy the input mid-typing and the
+// next keystrokes would go nowhere (the "search freezes" bug).
 async function runSearch(q) {
   searchQuery = q
+  const seq = ++searchSeq
+  const resultsEl = document.getElementById('search-results')
   if (!q.trim()) {
     searchResults = null
-    searchBusy = false
-    render()
+    if (resultsEl) resultsEl.innerHTML = ''
     return
   }
-  searchBusy = true
-  render()
+  if (resultsEl) {
+    resultsEl.innerHTML = ''
+    resultsEl.append(spinner())
+  }
+  let results = null
   try {
-    searchResults = await endpoints.search(q, searchType)
+    results = await endpoints.search(q, searchType)
   } catch {
-    searchResults = null
-  } finally {
-    searchBusy = false
-    render()
+    results = null
+  }
+  if (seq !== searchSeq) return
+  searchResults = results
+  if (resultsEl) renderSearchResults(resultsEl, results)
+}
+
+function renderSearchResults(container, results) {
+  container.innerHTML = ''
+  if (!results) return
+  const songs = results.songs ?? []
+  const cats = results.categories ?? []
+  const pls = results.playlists ?? []
+  const all = searchType === 'all'
+  if ((all || searchType === 'songs') && songs.length > 0) {
+    const rows = songs.map((s, i) =>
+      trackRow(s, i, { onPlay: (_song, idx) => player.playContext(songs, idx) }),
+    )
+    container.append(
+      el('div', {},
+        el('h2', { class: 'section-title' }, 'Músicas'),
+        el('div', { class: 'track-list' }, ...rows),
+      ),
+    )
+  }
+  if ((all || searchType === 'categories') && cats.length > 0) {
+    container.append(
+      section(
+        'Categorias',
+        cats.map((c) => categoryCard(c)),
+      ),
+    )
+  }
+  if ((all || searchType === 'playlists') && pls.length > 0) {
+    container.append(
+      section(
+        'Playlists',
+        pls.map((p) =>
+          card({ image: artworkUrl(p.id, 300), title: p.name, subtitle: p.owner, onClick: () => navigate(`/playlist/${p.id}`) }),
+        ),
+      ),
+    )
+  }
+  const total =
+    (all || searchType === 'songs' ? songs.length : 0) +
+    (all || searchType === 'categories' ? cats.length : 0) +
+    (all || searchType === 'playlists' ? pls.length : 0)
+  if (total === 0) {
+    container.append(el('p', { class: 'empty-state' }, `Nada encontrado para “${searchQuery}”.`))
   }
 }
 
@@ -498,58 +552,20 @@ async function renderSearch(container) {
       typeSelect,
     ),
   )
+  const resultsEl = el('div', { id: 'search-results' })
+  page.append(resultsEl)
   container.append(page)
 
-  if (initial && searchQuery !== initial) await runSearch(initial)
-  if (searchBusy && !searchResults) {
-    page.append(spinner())
-    return
+  // Render the cached results without a refetch when possible; otherwise
+  // fire the search. Never await inside render: the container updates in
+  // place and the input keeps focus.
+  if (initial) {
+    if (searchResults && searchQuery === initial) renderSearchResults(resultsEl, searchResults)
+    else void runSearch(initial)
+  } else {
+    searchQuery = ''
+    renderSearchResults(resultsEl, null)
   }
-  if (!searchResults) return
-
-  const results = searchResults
-  const songs = results.songs ?? []
-  const cats = results.categories ?? []
-  const pls = results.playlists ?? []
-  const blocks = []
-  const all = searchType === 'all'
-  if ((all || searchType === 'songs') && songs.length > 0) {
-    const rows = songs.map((s, i) =>
-      trackRow(s, i, { onPlay: (_song, idx) => player.playContext(songs, idx) }),
-    )
-    blocks.push(
-      el('div', {},
-        el('h2', { class: 'section-title' }, 'Músicas'),
-        el('div', { class: 'track-list' }, ...rows),
-      ),
-    )
-  }
-  if ((all || searchType === 'categories') && cats.length > 0) {
-    blocks.push(
-      section(
-        'Categorias',
-        cats.map((c) => categoryCard(c)),
-      ),
-    )
-  }
-  if ((all || searchType === 'playlists') && pls.length > 0) {
-    blocks.push(
-      section(
-        'Playlists',
-        pls.map((p) =>
-          card({ image: artworkUrl(p.id, 300), title: p.name, subtitle: p.owner, onClick: () => navigate(`/playlist/${p.id}`) }),
-        ),
-      ),
-    )
-  }
-  const total =
-    (all || searchType === 'songs' ? songs.length : 0) +
-    (all || searchType === 'categories' ? cats.length : 0) +
-    (all || searchType === 'playlists' ? pls.length : 0)
-  if (total === 0) {
-    blocks.push(el('p', { class: 'empty-state' }, `Nada encontrado para “${searchQuery}”.`))
-  }
-  page.append(...blocks)
 }
 
 // ---------- Library ----------
