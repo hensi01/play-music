@@ -1,8 +1,10 @@
 # Loop State — My Project
 
-Last run: 2026-08-07T17:45:00Z (commits + push; frontend design overhaul complete)
+Last run: 2026-08-07 (delete categoria "music" — COMMITTED f9e2dcc + pushed)
 
 ## High Priority (loop is acting or waiting on human)
+
+0. **DELETE categoria "music"** → **DONE + COMMITTED (f9e2dcc, pushed)**: migration `0008_delete_music_category.sql` (`DELETE FROM categories WHERE lower(name)='music'`, CASCADE limpa category_songs/user_categories) + scanner.go ignora gênero "music" (case-insensitive) na criação automática de categorias. Evidência: `go build`/`go vet` OK, `go test ./...` OK (phone, stream), verifier APROVADO. Gap não bloqueante: admin ainda pode recriar/renomear para "music" via painel (decisão humana pendente).
 
 1. ~~**Uncommitted WIP in `web/assets/player.js`**~~ → **COMMITTED (152fc66, pushed)**: playAudio() catch desync fixed (guard `if (!switching)` restored); volume 0.8, direct mediaSession handlers, readyState guards, end-of-queue clamp, optimistic pending-seek all validated and live.
 2. ~~**ORIGINAL_REQUEST.md acceptance criteria unverified**~~ → **RESOLVED + COMMITTED**: all 6 checkboxes ticked with evidence (loop-reports/qa-r1r3.md). C4 admin render fully covered by T4 (loop-reports/qa-v116.md).
@@ -23,4 +25,4 @@ Last run: 2026-08-07T17:45:00Z (commits + push; frontend design overhaul complet
 - Optional: self-hosted WOFF2 webfont (offline-safe) — decided against in design-proposal, revisitable.
 
 ---
-Run log: 2026-08-07T17:45:00Z — commits 152fc66 (fixes+design) e 6b8de1a2 (loop infra+reports) pushed to origin/master; working tree clean.
+Run log: 2026-08-07 — delete categoria "music": commit f9e2dcc (migration 0008 + guard do scanner) merged em master e pushed to origin/master; working tree clean.
