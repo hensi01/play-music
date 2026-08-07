@@ -64,7 +64,7 @@ func (s *Store) GetArtist(ctx context.Context, id string) (*model.Artist, error)
 func (s *Store) SearchArtists(ctx context.Context, userID, q string, limit int) ([]model.Artist, error) {
 	like := likePattern(q)
 	base := "SELECT " + artistCols + ` FROM artists a
-		WHERE a.name ILIKE $1 ESCAPE '\'`
+		WHERE unaccent(a.name) ILIKE unaccent($1) ESCAPE '\'`
 	args := []any{like}
 	limPh := "$2"
 	if s.HasAccessFilter(userID) {

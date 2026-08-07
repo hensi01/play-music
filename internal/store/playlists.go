@@ -37,7 +37,7 @@ func (s *Store) SearchPlaylists(ctx context.Context, userID, q string, limit int
 	like := likePattern(q)
 	rows, err := s.pool.Query(ctx,
 		"SELECT "+playlistCols+` FROM playlists p
-		 WHERE p.user_id=$1 AND p.name ILIKE $2 ESCAPE '\' ORDER BY p.name LIMIT $3`,
+		 WHERE p.user_id=$1 AND unaccent(p.name) ILIKE unaccent($2) ESCAPE '\' ORDER BY p.name LIMIT $3`,
 		userID, like, limit)
 	if err != nil {
 		return nil, err

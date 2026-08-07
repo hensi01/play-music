@@ -184,7 +184,9 @@ func (s *Store) RegisterPlay(ctx context.Context, userID, songID string) error {
 func (s *Store) SearchSongs(ctx context.Context, userID, q string, limit int) ([]model.Song, error) {
 	like := likePattern(q)
 	base := "SELECT " + songCols + ` FROM songs s
-		 WHERE (s.title ILIKE $1 ESCAPE '\' OR s.artist ILIKE $1 ESCAPE '\' OR s.album ILIKE $1 ESCAPE '\')`
+		 WHERE (unaccent(s.title) ILIKE unaccent($1) ESCAPE '\'
+		     OR unaccent(s.artist) ILIKE unaccent($1) ESCAPE '\'
+		     OR unaccent(s.album) ILIKE unaccent($1) ESCAPE '\')`
 	args := []any{like}
 	limPh := "$2"
 	if s.HasAccessFilter(userID) {

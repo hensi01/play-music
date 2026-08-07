@@ -62,8 +62,27 @@ func (s *Server) handleStoreRegister(w http.ResponseWriter, r *http.Request) {
 			handleStoreError(w, err)
 			return
 		}
+	} else if u.IsAdmin {
+		writeError(w, http.StatusBadRequest, "Este telefone pertence a uma conta de administrador")
+		return
 	}
-	if err := s.store.GrantUserCategories(ctx, u.ID, req.CategoryIDs); err != nil {
+	// Only grant categories that actually exist (ignore invalid ids).
+	valid, err := s.store.GetCategories(ctx)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	validIDs := make(map[string]bool, len(valid))
+	for _, c := range valid {
+		validIDs[c.ID] = true
+	}
+	var grantIDs []string
+	for _, cid := range req.CategoryIDs {
+		if validIDs[cid] {
+			grantIDs = append(grantIDs, cid)
+		}
+	}
+	if err := s.store.GrantUserCategories(ctx, u.ID, grantIDs); err != nil {
 		handleStoreError(w, err)
 		return
 	}

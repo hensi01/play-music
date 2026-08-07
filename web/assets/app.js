@@ -464,7 +464,9 @@ const searchTypes = [
 async function renderSearch(container) {
   const { params } = parseHash()
   container.innerHTML = ''
-  const initial = params.get('genre') || ''
+  // Preserves the typed text across re-renders (searchQuery) or the genre
+  // filter coming from ?genre=.
+  const initial = params.get('genre') || searchQuery || ''
 
   const input = el('input', { class: 'search-input', placeholder: 'O que você quer ouvir?', value: initial })
   let debounce

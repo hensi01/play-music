@@ -128,7 +128,7 @@ func (s *Store) LikedAlbums(ctx context.Context, userID string, limit int) ([]mo
 func (s *Store) SearchAlbums(ctx context.Context, userID, q string, limit int) ([]model.Album, error) {
 	like := likePattern(q)
 	base := "SELECT " + albumCols + albumJoin +
-		` WHERE (a.name ILIKE $1 ESCAPE '\' OR a.artist ILIKE $1 ESCAPE '\')`
+		` WHERE (unaccent(a.name) ILIKE unaccent($1) ESCAPE '\' OR unaccent(a.artist) ILIKE unaccent($1) ESCAPE '\')`
 	args := []any{like}
 	limPh := "$2"
 	if s.HasAccessFilter(userID) {

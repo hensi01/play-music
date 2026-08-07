@@ -195,7 +195,7 @@ func (s *Store) SearchCategories(ctx context.Context, userID, q string, limit in
 	like := likePattern(q)
 	base := `SELECT c.id, c.name,
 			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id) AS song_count
-		FROM categories c WHERE c.name ILIKE $1 ESCAPE '\'`
+		FROM categories c WHERE unaccent(c.name) ILIKE unaccent($1) ESCAPE '\'`
 	args := []any{like}
 	limPh := "$2"
 	if s.HasAccessFilter(userID) {
