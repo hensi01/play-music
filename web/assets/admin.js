@@ -315,10 +315,12 @@ async function renderSongs(wrap) {
   adminState.songs = songs
   adminState.songCategoryIds = data.categoryIds ?? {}
   adminState.categoryNames = Object.fromEntries((data.categoryList ?? []).map((c) => [c.id, c.name]))
+  adminState.categories = data.categoryList ?? []
 
   wrap.append(
     el('div', { class: 'admin-toolbar' },
       el('button', { class: 'btn-accent', onclick: uploadForm }, 'Enviar música'),
+      el('button', { class: 'btn-secondary', onclick: uploadFolderForm }, 'Enviar pasta'),
     ),
   )
 
@@ -463,6 +465,147 @@ function uploadForm() {
       btn.disabled = false
       btn.textContent = 'Enviar'
     }
+  }
+}
+
+// Audio extensions accepted by the folder batch (same list as the scanner).
+const FOLDER_AUDIO_EXTS = ['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus', '.wav', '.wma', '.aiff', '.aif', '.wv', '.tak', '.ape']
+
+function folderAudioExt(name) {
+  const i = name.lastIndexOf('.')
+  if (i < 0) return ''
+  return name.slice(i).toLowerCase()
+}
+
+function fmtMB(bytes) {
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+}
+
+function uploadFolderForm() {
+  // webkitdirectory lets the user pick a whole folder; each File keeps its
+  // relative path but only the audio files matter here.
+  const fileInput = el('input', { class: 'upload-file-input', type: 'file', webkitdirectory: true, multiple: true })
+  const dropzone = el(
+    'div',
+    { class: 'upload-dropzone' },
+    el('span', { class: 'upload-dropzone-icon', html: '&#128193;' }),
+    el('p', { class: 'upload-dropzone-title' }, 'Selecione a pasta de músicas ou arraste aqui'),
+    el('p', { class: 'upload-dropzone-hint' }, 'Todas as músicas (mp3, flac, m4a, ogg, wav…) serão enviadas em sequência'),
+  )
+  dropzone.addEventListener('click', () => fileInput.click())
+  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag') })
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'))
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault()
+    dropzone.classList.remove('drag')
+    if (e.dataTransfer.files.length) fileInput.files = e.dataTransfer.files
+    updateFiles()
+  })
+  fileInput.addEventListener('change', updateFiles)
+
+  let selected = []
+  function updateFiles() {
+    selected = Array.from(fileInput.files || []).filter((f) => FOLDER_AUDIO_EXTS.includes(folderAudioExt(f.name)))
+    const total = selected.reduce((acc, f) => acc + f.size, 0)
+    dropzone.classList.toggle('has-file', selected.length > 0)
+    if (selected.length === 0) {
+      dropzone.querySelector('.upload-dropzone-title').textContent = 'Nenhum arquivo de áudio encontrado'
+      dropzone.querySelector('.upload-dropzone-hint').textContent = 'Escolha outra pasta'
+    } else {
+      dropzone.querySelector('.upload-dropzone-title').textContent = `${selected.length} ${selected.length === 1 ? 'música' : 'músicas'} na pasta`
+      dropzone.querySelector('.upload-dropzone-hint').textContent = `Total de ${fmtMB(total)}`
+    }
+    updateStartBtn()
+  }
+
+  const catSelect = el('select', { class: 'form-input' },
+    el('option', { value: '' }, 'Selecione a categoria…'),
+    ...adminState.categories.map((c) => el('option', { value: c.id }, c.name)),
+  )
+  catSelect.addEventListener('change', updateStartBtn)
+
+  const statusEl = el('p', { class: 'login-error' })
+  const progressWrap = el('div', { class: 'upload-progress', style: 'display:none' },
+    el('div', { class: 'upload-progress-bar' }, el('div', { class: 'upload-progress-fill', style: 'width:0%' })),
+    el('p', { class: 'upload-progress-text' }, ''),
+  )
+  const failsEl = el('div', { class: 'upload-fails', style: 'display:none' })
+
+  const overlay = el('div', { class: 'modal-overlay' },
+    el('div', { class: 'modal modal-upload' },
+      el('h3', {}, 'Enviar pasta'),
+      dropzone,
+      fileInput,
+      el('div', { class: 'modal-section-label' }, 'Categoria das músicas'),
+      catSelect,
+      el('p', { class: 'upload-info' }, 'Todas as músicas da pasta entram nesta categoria. Título, artista e capa embutida vêm das tags do arquivo.'),
+      statusEl,
+      progressWrap,
+      failsEl,
+      el('div', { class: 'modal-actions' },
+        el('button', { class: 'btn-accent', id: 'folder-upload-start', onclick: start }, 'Enviar'),
+        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
+      ),
+    ),
+  )
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+  document.body.append(overlay)
+
+  const startBtn = overlay.querySelector('#folder-upload-start')
+  const fillEl = progressWrap.querySelector('.upload-progress-fill')
+  const textEl = progressWrap.querySelector('.upload-progress-text')
+
+  function updateStartBtn() {
+    startBtn.disabled = selected.length === 0 || !catSelect.value
+  }
+
+  async function start() {
+    if (selected.length === 0) {
+      statusEl.textContent = 'Selecione uma pasta com músicas.'
+      statusEl.classList.add('login-error')
+      return
+    }
+    if (!catSelect.value) {
+      statusEl.textContent = 'Escolha uma categoria para as músicas.'
+      statusEl.classList.add('login-error')
+      return
+    }
+    statusEl.textContent = ''
+    statusEl.classList.remove('login-error', 'upload-info')
+    progressWrap.style.display = ''
+    failsEl.style.display = 'none'
+    failsEl.innerHTML = ''
+    startBtn.disabled = true
+    const cancelBtn = overlay.querySelector('.btn-secondary')
+    cancelBtn.disabled = true
+    cancelBtn.textContent = 'Aguarde…'
+
+    let ok = 0
+    const fails = []
+    for (let i = 0; i < selected.length; i++) {
+      const f = selected[i]
+      textEl.textContent = `Enviando ${i + 1} de ${selected.length}: ${f.name} (${fmtMB(f.size)})`
+      fillEl.style.width = `${Math.round((i / selected.length) * 100)}%`
+      const fd = new FormData()
+      fd.append('song', f)
+      fd.append('categoryId', catSelect.value)
+      try {
+        await endpoints.admin.uploadSong(fd)
+        ok++
+      } catch (err) {
+        fails.push({ name: f.name, msg: err.message })
+        failsEl.style.display = ''
+        const row = el('p', { class: 'upload-fail' }, '✕ ', el('strong', {}, f.name), ` — ${err.message}`)
+        failsEl.append(row)
+      }
+    }
+    fillEl.style.width = '100%'
+    textEl.textContent = `Concluído: ${ok} ${ok === 1 ? 'música enviada' : 'músicas enviadas'}${fails.length ? `, ${fails.length} ${fails.length === 1 ? 'falha' : 'falhas'}` : ''}.`
+    startBtn.disabled = false
+    startBtn.textContent = 'Fechar'
+    startBtn.onclick = () => overlay.remove()
+    cancelBtn.style.display = 'none'
+    refreshApp()
   }
 }
 

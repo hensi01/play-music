@@ -2,7 +2,9 @@
 
 import { api, endpoints, artworkUrl, getToken, setToken, readAppConfig, applyPhoneMask, phoneMask } from './api.js'
 import * as player from './player.js'
-import { renderAdmin } from './admin.js'
+// admin.js is imported with the build version so the service worker (which
+// caches by URL) never serves a stale copy after a redeploy.
+const { renderAdmin } = await import(`./admin.js?v=${readAppConfig().version}`)
 
 const appConfig = readAppConfig()
 
