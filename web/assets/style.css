@@ -577,7 +577,7 @@ img {
   height: 40px;
   border-radius: 4px;
   object-fit: cover;
-  display: none;
+  display: block;
 }
 
 .track-info {
@@ -586,9 +586,10 @@ img {
 
 .track-title {
   margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 14px;
   font-weight: 500;
 }
@@ -1123,9 +1124,10 @@ img {
 
 .now-playing-title {
   margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 14px;
   font-weight: 500;
 }
