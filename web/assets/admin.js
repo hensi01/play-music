@@ -420,6 +420,7 @@ function uploadForm() {
       el('div', { class: 'modal-section-label' }, 'Foto da música (opcional)'),
       photoDrop,
       photoInput,
+      el('p', { class: 'upload-info' }, 'Se o arquivo tiver capa embutida, ela é usada automaticamente. Uma foto enviada aqui substitui a embutida.'),
       statusEl,
       el('div', { class: 'modal-actions' },
         el('button', { class: 'btn-accent', onclick: submit }, 'Enviar'),

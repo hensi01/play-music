@@ -290,6 +290,12 @@ func (s *Scanner) indexAudio(ctx context.Context, a audioObj, prev store.SongFil
 		if mime == "" {
 			mime = "image/jpeg"
 		}
+		// Cover embedded in the file: link it to the SONG itself so every
+		// track keeps its own artwork (uploads + bucket scans).
+		if err := s.store.UpsertArt(ctx, "song", song.ID, tags.Picture.Data, mime); err != nil {
+			s.log.Warn("art upsert", "song", song.ID, "err", err)
+		}
+		// Keep the album-level cover as a fallback for songs without art.
 		if err := s.store.UpsertArt(ctx, "album", albumID, tags.Picture.Data, mime); err != nil {
 			s.log.Warn("art upsert", "album", albumID, "err", err)
 		}
