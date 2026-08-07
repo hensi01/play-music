@@ -1014,7 +1014,7 @@ function renderLogin(container) {
     : null
   if (phoneInput) phoneInput.addEventListener('input', () => applyPhoneMask(phoneInput))
   const usernameInput = loginMode === 'admin'
-    ? el('input', { class: 'form-input', type: 'text', placeholder: 'Usuário', autofocus: true, autocomplete: 'username' })
+    ? el('input', { class: 'form-input', type: 'text', placeholder: 'Usuário ou e-mail', autofocus: true, autocomplete: 'username' })
     : null
   const passwordInput = loginMode === 'admin'
     ? el('input', { class: 'form-input', type: 'password', placeholder: 'Senha', autocomplete: 'current-password' })

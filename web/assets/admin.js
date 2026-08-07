@@ -100,26 +100,48 @@ async function renderUsers(wrap) {
 
 function userForm(existing) {
   const isEdit = !!existing
+  let isAdmin = !!existing?.isAdmin
   const nameInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Nome', value: existing?.name ?? '', autocomplete: 'name' })
   const phoneInput = el('input', { class: 'form-input', type: 'tel', inputmode: 'numeric', placeholder: 'Telefone (99) 99999-9999', value: existing && !existing.isAdmin ? existing.phone : '', autocomplete: 'tel' })
   phoneInput.addEventListener('input', () => applyPhoneMask(phoneInput))
+  const usernameInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Usuário', value: existing?.username ?? '', autocomplete: 'username' })
+  const emailInput = el('input', { class: 'form-input', type: 'email', placeholder: 'E-mail', value: existing?.email ?? '', autocomplete: 'email' })
   const passInput = el('input', { class: 'form-input', type: 'password', placeholder: isEdit ? 'Nova senha (opcional)' : 'Senha', autocomplete: 'new-password' })
   const errorEl = el('p', { class: 'login-error' })
 
-  const catBoxes = adminState.categories.map((c) => {
-    const box = el('input', { type: 'checkbox', id: `cat-${c.id}` })
-    if ((existing?.categories ?? []).some((cc) => cc.id === c.id)) box.checked = true
-    return el('label', { class: 'modal-check', style: 'display:block' }, box, el('span', {}, c.name))
-  })
+  const adminFields = el('div', {}, usernameInput, emailInput, passInput)
+  const clientFields = el('div', {}, phoneInput)
+
+  const catLabel = el('div', { class: 'modal-section-label' }, 'Categorias liberadas')
+  const catsWrap = el('div', {},
+    adminState.categories.map((c) => {
+      const box = el('input', { type: 'checkbox', id: `cat-${c.id}` })
+      if ((existing?.categories ?? []).some((cc) => cc.id === c.id)) box.checked = true
+      return el('label', { class: 'modal-check', style: 'display:block' }, box, el('span', {}, c.name))
+    }),
+  )
+
+  const adminBtn = el('button', { class: 'login-toggle-btn', onclick: () => { isAdmin = true; sync() } }, 'Administrador')
+  const clientBtn = el('button', { class: 'login-toggle-btn', onclick: () => { isAdmin = false; sync() } }, 'Cliente')
+
+  function sync() {
+    adminBtn.classList.toggle('active', isAdmin)
+    clientBtn.classList.toggle('active', !isAdmin)
+    adminFields.style.display = isAdmin ? '' : 'none'
+    clientFields.style.display = isAdmin ? 'none' : ''
+    catLabel.style.display = isAdmin ? 'none' : ''
+    catsWrap.style.display = isAdmin ? 'none' : ''
+  }
 
   const overlay = el('div', { class: 'modal-overlay' },
     el('div', { class: 'modal' },
       el('h3', {}, isEdit ? 'Editar usuário' : 'Novo usuário'),
+      el('div', { class: 'login-toggle' }, clientBtn, adminBtn),
       nameInput,
-      existing?.isAdmin ? null : phoneInput,
-      passInput,
-      el('div', { class: 'modal-section-label' }, 'Categorias liberadas'),
-      ...catBoxes,
+      clientFields,
+      adminFields,
+      catLabel,
+      catsWrap,
       errorEl,
       el('div', { class: 'modal-actions' },
         el('button', { class: 'btn-accent', onclick: save }, 'Salvar'),
@@ -129,13 +151,19 @@ function userForm(existing) {
   )
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
   document.body.append(overlay)
+  sync()
 
   async function save() {
     errorEl.textContent = ''
-    const categoryIds = [...overlay.querySelectorAll('input[type=checkbox]:checked')].map((b) => b.id.slice(4))
-    const payload = { name: nameInput.value.trim(), categoryIds }
-    if (!existing?.isAdmin) payload.phone = phoneInput.value.trim()
-    if (passInput.value) payload.password = passInput.value
+    const payload = { name: nameInput.value.trim(), isAdmin }
+    if (isAdmin) {
+      payload.username = usernameInput.value.trim()
+      payload.email = emailInput.value.trim()
+      if (passInput.value) payload.password = passInput.value
+    } else {
+      payload.phone = phoneInput.value.trim()
+      payload.categoryIds = [...overlay.querySelectorAll('input[type=checkbox]:checked')].map((b) => b.id.slice(4))
+    }
     try {
       if (isEdit) await endpoints.admin.updateUser(existing.id, payload)
       else await endpoints.admin.createUser(payload)

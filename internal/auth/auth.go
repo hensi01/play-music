@@ -80,9 +80,9 @@ func (a *Auth) bootstrapAdmin(ctx context.Context) error {
 	return a.store.BackfillLegacy(ctx, admin.ID)
 }
 
-// LoginUsername validates admin credentials (username from env-created account).
+// LoginUsername validates admin credentials (username or e-mail + password).
 func (a *Auth) LoginUsername(ctx context.Context, username, password string) (model.User, string, error) {
-	u, hash, err := a.store.GetUserByUsername(ctx, username)
+	u, hash, err := a.store.GetUserByUsernameOrEmail(ctx, username)
 	if errors.Is(err, store.ErrNotFound) {
 		return model.User{}, "", errors.New("usuário ou senha inválidos")
 	}

@@ -515,8 +515,10 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 type adminUserRequest struct {
 	Name        string   `json:"name"`
 	Username    string   `json:"username"`
+	Email       string   `json:"email"`
 	Phone       string   `json:"phone"`
 	Password    string   `json:"password"`
+	IsAdmin     bool     `json:"isAdmin"`
 	CategoryIDs []string `json:"categoryIds"`
 }
 
@@ -526,34 +528,61 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Requisição inválida")
 		return
 	}
-	if strings.TrimSpace(req.Phone) == "" {
-		writeError(w, http.StatusBadRequest, "Telefone é obrigatório")
-		return
+	ctx := r.Context()
+	u := &model.User{Name: strings.TrimSpace(req.Name), IsAdmin: req.IsAdmin}
+	var hash string
+	var err error
+
+	if req.IsAdmin {
+		// Administrador: usuário + senha + e-mail obrigatórios (sem telefone).
+		u.Username = strings.TrimSpace(req.Username)
+		u.Email = strings.TrimSpace(req.Email)
+		if u.Username == "" || u.Email == "" {
+			writeError(w, http.StatusBadRequest, "Administrador precisa de usuário e e-mail")
+			return
+		}
+		if req.Password == "" {
+			writeError(w, http.StatusBadRequest, "Senha é obrigatória")
+			return
+		}
+		hash, err = bcryptPassword(req.Password)
+		if err != nil {
+			handleStoreError(w, err)
+			return
+		}
+	} else {
+		// Cliente: somente telefone (acesso liberado pelas categorias).
+		if strings.TrimSpace(req.Phone) == "" {
+			writeError(w, http.StatusBadRequest, "Telefone é obrigatório")
+			return
+		}
+		normalized, err := phone.Normalize(req.Phone)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, phone.ErrInvalid.Error())
+			return
+		}
+		u.Phone = normalized
+		hash, err = bcryptPassword(randomSecret())
+		if err != nil {
+			handleStoreError(w, err)
+			return
+		}
 	}
-	if req.Password == "" {
-		writeError(w, http.StatusBadRequest, "Senha é obrigatória")
-		return
+	if u.Name == "" {
+		if u.Username != "" {
+			u.Name = u.Username
+		} else {
+			u.Name = u.Phone
+		}
 	}
-	normalized, err := phone.Normalize(req.Phone)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, phone.ErrInvalid.Error())
-		return
-	}
-	hash, err := bcryptPassword(req.Password)
-	if err != nil {
+	u.ID = store.NewID()
+	if err := s.store.CreateUser(ctx, u, hash, req.CategoryIDs); err != nil {
 		handleStoreError(w, err)
 		return
 	}
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		name = normalized
+	if u.Phone != "" {
+		u.Phone = phone.Format(u.Phone)
 	}
-	u := &model.User{ID: store.NewID(), Phone: normalized, Name: name, IsAdmin: false}
-	if err := s.store.CreateUser(r.Context(), u, hash, req.CategoryIDs); err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	u.Phone = phone.Format(u.Phone)
 	writeJSON(w, http.StatusCreated, u)
 }
 
@@ -570,16 +599,64 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Não é possível editar a própria conta aqui")
 		return
 	}
-	if _, err := s.store.GetUser(ctx, id); err != nil {
+	current, err := s.store.GetUser(ctx, id)
+	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
+
 	patch := store.UserPatch{
 		Name:          strings.TrimSpace(req.Name),
 		PasswordHash:  "",
 		SetCategories: req.CategoryIDs != nil,
 		CategoryIDs:   req.CategoryIDs,
 	}
+
+	// Guard: never demote the last admin (would lock the app out).
+	if current.IsAdmin && !req.IsAdmin {
+		adminCount := 0
+		if err := s.store.Pool().QueryRow(ctx, "SELECT count(*) FROM users WHERE is_admin").Scan(&adminCount); err != nil {
+			handleStoreError(w, err)
+			return
+		}
+		if adminCount <= 1 {
+			writeError(w, http.StatusBadRequest, "Não é possível remover o último administrador")
+			return
+		}
+	}
+
+	if req.IsAdmin {
+		// Vira/continua admin: usuário + e-mail (senha opcional na edição).
+		username := strings.TrimSpace(req.Username)
+		email := strings.TrimSpace(req.Email)
+		if username == "" {
+			username = current.Username
+		}
+		if email == "" {
+			email = current.Email
+		}
+		if username == "" || email == "" {
+			writeError(w, http.StatusBadRequest, "Administrador precisa de usuário e e-mail")
+			return
+		}
+		patch.Username = &username
+		patch.Email = &email
+		phone := ""
+		patch.Phone = &phone // limpa o telefone ao virar admin
+	} else {
+		// Cliente: telefone obrigatório; limpa usuário/e-mail.
+		normalized, err := phone.Normalize(strings.TrimSpace(req.Phone))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, phone.ErrInvalid.Error())
+			return
+		}
+		patch.Phone = &normalized
+		clear := ""
+		patch.Username = &clear
+		patch.Email = &clear
+	}
+	isAdmin := req.IsAdmin
+	patch.IsAdmin = &isAdmin
 	if req.Password != "" {
 		hash, err := bcryptPassword(req.Password)
 		if err != nil {
@@ -587,14 +664,6 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		patch.PasswordHash = hash
-	}
-	if req.Phone != "" {
-		normalized, err := phone.Normalize(req.Phone)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, phone.ErrInvalid.Error())
-			return
-		}
-		patch.Phone = normalized
 	}
 	if err := s.store.UpdateUser(ctx, id, patch); err != nil {
 		handleStoreError(w, err)

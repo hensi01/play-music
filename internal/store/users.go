@@ -9,17 +9,20 @@ import (
 	"play-music/internal/model"
 )
 
-const userCols = "id, username, phone, name, is_admin, created_at"
+const userCols = "id, username, email, phone, name, is_admin, created_at"
 
 func scanUser(row pgx.Row) (*model.User, error) {
 	var u model.User
-	var username, phone *string
-	err := row.Scan(&u.ID, &username, &phone, &u.Name, &u.IsAdmin, &u.CreatedAt)
+	var username, email, phone *string
+	err := row.Scan(&u.ID, &username, &email, &phone, &u.Name, &u.IsAdmin, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
 	if username != nil {
 		u.Username = *username
+	}
+	if email != nil {
+		u.Email = *email
 	}
 	if phone != nil {
 		u.Phone = *phone
@@ -31,9 +34,9 @@ func scanUser(row pgx.Row) (*model.User, error) {
 func (s *Store) CreateUser(ctx context.Context, u *model.User, passwordHash string, categoryIDs []string) error {
 	return dbTx(ctx, s, func(q queryer) error {
 		if _, err := q.Exec(ctx, `
-			INSERT INTO users (id, username, phone, name, password_hash, is_admin, created_at)
-			VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4, $5, $6, now())`,
-			u.ID, u.Username, u.Phone, u.Name, passwordHash, u.IsAdmin); err != nil {
+			INSERT INTO users (id, username, email, phone, name, password_hash, is_admin, created_at)
+			VALUES ($1, NULLIF($2, ''), $3, NULLIF($4, ''), $5, $6, $7, now())`,
+			u.ID, u.Username, u.Email, u.Phone, u.Name, passwordHash, u.IsAdmin); err != nil {
 			return err
 		}
 		return setUserCategories(ctx, q, u.ID, categoryIDs)
@@ -60,6 +63,25 @@ func (s *Store) GrantUserCategories(ctx context.Context, userID string, category
 func (s *Store) GetUserByUsername(ctx context.Context, username string) (*model.User, string, error) {
 	u, err := scanUser(s.pool.QueryRow(ctx,
 		"SELECT "+userCols+" FROM users WHERE username=$1", username))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, "", ErrNotFound
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	var hash string
+	if err := s.pool.QueryRow(ctx,
+		"SELECT password_hash FROM users WHERE id=$1", u.ID).Scan(&hash); err != nil {
+		return nil, "", err
+	}
+	return u, hash, nil
+}
+
+// GetUserByUsernameOrEmail resolves an admin login credential: username or
+// e-mail (both are valid admin identifiers).
+func (s *Store) GetUserByUsernameOrEmail(ctx context.Context, credential string) (*model.User, string, error) {
+	u, err := scanUser(s.pool.QueryRow(ctx,
+		"SELECT "+userCols+" FROM users WHERE username=$1 OR (email=$1 AND email <> '')", credential))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, "", ErrNotFound
 	}
@@ -130,15 +152,18 @@ func (s *Store) ListUsers(ctx context.Context) ([]model.User, error) {
 
 type UserPatch struct {
 	Name          string
-	Phone         string
-	Username      string
+	Phone         *string
+	Username      *string
+	Email         *string
 	PasswordHash  string
+	IsAdmin       *bool
 	CategoryIDs   []string
 	SetCategories bool
 }
 
-// UpdateUser applies a partial update; empty patch fields are ignored unless
-// explicitly requested (password, categories).
+// UpdateUser applies a partial update; nil pointer fields are ignored, a
+// pointer (even "") sets/clears the value (needed when switching a user
+// between admin and client). Password/categories are explicit.
 func (s *Store) UpdateUser(ctx context.Context, id string, p UserPatch) error {
 	return dbTx(ctx, s, func(q queryer) error {
 		if p.Name != "" {
@@ -146,13 +171,23 @@ func (s *Store) UpdateUser(ctx context.Context, id string, p UserPatch) error {
 				return err
 			}
 		}
-		if p.Phone != "" {
-			if _, err := q.Exec(ctx, "UPDATE users SET phone=$2 WHERE id=$1", id, p.Phone); err != nil {
+		if p.Phone != nil {
+			if _, err := q.Exec(ctx, "UPDATE users SET phone=NULLIF($2, '') WHERE id=$1", id, *p.Phone); err != nil {
 				return err
 			}
 		}
-		if p.Username != "" {
-			if _, err := q.Exec(ctx, "UPDATE users SET username=$2 WHERE id=$1", id, p.Username); err != nil {
+		if p.Username != nil {
+			if _, err := q.Exec(ctx, "UPDATE users SET username=NULLIF($2, '') WHERE id=$1", id, *p.Username); err != nil {
+				return err
+			}
+		}
+		if p.Email != nil {
+			if _, err := q.Exec(ctx, "UPDATE users SET email=$2 WHERE id=$1", id, *p.Email); err != nil {
+				return err
+			}
+		}
+		if p.IsAdmin != nil {
+			if _, err := q.Exec(ctx, "UPDATE users SET is_admin=$2 WHERE id=$1", id, *p.IsAdmin); err != nil {
 				return err
 			}
 		}
