@@ -176,6 +176,7 @@ function navigate(to) {
 
 function trackRow(song, index, opts = {}) {
   const { onPlay } = opts
+  const isCurrent = player.getPlayerState().current?.id === song.id
 
   const numCell = el(
     'div',
@@ -194,6 +195,7 @@ function trackRow(song, index, opts = {}) {
     'button',
     {
       class: `track-like ${song.liked ? 'liked' : ''}`,
+      'data-song-id': song.id,
       'aria-label': song.liked ? 'Descurtir' : 'Curtir',
       'aria-pressed': song.liked,
       onclick: () => toggleLike(song.id, likeBtn),
@@ -209,7 +211,7 @@ function trackRow(song, index, opts = {}) {
 
   return el(
     'div',
-    { class: 'track-row' },
+    { class: `track-row${isCurrent ? ' playing' : ''}`, 'data-song-id': song.id },
     numCell,
     el(
       'div',
@@ -291,6 +293,10 @@ async function toggleLike(songId, btn) {
     else await endpoints.unlike(songId)
   } catch {
     btn.classList.toggle('liked', wasLiked)
+  }
+  // Sincroniza a barra inferior quando a música curtida é a atual.
+  if (player.getPlayerState().current?.id === songId) {
+    player.setLiked(!wasLiked)
   }
 }
 
@@ -1506,6 +1512,63 @@ function refreshPlayerBar() {
     return
   }
   updateBarInPlace()
+  syncPagePlayerState()
+}
+
+// Sincroniza a página aberta com o estado do player (marker da fila, linha
+// em reprodução e corações) sem re-renderizar a página — assim a troca de
+// música por next/prev/fim reflete na fila e nas playlists na hora, e o
+// estado curtido fica consistente entre a barra e as listas.
+let lastPageStateKey = null
+
+function syncPagePlayerState() {
+  const s = player.getPlayerState()
+  const key = `${s.current?.id ?? ''}|${s.currentIndex}|${s.current?.liked ?? false}`
+  if (key === lastPageStateKey) return
+  lastPageStateKey = key
+
+  const currentId = s.current?.id
+
+  // Fila: move o marker para a linha do índice atual.
+  const list = document.querySelector('.track-list')
+  if (list && currentId) {
+    const oldWrap = list.querySelector('.queue-track-wrap')
+    if (oldWrap) {
+      const row = oldWrap.querySelector('.track-row')
+      if (row) oldWrap.replaceWith(row)
+    }
+    const target = list.querySelector(`.track-row[data-song-id="${CSS.escape(currentId)}"]`)
+    if (target && !target.closest('.queue-track-wrap')) {
+      const marker = el(
+        'span',
+        { class: 'queue-current-marker' },
+        el('span', { style: 'display:block;width:4px;height:12px;border-radius:2px;background:var(--accent)' }),
+      )
+      // Substitui a linha pelo wrapper e move a linha para dentro depois
+      // (anexar primeiro moveria a linha e o replaceWith falharia).
+      const wrap = el('div', { class: 'queue-track-wrap' }, marker)
+      target.replaceWith(wrap)
+      wrap.append(target)
+    }
+  }
+
+  // Todas as listas: linha em reprodução + corações sincronizados.
+  const likedById = new Map()
+  for (const q of s.queue) likedById.set(q.id, q.liked)
+  if (s.current) likedById.set(s.current.id, s.current.liked)
+  document.querySelectorAll('.track-row').forEach((row) => {
+    const id = row.dataset.songId
+    if (!id) return
+    row.classList.toggle('playing', id === currentId)
+    const liked = likedById.get(id)
+    if (liked === undefined) return
+    const isLiked = !!liked
+    const likeBtn = row.querySelector('.track-like')
+    if (!likeBtn) return
+    likeBtn.classList.toggle('liked', isLiked)
+    likeBtn.setAttribute('aria-label', isLiked ? 'Descurtir' : 'Curtir')
+    likeBtn.setAttribute('aria-pressed', String(isLiked))
+  })
 }
 
 player.subscribe(refreshPlayerBar)

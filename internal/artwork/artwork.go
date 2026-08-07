@@ -9,6 +9,7 @@ import (
 	"image/jpeg"
 	_ "image/gif"
 	_ "image/png"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,6 +21,7 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"play-music/internal/config"
+	"play-music/internal/storage"
 	"play-music/internal/store"
 )
 
@@ -31,6 +33,7 @@ const (
 type Service struct {
 	cfg         *config.Config
 	store       *store.Store
+	stg         *storage.Storage
 	log         *slog.Logger
 	dir         string
 	placeholder []byte
@@ -42,12 +45,12 @@ type cache interface {
 	Set(ctx context.Context, key string, data []byte)
 }
 
-func New(cfg *config.Config, st *store.Store, log *slog.Logger) (*Service, error) {
+func New(cfg *config.Config, st *store.Store, stg *storage.Storage, log *slog.Logger) (*Service, error) {
 	dir := "var/cache/art"
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	s := &Service{cfg: cfg, store: st, log: log, dir: dir}
+	s := &Service{cfg: cfg, store: st, stg: stg, log: log, dir: dir}
 	s.placeholder = s.makePlaceholder()
 	limit := cfg.ImageCacheSize
 	if limit <= 0 {
@@ -111,7 +114,7 @@ func (s *Service) writeImage(w http.ResponseWriter, data []byte) {
 
 // resolve finds artwork for an entity, following the fallback chain:
 // song (custom photo) -> album -> artist (first album) -> playlist (first
-// song album) -> song album cover.
+// song album) -> song album cover -> category (Postgres, then MinIO).
 func (s *Service) resolve(ctx context.Context, entityID string) (*store.Art, error) {
 	// Custom photo uploaded for a song (or album/artist entity directly).
 	if art, ok, err := s.store.GetArt(ctx, "song", entityID); err != nil || ok {
@@ -135,7 +138,32 @@ func (s *Service) resolve(ctx context.Context, entityID string) (*store.Art, err
 			return art, err
 		}
 	}
-	return nil, nil
+	return s.resolveCategory(ctx, entityID)
+}
+
+// resolveCategory looks up the category cover: Postgres first, then the
+// MinIO copy (covers/<id>.jpg) as a fallback/recovery path.
+func (s *Service) resolveCategory(ctx context.Context, entityID string) (*store.Art, error) {
+	if art, ok, err := s.store.GetArt(ctx, "category", entityID); err != nil || ok {
+		return art, err
+	}
+	if s.stg == nil {
+		return nil, nil
+	}
+	info, err := s.stg.Stat(ctx, "covers/"+entityID+".jpg")
+	if err != nil || info.Size <= 0 {
+		return nil, nil
+	}
+	rc, err := s.stg.Open(ctx, "covers/"+entityID+".jpg", 0, -1)
+	if err != nil {
+		return nil, nil
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(io.LimitReader(rc, 20<<20))
+	if err != nil || len(data) == 0 {
+		return nil, nil
+	}
+	return &store.Art{Data: data, Mime: "image/jpeg"}, nil
 }
 
 // UploadAlbumPhoto validates and stores a custom album photo, overriding the
@@ -190,6 +218,44 @@ func (s *Service) DeleteSongPhoto(ctx context.Context, songID string) error {
 		return err
 	}
 	s.invalidate(songID)
+	return nil
+}
+
+// UploadCategoryPhoto validates and stores a category cover. The processed
+// JPEG is saved to both the artworks table (Postgres) and the MinIO bucket
+// (covers/<id>.jpg), so either storage can recover the other.
+func (s *Service) UploadCategoryPhoto(ctx context.Context, categoryID string, data []byte) error {
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return errors.New("imagem inválida ou corrompida")
+	}
+	out := s.encode(s.fit(img, 1024))
+	if out == nil {
+		return errors.New("falha ao processar imagem")
+	}
+	if err := s.store.UpsertArt(ctx, "category", categoryID, out, "image/jpeg"); err != nil {
+		return err
+	}
+	if s.stg != nil {
+		if err := s.stg.Put(ctx, "covers/"+categoryID+".jpg", int64(len(out)), "image/jpeg", bytes.NewReader(out)); err != nil {
+			s.log.Warn("category cover minio put failed", "id", categoryID, "err", err)
+		}
+	}
+	s.invalidate(categoryID)
+	return nil
+}
+
+// DeleteCategoryPhoto removes the category cover from both storages.
+func (s *Service) DeleteCategoryPhoto(ctx context.Context, categoryID string) error {
+	if err := s.store.DeleteArt(ctx, "category", categoryID); err != nil {
+		return err
+	}
+	if s.stg != nil {
+		if err := s.stg.Remove(ctx, "covers/"+categoryID+".jpg"); err != nil {
+			s.log.Warn("category cover minio remove failed", "id", categoryID, "err", err)
+		}
+	}
+	s.invalidate(categoryID)
 	return nil
 }
 

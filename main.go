@@ -72,7 +72,7 @@ func main() {
 		logger.Error("falha ao inicializar stream", "err", err)
 		os.Exit(1)
 	}
-	artSvc, err := artwork.New(cfg, st, logger)
+	artSvc, err := artwork.New(cfg, st, strg, logger)
 	if err != nil {
 		logger.Error("falha ao inicializar artwork", "err", err)
 		os.Exit(1)

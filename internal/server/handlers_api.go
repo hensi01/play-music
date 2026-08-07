@@ -681,7 +681,12 @@ func (s *Server) handleAdminUpdateCategory(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleAdminDeleteCategory(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteCategory(r.Context(), r.PathValue("id")); err != nil {
+	ctx := r.Context()
+	// Remove a capa da categoria (MinIO + Postgres) para não deixar órfã.
+	if err := s.artwork.DeleteCategoryPhoto(ctx, r.PathValue("id")); err != nil {
+		s.log.Warn("category cover cleanup failed", "id", r.PathValue("id"), "err", err)
+	}
+	if err := s.store.DeleteCategory(ctx, r.PathValue("id")); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -810,6 +815,45 @@ func (s *Server) handleAdminUploadSongPhoto(w http.ResponseWriter, r *http.Reque
 
 func (s *Server) handleAdminDeleteSongPhoto(w http.ResponseWriter, r *http.Request) {
 	if err := s.artwork.DeleteSongPhoto(r.Context(), r.PathValue("id")); err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeNoContent(w)
+}
+
+// ---------- admin: category photo ----------
+
+func (s *Server) handleAdminUploadCategoryPhoto(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxPhotoBytes)
+	if err := r.ParseMultipartForm(maxPhotoBytes); err != nil {
+		writeError(w, http.StatusBadRequest, "Arquivo muito grande (máx 15MB) ou inválido")
+		return
+	}
+	file, _, err := r.FormFile("photo")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Campo 'photo' obrigatório")
+		return
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxPhotoBytes))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Falha ao ler arquivo")
+		return
+	}
+	categoryID := r.PathValue("id")
+	if _, err := s.store.GetCategory(r.Context(), categoryID); err != nil {
+		writeError(w, http.StatusNotFound, "Categoria não encontrada")
+		return
+	}
+	if err := s.artwork.UploadCategoryPhoto(r.Context(), categoryID, data); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeNoContent(w)
+}
+
+func (s *Server) handleAdminDeleteCategoryPhoto(w http.ResponseWriter, r *http.Request) {
+	if err := s.artwork.DeleteCategoryPhoto(r.Context(), r.PathValue("id")); err != nil {
 		handleStoreError(w, err)
 		return
 	}

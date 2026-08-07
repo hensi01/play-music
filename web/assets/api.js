@@ -130,6 +130,8 @@ export const endpoints = {
     deletePhoto: (id) => api.del(`/api/admin/albums/${id}/photo`),
     uploadSongPhoto: (id, file) => api.upload(`/api/admin/songs/${id}/photo`, file),
     deleteSongPhoto: (id) => api.del(`/api/admin/songs/${id}/photo`),
+    uploadCategoryPhoto: (id, file) => api.upload(`/api/admin/categories/${id}/photo`, file),
+    deleteCategoryPhoto: (id) => api.del(`/api/admin/categories/${id}/photo`),
   },
 }
 

@@ -135,6 +135,19 @@ func (s *Storage) Put(ctx context.Context, key string, size int64, contentType s
 	return err
 }
 
+// Remove deletes an object from the bucket. Missing objects are not an error.
+func (s *Storage) Remove(ctx context.Context, key string) error {
+	err := s.client.RemoveObject(ctx, s.bucket, key, minio.RemoveObjectOptions{})
+	if err == nil {
+		return nil
+	}
+	var resp minio.ErrorResponse
+	if errors.As(err, &resp) && (resp.Code == "NoSuchKey" || resp.Code == "NotFound") {
+		return nil
+	}
+	return err
+}
+
 // keyFromURL extracts the object key from a URL path (e.g. "/folder/file.mp3").
 func keyFromURL(raw string) string {
 	u, err := url.Parse(raw)

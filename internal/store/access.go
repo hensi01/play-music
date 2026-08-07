@@ -69,8 +69,8 @@ func (s *Store) CanAccessCategory(ctx context.Context, userID, categoryID string
 	return ok, err
 }
 
-// CanAccessEntity resolves any entity id (song, album, artist or playlist)
-// used by the artwork endpoint.
+// CanAccessEntity resolves any entity id (song, album, artist, playlist or
+// category) used by the artwork endpoint.
 func (s *Store) CanAccessEntity(ctx context.Context, userID, entityID string) (bool, error) {
 	if userID == "" {
 		return true, nil
@@ -104,7 +104,8 @@ func (s *Store) CanAccessEntity(ctx context.Context, userID, entityID string) (b
 		WHERE pt.playlist_id = $1
 		ORDER BY pt.position LIMIT 1`, entityID).Scan(&songID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
+		// Category? (category cover)
+		return s.CanAccessCategory(ctx, userID, entityID)
 	}
 	if err != nil {
 		return false, err

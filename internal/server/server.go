@@ -122,6 +122,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("DELETE /api/admin/albums/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminDeletePhoto)))
 	mux.Handle("POST /api/admin/songs/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminUploadSongPhoto)))
 	mux.Handle("DELETE /api/admin/songs/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminDeleteSongPhoto)))
+	mux.Handle("POST /api/admin/categories/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminUploadCategoryPhoto)))
+	mux.Handle("DELETE /api/admin/categories/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminDeleteCategoryPhoto)))
 	mux.Handle("POST /api/scan", s.requireAdmin(http.HandlerFunc(s.handleScan)))
 
 	// Static UI.

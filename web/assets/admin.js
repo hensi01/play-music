@@ -159,11 +159,24 @@ async function deleteUser(u) {
 
 // ---------- Categories ----------
 
-// newCategoryForm: modal with name + checkout link (used for creation).
+// newCategoryForm: modal with name + checkout link + photo (used for creation).
 function newCategoryForm() {
   const nameInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Nome da categoria', autofocus: true })
   const urlInput = el('input', { class: 'form-input', type: 'url', placeholder: 'https://checkout.exemplo.com/...', autocomplete: 'off' })
   const errorEl = el('p', { class: 'login-error' })
+
+  const photoInput = el('input', { class: 'upload-file-input', type: 'file', accept: 'image/*' })
+  const photoDrop = el(
+    'div',
+    { class: 'upload-photo-drop' },
+    el('span', { html: '&#128247;' }),
+    el('span', {}, 'Foto da categoria (opcional)'),
+  )
+  photoDrop.addEventListener('click', () => photoInput.click())
+  photoInput.addEventListener('change', () => {
+    const f = photoInput.files[0]
+    if (f) photoDrop.querySelector('span:last-child').textContent = f.name
+  })
 
   const overlay = el('div', { class: 'modal-overlay' },
     el('div', { class: 'modal' },
@@ -173,6 +186,9 @@ function newCategoryForm() {
         el('span', { class: 'upload-label' }, 'Link do checkout (loja)'),
         urlInput,
       ),
+      el('div', { class: 'modal-section-label' }, 'Foto da categoria (opcional)'),
+      photoDrop,
+      photoInput,
       errorEl,
       el('div', { class: 'modal-actions' },
         el('button', { class: 'btn-accent', onclick: save }, 'Criar'),
@@ -187,12 +203,21 @@ function newCategoryForm() {
     errorEl.textContent = ''
     const name = nameInput.value.trim()
     if (!name) { errorEl.textContent = 'Informe o nome da categoria.'; return }
+    const btn = overlay.querySelector('.btn-accent')
+    btn.disabled = true
+    btn.textContent = 'Salvando…'
     try {
-      await endpoints.admin.createCategory(name, urlInput.value.trim())
+      const cat = await endpoints.admin.createCategory(name, urlInput.value.trim())
+      // A categoria precisa existir antes do upload da foto (id gerado no create).
+      if (photoInput.files[0]) {
+        await endpoints.admin.uploadCategoryPhoto(cat.id, photoInput.files[0])
+      }
       overlay.remove()
       refreshApp()
     } catch (err) {
       errorEl.textContent = err.message
+      btn.disabled = false
+      btn.textContent = 'Criar'
     }
   }
 }
@@ -232,6 +257,14 @@ function categoryForm(cat) {
       el('h3', {}, `Categoria: ${cat.name}`),
       el('input', { class: 'form-input', id: 'cat-name', type: 'text', value: cat.name, placeholder: 'Nome da categoria' }),
       el('input', { class: 'form-input', id: 'cat-checkout', type: 'url', value: cat.checkoutUrl || '', placeholder: 'Link do checkout (loja) — ex.: https://checkout.exemplo.com/cristao', autocomplete: 'off' }),
+      el('div', { class: 'modal-section-label' }, 'Foto da categoria'),
+      el('div', { style: 'display:flex;align-items:center;gap:12px' },
+        el('img', { id: 'cat-photo-preview', class: 'track-art', src: artworkUrl(cat.id, 96), alt: '', style: 'width:56px;height:56px;border-radius:8px;display:block;object-fit:cover' }),
+        el('div', { style: 'display:flex;flex-direction:column;gap:6px' },
+          el('button', { class: 'btn-secondary', onclick: () => uploadCatPhoto() }, 'Enviar foto'),
+          el('button', { class: 'btn-secondary', onclick: () => removeCatPhoto() }, 'Remover foto'),
+        ),
+      ),
       el('div', { class: 'modal-section-label' }, 'Músicas'),
       el('input', { class: 'form-input', id: 'cat-song-filter', type: 'text', placeholder: 'Filtrar músicas…' }),
       el('div', { class: 'modal-scroll', id: 'cat-songs' }),
@@ -310,6 +343,37 @@ function categoryForm(cat) {
     try {
       await endpoints.admin.deleteSongPhoto(s.id)
       alert('Foto removida.')
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  function refreshCatPhotoPreview() {
+    const preview = overlay.querySelector('#cat-photo-preview')
+    if (preview) preview.src = artworkUrl(cat.id, 96) + '&t=' + Date.now()
+  }
+
+  function uploadCatPhoto() {
+    const input = el('input', { type: 'file', accept: 'image/*', style: 'display:none' })
+    input.addEventListener('change', async () => {
+      const file = input.files[0]
+      if (!file) return
+      try {
+        await endpoints.admin.uploadCategoryPhoto(cat.id, file)
+        refreshCatPhotoPreview()
+      } catch (err) {
+        alert(err.message)
+      }
+    })
+    document.body.append(input)
+    input.click()
+  }
+
+  async function removeCatPhoto() {
+    if (!window.confirm('Remover a foto desta categoria?')) return
+    try {
+      await endpoints.admin.deleteCategoryPhoto(cat.id)
+      refreshCatPhotoPreview()
     } catch (err) {
       alert(err.message)
     }
