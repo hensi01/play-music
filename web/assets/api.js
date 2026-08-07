@@ -112,8 +112,6 @@ export const endpoints = {
   queue: () => api.get('/api/queue'),
   saveQueue: (q) => api.put('/api/queue', q),
 
-  lyrics: (id) => api.get(`/api/lyrics/${id}`),
-
   admin: {
     users: () => api.get('/api/admin/users'),
     createUser: (u) => api.post('/api/admin/users', u),
@@ -121,7 +119,7 @@ export const endpoints = {
     deleteUser: (id) => api.del(`/api/admin/users/${id}`),
     categories: () => api.get('/api/admin/categories'),
     category: (id) => api.get(`/api/admin/categories/${id}`),
-    createCategory: (name) => api.post('/api/admin/categories', { name }),
+    createCategory: (name, checkoutUrl) => api.post('/api/admin/categories', { name, checkoutUrl: checkoutUrl || '' }),
     updateCategory: (id, body) => api.put(`/api/admin/categories/${id}`, body),
     deleteCategory: (id) => api.del(`/api/admin/categories/${id}`),
     albums: () => api.get('/api/admin/albums'),

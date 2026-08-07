@@ -491,28 +491,6 @@ func (s *Server) handleSaveQueue(w http.ResponseWriter, r *http.Request) {
 	writeNoContent(w)
 }
 
-// ---------- lyrics ----------
-
-func (s *Server) handleLyrics(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	id := parseID(r)
-	ok, err := s.store.CanAccessSong(ctx, s.filterUser(r), id)
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	if !ok {
-		writeError(w, http.StatusForbidden, "Sem permissão")
-		return
-	}
-	lyrics, err := s.lyrics.Lookup(ctx, id)
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, lyrics)
-}
-
 // ---------- scan (manual trigger, admin) ----------
 
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
@@ -651,7 +629,8 @@ func (s *Server) handleAdminListCategories(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleAdminCreateCategory(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name string `json:"name"`
+		Name        string `json:"name"`
+		CheckoutURL string `json:"checkoutUrl"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Requisição inválida")
@@ -662,7 +641,7 @@ func (s *Server) handleAdminCreateCategory(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "Nome da categoria é obrigatório")
 		return
 	}
-	cat, err := s.store.CreateCategory(r.Context(), name)
+	cat, err := s.store.CreateCategory(r.Context(), name, strings.TrimSpace(req.CheckoutURL))
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -685,15 +664,16 @@ func (s *Server) handleAdminCategoryDetail(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleAdminUpdateCategory(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name    string   `json:"name"`
-		SongIDs []string `json:"songIds"`
+		Name        string   `json:"name"`
+		CheckoutURL *string  `json:"checkoutUrl"`
+		SongIDs     []string `json:"songIds"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Requisição inválida")
 		return
 	}
 	if err := s.store.UpdateCategory(r.Context(), r.PathValue("id"),
-		strings.TrimSpace(req.Name), req.SongIDs); err != nil {
+		strings.TrimSpace(req.Name), req.CheckoutURL, req.SongIDs); err != nil {
 		handleStoreError(w, err)
 		return
 	}

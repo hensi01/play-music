@@ -242,7 +242,6 @@ func (s *Scanner) indexAudio(ctx context.Context, a audioObj, prev store.SongFil
 		SampleRate:  tags.SampleRate,
 		TrackNumber: tags.Track,
 		DiscNumber:  tags.Disc,
-		Lyrics:      tags.Lyrics,
 	}
 	if song.Album == "" {
 		song.Album = "Desconhecido"

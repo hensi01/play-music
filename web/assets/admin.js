@@ -159,20 +159,51 @@ async function deleteUser(u) {
 
 // ---------- Categories ----------
 
+// newCategoryForm: modal with name + checkout link (used for creation).
+function newCategoryForm() {
+  const nameInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Nome da categoria', autofocus: true })
+  const urlInput = el('input', { class: 'form-input', type: 'url', placeholder: 'https://checkout.exemplo.com/...', autocomplete: 'off' })
+  const errorEl = el('p', { class: 'login-error' })
+
+  const overlay = el('div', { class: 'modal-overlay' },
+    el('div', { class: 'modal' },
+      el('h3', {}, 'Nova categoria'),
+      nameInput,
+      el('label', { class: 'upload-field' },
+        el('span', { class: 'upload-label' }, 'Link do checkout (loja)'),
+        urlInput,
+      ),
+      errorEl,
+      el('div', { class: 'modal-actions' },
+        el('button', { class: 'btn-accent', onclick: save }, 'Criar'),
+        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
+      ),
+    ),
+  )
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+  document.body.append(overlay)
+
+  async function save() {
+    errorEl.textContent = ''
+    const name = nameInput.value.trim()
+    if (!name) { errorEl.textContent = 'Informe o nome da categoria.'; return }
+    try {
+      await endpoints.admin.createCategory(name, urlInput.value.trim())
+      overlay.remove()
+      refreshApp()
+    } catch (err) {
+      errorEl.textContent = err.message
+    }
+  }
+}
+
 async function renderCategories(wrap) {
   const categories = await endpoints.admin.categories().catch(() => [])
   adminState.categories = categories
 
   wrap.append(
     el('div', { class: 'admin-toolbar' },
-      el('button', { class: 'btn-accent', onclick: async () => {
-        const name = window.prompt('Nome da nova categoria:')
-        if (!name?.trim()) return
-        try {
-          await endpoints.admin.createCategory(name.trim())
-          refreshApp()
-        } catch (err) { alert(err.message) }
-      } }, 'Nova categoria'),
+      el('button', { class: 'btn-accent', onclick: newCategoryForm }, 'Nova categoria'),
     ),
   )
 
@@ -200,6 +231,7 @@ function categoryForm(cat) {
     el('div', { class: 'modal modal-wide' },
       el('h3', {}, `Categoria: ${cat.name}`),
       el('input', { class: 'form-input', id: 'cat-name', type: 'text', value: cat.name, placeholder: 'Nome da categoria' }),
+      el('input', { class: 'form-input', id: 'cat-checkout', type: 'url', value: cat.checkoutUrl || '', placeholder: 'Link do checkout (loja) — ex.: https://checkout.exemplo.com/cristao', autocomplete: 'off' }),
       el('div', { class: 'modal-section-label' }, 'Músicas'),
       el('input', { class: 'form-input', id: 'cat-song-filter', type: 'text', placeholder: 'Filtrar músicas…' }),
       el('div', { class: 'modal-scroll', id: 'cat-songs' }),
@@ -287,8 +319,9 @@ function categoryForm(cat) {
     const errEl = overlay.querySelector('#cat-error')
     errEl.textContent = ''
     const name = overlay.querySelector('#cat-name').value.trim()
+    const checkoutUrl = overlay.querySelector('#cat-checkout').value.trim()
     try {
-      await endpoints.admin.updateCategory(cat.id, { name, songIds: assigned.songIds })
+      await endpoints.admin.updateCategory(cat.id, { name, checkoutUrl, songIds: assigned.songIds })
       overlay.remove()
       refreshApp()
     } catch (err) {

@@ -15,7 +15,6 @@ import (
 	"play-music/internal/auth"
 	"play-music/internal/config"
 	"play-music/internal/db"
-	"play-music/internal/lyrics"
 	"play-music/internal/metadata"
 	"play-music/internal/scanner"
 	"play-music/internal/server"
@@ -78,7 +77,6 @@ func main() {
 		logger.Error("falha ao inicializar artwork", "err", err)
 		os.Exit(1)
 	}
-	lyrSvc := lyrics.New(st, strg, logger)
 
 	srv := server.New(server.Dependencies{
 		Config:  cfg,
@@ -87,7 +85,6 @@ func main() {
 		Stream:  streamSvc,
 		Storage: strg,
 		Artwork: artSvc,
-		Lyrics:  lyrSvc,
 		Scanner: sc,
 		Log:     logger,
 	})

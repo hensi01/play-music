@@ -25,7 +25,6 @@ type Tags struct {
 	Duration    float64
 	Bitrate     int
 	SampleRate  int
-	Lyrics      string
 	Picture     *tag.Picture
 }
 
@@ -57,25 +56,9 @@ func Read(path string, size int64) (*Tags, error) {
 		if disc, _ := m.Disc(); disc > 0 {
 			t.Disc = disc
 		}
-		t.Lyrics = m.Lyrics()
 		if pic := m.Picture(); pic != nil {
 			t.Picture = pic
 		}
-	}
-
-	// Lyrics fallbacks: some formats expose them via raw tag keys.
-	if t.Lyrics == "" && m != nil {
-		for _, k := range []string{"LYRICS", "UNSYNCEDLYRICS", "USLT", "unsyncedlyrics", "lyrics"} {
-			if v, ok := m.Raw()[k]; ok {
-				if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
-					t.Lyrics = s
-					break
-				}
-			}
-		}
-	}
-	if t.Lyrics != "" {
-		t.Lyrics = strings.TrimSpace(strings.ReplaceAll(t.Lyrics, "\r\n", "\n"))
 	}
 
 	// Untagged WAV files: duration/sample rate/bitrate straight from the RIFF
@@ -115,7 +98,6 @@ func Read(path string, size int64) (*Tags, error) {
 	t.Album = clean(t.Album)
 	t.AlbumArtist = clean(t.AlbumArtist)
 	t.Genre = clean(t.Genre)
-	t.Lyrics = clean(t.Lyrics)
 
 	return t, nil
 }

@@ -37,16 +37,26 @@ type Service struct {
 	dirs    CacheDirs
 	mu      sync.Mutex
 	flights map[string]*sync.Mutex
+
+	cdnMu      sync.Mutex
+	cdnRangeOK bool
+	cdnChecked time.Time
 }
 
 type CacheDirs struct {
 	Transcode string
+	Stream    string
 }
 
 func New(cfg *config.Config, st *storage.Storage, log *slog.Logger) (*Service, error) {
-	dirs := CacheDirs{Transcode: "var/cache/transcode"}
-	if err := os.MkdirAll(dirs.Transcode, 0o755); err != nil {
-		return nil, err
+	dirs := CacheDirs{
+		Transcode: "var/cache/transcode",
+		Stream:    "var/cache/stream",
+	}
+	for _, d := range []string{dirs.Transcode, dirs.Stream} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return nil, err
+		}
 	}
 	return &Service{
 		cfg:     cfg,
@@ -119,6 +129,48 @@ func (s *Service) StreamURL(ctx context.Context, song *model.Song) (string, erro
 	return s.st.PresignedURL(ctx, song.Path, 15*time.Minute)
 }
 
+// cdnProbeTTL controls how often the CDN range capability is re-checked.
+const cdnProbeTTL = 2 * time.Minute
+
+// CDNRangeOK reports whether the Bunny CDN pull zone answers Range requests
+// on cache misses (requires "Optimize for large object delivery" enabled on
+// the zone). The probe result is cached briefly so the app automatically
+// falls back to the local proxy until the zone handles ranges.
+func (s *Service) CDNRangeOK(ctx context.Context, path string) bool {
+	if !s.cfg.CDNEnabled || s.cfg.CDNBaseURL == "" || s.cfg.CDNTokenKey == "" {
+		return false
+	}
+	s.cdnMu.Lock()
+	defer s.cdnMu.Unlock()
+	if time.Since(s.cdnChecked) < cdnProbeTTL {
+		return s.cdnRangeOK
+	}
+	s.cdnChecked = time.Now()
+	s.cdnRangeOK = s.probeCDNRange(path)
+	return s.cdnRangeOK
+}
+
+// probeCDNRange issues a tiny Range request against a fresh signed URL. A
+// fresh URL is almost always a cache miss, so a 206 means the zone processes
+// ranges for uncached content. The body is read for one byte and aborted, so
+// a zone that ignores Range (streaming the whole file) is never downloaded.
+func (s *Service) probeCDNRange(path string) bool {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, s.CDNURL(path), nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Range", "bytes=1-2")
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	buf := make([]byte, 1)
+	_, _ = io.ReadFull(resp.Body, buf)
+	return resp.StatusCode == http.StatusPartialContent
+}
+
 // mimeByFormat maps a stored song format to its Content-Type for ServeNative.
 var mimeByFormat = map[string]string{
 	"mp3": "audio/mpeg", "m4a": "audio/mp4", "aac": "audio/aac",
@@ -126,82 +178,137 @@ var mimeByFormat = map[string]string{
 	"flac": "audio/flac",
 }
 
+// streamChunkSize caps each response so the browser downloads the file piece
+// by piece instead of pulling the whole track in one request. 5 MiB matches
+// the Bunny CDN "large object" chunk size, keeps responses small (friendly to
+// proxies/CDNs with response limits) and bounds per-request work.
+const streamChunkSize = 5 << 20 // 5 MiB
+
 // ServeNative streams a native-format song through w with full HTTP Range
-// support (206 responses), reading from the origin storage with ranged GETs.
+// support (206 responses).
 //
-// The Bunny CDN pull zone ignores Range requests for uncached content, which
-// makes <audio> seekable ranges empty and silently breaks seeking; proxying
-// the bytes through this server restores seeking regardless of the CDN.
+// The MinIO endpoint (behind its caching proxy) ignores Range requests and
+// always answers 200 with the whole object, so ranged streaming from the
+// bucket is not possible. The file is therefore cached once to disk (like the
+// transcode cache) and served locally with Range + the streamChunkSize cap,
+// which makes <audio> progressively fetch the file in small pieces (CDN-safe)
+// and seeking work even though the Bunny CDN also drops Range on cache miss.
 func (s *Service) ServeNative(ctx context.Context, w http.ResponseWriter, r *http.Request, song *model.Song) error {
-	info, err := s.st.Stat(ctx, song.Path)
-	if err != nil {
+	cacheFile := filepath.Join(s.dirs.Stream, song.ID+filepath.Ext(song.Path))
+	if err := s.ensureStreamCache(ctx, song, cacheFile); err != nil {
 		return err
 	}
 	if mime := mimeByFormat[song.Format]; mime != "" {
 		w.Header().Set("Content-Type", mime)
 	}
 	w.Header().Set("Accept-Ranges", "bytes")
-	reader := &objectSeeker{ctx: r.Context(), st: s.st, key: song.Path, size: info.Size}
-	http.ServeContent(w, r, filepath.Base(song.Path), info.LastModified, reader)
+
+	// Progressive chunking: clamp a large/open-ended range to chunkSize so
+	// each response is bounded and the browser asks for the next chunk when
+	// its buffer runs low.
+	if rng := r.Header.Get("Range"); rng != "" {
+		if start, end, ok := parseRange(rng, songSize(song, cacheFile)); ok && end-start+1 > streamChunkSize {
+			r.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, start+streamChunkSize-1))
+		}
+	}
+	http.ServeFile(w, r, cacheFile)
 	return nil
 }
 
-// objectSeeker is an io.ReadSeeker over an S3 object backed by ranged GETs.
-// Each seek lazily opens a new ranged request, so ServeContent can seek
-// around a large file without downloading it.
-type objectSeeker struct {
-	ctx    context.Context
-	st     *storage.Storage
-	key    string
-	size   int64
-	offset int64
-	rc     io.ReadCloser
+func songSize(song *model.Song, cacheFile string) int64 {
+	if fi, err := os.Stat(cacheFile); err == nil {
+		return fi.Size()
+	}
+	return song.Size
 }
 
-func (o *objectSeeker) Read(p []byte) (int, error) {
-	if o.offset >= o.size {
-		return 0, io.EOF
-	}
-	if o.rc == nil {
-		rc, err := o.st.Open(o.ctx, o.key, o.offset, -1)
-		if err != nil {
-			return 0, err
+// ensureStreamCache downloads the song to the local stream cache when stale
+// or missing. The MinIO endpoint ignores Range requests, so a full download
+// is required before the file can be served locally with ranges.
+func (s *Service) ensureStreamCache(ctx context.Context, song *model.Song, cacheFile string) error {
+	if info, err := os.Stat(cacheFile); err == nil {
+		if s.fresh(info.ModTime(), song.UpdatedAt) {
+			return nil
 		}
-		o.rc = rc
 	}
-	n, err := o.rc.Read(p)
-	o.offset += int64(n)
-	if err == io.EOF {
-		o.close()
+
+	mu := s.flight(song.ID)
+	mu.Lock()
+	defer mu.Unlock()
+
+	if info, err := os.Stat(cacheFile); err == nil {
+		if s.fresh(info.ModTime(), song.UpdatedAt) {
+			return nil
+		}
 	}
-	return n, err
+
+	tmp, err := os.CreateTemp(s.dirs.Stream, "s-*"+filepath.Ext(song.Path))
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	src, err := s.st.Open(ctx, song.Path, 0, -1)
+	if err != nil {
+		tmp.Close()
+		return err
+	}
+	_, copyErr := io.Copy(tmp, src)
+	src.Close()
+	if err := tmp.Close(); err != nil && copyErr == nil {
+		copyErr = err
+	}
+	if copyErr != nil {
+		return copyErr
+	}
+	if err := os.Rename(tmpName, cacheFile); err != nil {
+		s.log.Warn("stream cache rename failed", "err", err)
+		cacheFile = tmpName
+	}
+	s.enforceCacheLimit(s.dirs.Stream, s.cfg.TranscodingCacheSize)
+	return nil
 }
 
-func (o *objectSeeker) Seek(offset int64, whence int) (int64, error) {
-	var target int64
-	switch whence {
-	case io.SeekStart:
-		target = offset
-	case io.SeekCurrent:
-		target = o.offset + offset
-	case io.SeekEnd:
-		target = o.size + offset
-	default:
-		return 0, fmt.Errorf("objectSeeker: invalid whence %d", whence)
+// parseRange parses a single-range "bytes=" header (RFC 7233). It returns
+// false for multi-range or malformed specs, leaving the header to ServeFile
+// (multi-range is never sent by media elements).
+func parseRange(rng string, size int64) (start, end int64, ok bool) {
+	if !strings.HasPrefix(rng, "bytes=") || strings.Contains(rng, ",") {
+		return 0, 0, false
 	}
-	if target < 0 {
-		return 0, fmt.Errorf("objectSeeker: negative position %d", target)
+	spec := strings.TrimPrefix(rng, "bytes=")
+	dash := strings.IndexByte(spec, '-')
+	if dash < 0 {
+		return 0, 0, false
 	}
-	o.close()
-	o.offset = target
-	return target, nil
-}
-
-func (o *objectSeeker) close() {
-	if o.rc != nil {
-		o.rc.Close()
-		o.rc = nil
+	startStr, endStr := strings.TrimSpace(spec[:dash]), strings.TrimSpace(spec[dash+1:])
+	if startStr == "" {
+		// Suffix range: bytes=-N (last N bytes).
+		n, err := strconv.ParseInt(endStr, 10, 64)
+		if err != nil || n <= 0 {
+			return 0, 0, false
+		}
+		if n > size {
+			n = size
+		}
+		return size - n, size - 1, true
 	}
+	start, err := strconv.ParseInt(startStr, 10, 64)
+	if err != nil || start < 0 || start >= size {
+		return 0, 0, false
+	}
+	if endStr == "" {
+		return start, size - 1, true
+	}
+	end, err = strconv.ParseInt(endStr, 10, 64)
+	if err != nil || end < start {
+		return 0, 0, false
+	}
+	if end >= size {
+		end = size - 1
+	}
+	return start, end, true
 }
 
 // Transcode writes an mp3 version of the song to w, using the on-disk cache

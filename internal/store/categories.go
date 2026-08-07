@@ -10,19 +10,19 @@ import (
 	"play-music/internal/model"
 )
 
-func (s *Store) CreateCategory(ctx context.Context, name string) (*model.Category, error) {
-	c := &model.Category{Name: name}
+func (s *Store) CreateCategory(ctx context.Context, name, checkoutURL string) (*model.Category, error) {
+	c := &model.Category{Name: name, CheckoutURL: checkoutURL}
 	err := s.pool.QueryRow(ctx, `
 		WITH ins AS (
-			INSERT INTO categories (id, name, created_at)
-			VALUES ($1, $2, now())
+			INSERT INTO categories (id, name, checkout_url, created_at)
+			VALUES ($1, $2, $3, now())
 			ON CONFLICT (lower(name)) DO NOTHING
 			RETURNING id
 		)
 		SELECT id FROM ins
 		UNION ALL
 		SELECT id FROM categories WHERE lower(name) = lower($2)
-		LIMIT 1`, newID(), name).Scan(&c.ID)
+		LIMIT 1`, newID(), name, checkoutURL).Scan(&c.ID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -59,7 +59,7 @@ func (s *Store) GetOrCreateCategory(ctx context.Context, name string) (string, e
 
 func (s *Store) GetCategories(ctx context.Context) ([]model.Category, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT c.id, c.name,
+		SELECT c.id, c.name, c.checkout_url,
 			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id) AS song_count
 		FROM categories c ORDER BY c.name`)
 	if err != nil {
@@ -69,7 +69,7 @@ func (s *Store) GetCategories(ctx context.Context) ([]model.Category, error) {
 	var out []model.Category
 	for rows.Next() {
 		var c model.Category
-		if err := rows.Scan(&c.ID, &c.Name, &c.SongCount); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.CheckoutURL, &c.SongCount); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -80,10 +80,10 @@ func (s *Store) GetCategories(ctx context.Context) ([]model.Category, error) {
 func (s *Store) GetCategory(ctx context.Context, id string) (*model.Category, error) {
 	var c model.Category
 	err := s.pool.QueryRow(ctx, `
-		SELECT c.id, c.name,
+		SELECT c.id, c.name, c.checkout_url,
 			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id)
 		FROM categories c WHERE c.id=$1`, id).
-		Scan(&c.ID, &c.Name, &c.SongCount)
+		Scan(&c.ID, &c.Name, &c.CheckoutURL, &c.SongCount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -112,11 +112,18 @@ func (s *Store) CategoryDetail(ctx context.Context, id string) (songIDs []string
 	return songIDs, rows.Err()
 }
 
-// UpdateCategory renames and/or replaces the song assignments.
-func (s *Store) UpdateCategory(ctx context.Context, id, name string, songIDs []string) error {
+// UpdateCategory renames, updates the checkout link and/or replaces the song
+// assignments. checkoutURL nil keeps the current value; a pointer (even "")
+// sets it (allows clearing).
+func (s *Store) UpdateCategory(ctx context.Context, id, name string, checkoutURL *string, songIDs []string) error {
 	return dbTx(ctx, s, func(q queryer) error {
 		if name != "" {
 			if _, err := q.Exec(ctx, "UPDATE categories SET name=$2 WHERE id=$1", id, name); err != nil {
+				return err
+			}
+		}
+		if checkoutURL != nil {
+			if _, err := q.Exec(ctx, "UPDATE categories SET checkout_url=$2 WHERE id=$1", id, *checkoutURL); err != nil {
 				return err
 			}
 		}
@@ -193,7 +200,7 @@ func (s *Store) CategorySongIDs(ctx context.Context) (map[string][]string, error
 // categories granted to them; admins (userID "") see all.
 func (s *Store) SearchCategories(ctx context.Context, userID, q string, limit int) ([]model.Category, error) {
 	like := likePattern(q)
-	base := `SELECT c.id, c.name,
+	base := `SELECT c.id, c.name, c.checkout_url,
 			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id) AS song_count
 		FROM categories c WHERE unaccent(c.name) ILIKE unaccent($1) ESCAPE '\'`
 	args := []any{like}
@@ -213,7 +220,7 @@ func (s *Store) SearchCategories(ctx context.Context, userID, q string, limit in
 	out := []model.Category{}
 	for rows.Next() {
 		var c model.Category
-		if err := rows.Scan(&c.ID, &c.Name, &c.SongCount); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.CheckoutURL, &c.SongCount); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

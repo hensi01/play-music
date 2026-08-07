@@ -9,7 +9,6 @@ import (
 	"play-music/internal/artwork"
 	"play-music/internal/auth"
 	"play-music/internal/config"
-	"play-music/internal/lyrics"
 	"play-music/internal/scanner"
 	"play-music/internal/storage"
 	"play-music/internal/store"
@@ -23,7 +22,6 @@ type Server struct {
 	stream  *stream.Service
 	storage *storage.Storage
 	artwork *artwork.Service
-	lyrics  *lyrics.Service
 	scanner *scanner.Scanner
 	log     *slog.Logger
 }
@@ -35,7 +33,6 @@ type Dependencies struct {
 	Stream  *stream.Service
 	Storage *storage.Storage
 	Artwork *artwork.Service
-	Lyrics  *lyrics.Service
 	Scanner *scanner.Scanner
 	Log     *slog.Logger
 }
@@ -48,7 +45,6 @@ func New(deps Dependencies) *Server {
 		stream:  deps.Stream,
 		storage: deps.Storage,
 		artwork: deps.Artwork,
-		lyrics:  deps.Lyrics,
 		scanner: deps.Scanner,
 		log:     deps.Log,
 	}
@@ -103,7 +99,6 @@ func (s *Server) Handler() http.Handler {
 
 	mux.Handle("GET /api/queue", s.requireAuth(http.HandlerFunc(s.handleGetQueue)))
 	mux.Handle("PUT /api/queue", s.requireAuth(http.HandlerFunc(s.handleSaveQueue)))
-	mux.Handle("GET /api/lyrics/{id}", s.requireAuth(http.HandlerFunc(s.handleLyrics)))
 
 	// Media (JWT via header or ?jwt= query) — access-guarded.
 	mux.Handle("GET /api/artwork/{id}", s.requireAuth(http.HandlerFunc(s.handleArtwork)))

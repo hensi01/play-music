@@ -251,9 +251,11 @@
       }
 
       function categoryCard(c) {
+        // Link de checkout: o definido na categoria (admin) tem prioridade;
+        // o preço/URL estático da STORE_CONFIG é o fallback.
         const cfg = STORE_CONFIG.categories[c.name] || STORE_CONFIG.categories[c.id]
         const price = cfg ? cfg.price : 'Consultar'
-        const url = cfg ? cfg.url : null
+        const url = (c.checkoutUrl && c.checkoutUrl.trim()) ? c.checkoutUrl : (cfg ? cfg.url : null)
         return (
           '<div class="card">' +
             '<div class="thumb">&#9835;</div>' +

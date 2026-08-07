@@ -24,7 +24,6 @@ type Song struct {
 	PlayCount   int64     `json:"playCount"`
 	Liked       bool      `json:"liked"`
 	HasCover    bool      `json:"-"`
-	Lyrics      string    `json:"-"`
 	CreatedAt   time.Time `json:"createdAt,omitempty"`
 	UpdatedAt   time.Time `json:"updatedAt,omitempty"`
 }
@@ -66,16 +65,6 @@ type Playlist struct {
 	Songs     []PlaylistEntry `json:"songs,omitempty"`
 }
 
-type LyricsLine struct {
-	Text  string `json:"text"`
-	Start *int64 `json:"start,omitempty"`
-}
-
-type Lyrics struct {
-	Synced bool         `json:"synced"`
-	Lines  []LyricsLine `json:"lines"`
-}
-
 type SearchResults struct {
 	Songs      []Song     `json:"songs"`
 	Albums     []Album    `json:"albums"`
@@ -113,10 +102,11 @@ type User struct {
 }
 
 type Category struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	SongCount int    `json:"songCount,omitempty"`
-	Songs     []Song `json:"songs,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	SongCount   int    `json:"songCount,omitempty"`
+	CheckoutURL string `json:"checkoutUrl,omitempty"`
+	Songs       []Song `json:"songs,omitempty"`
 }
 
 type Settings struct {

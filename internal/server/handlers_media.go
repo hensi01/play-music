@@ -69,9 +69,18 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Native format: proxy the bytes with Range support instead of
-	// redirecting to the CDN (whose pull zone drops Range on uncached
-	// content, breaking seek in <audio>).
+	// Native format: prefer the CDN when its pull zone handles Range
+	// requests on cache misses; otherwise proxy the bytes locally so
+	// seeking always works.
+	if s.stream.CDNRangeOK(ctx, song.Path) {
+		url, err := s.stream.StreamURL(ctx, song)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Falha ao gerar URL de reprodução")
+			return
+		}
+		http.Redirect(w, r, url, http.StatusFound)
+		return
+	}
 	if err := s.stream.ServeNative(ctx, w, r, song); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 	}

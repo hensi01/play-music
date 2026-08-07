@@ -20,7 +20,7 @@ const songCols = `
 	s.id, s.path, s.title, s.artist, COALESCE(s.artist_id, ''), s.album,
 	COALESCE(s.album_id, ''), s.year, s.genre, s.duration, s.format, s.bitrate,
 	s.sample_rate, s.track_number, s.disc_number, s.size, s.has_cover,
-	COALESCE(s.lyrics, ''), s.created_at, s.updated_at, s.play_count,
+	s.created_at, s.updated_at, s.play_count,
 	EXISTS(SELECT 1 FROM user_likes ul WHERE ul.entity_type='song' AND ul.entity_id=s.id) AS liked`
 
 func scanSong(row pgx.Row) (*model.Song, error) {
@@ -29,7 +29,7 @@ func scanSong(row pgx.Row) (*model.Song, error) {
 	err := row.Scan(
 		&s.ID, &s.Path, &s.Title, &s.Artist, &s.ArtistID, &s.Album, &s.AlbumID,
 		&s.Year, &s.Genre, &s.Duration, &s.Format, &s.Bitrate, &s.SampleRate,
-		&s.TrackNumber, &s.DiscNumber, &size, new(bool), new(string), &s.CreatedAt,
+		&s.TrackNumber, &s.DiscNumber, &size, new(bool), &s.CreatedAt,
 		&s.UpdatedAt, &s.PlayCount, &s.Liked,
 	)
 	if err != nil {
@@ -83,9 +83,9 @@ func (s *Store) UpsertSong(ctx context.Context, song *model.Song, mtime time.Tim
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO songs (id, path, title, artist, artist_id, album, album_id, year,
 			genre, duration, format, bitrate, sample_rate, track_number, disc_number,
-			size, mtime, has_cover, lyrics, created_at, updated_at)
+			size, mtime, has_cover, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, NULLIF($7, ''), $8, $9, $10, $11,
-			$12, $13, $14, $15, $16, $17, $18, NULLIF($19, ''), now(), now())
+			$12, $13, $14, $15, $16, $17, $18, now(), now())
 		ON CONFLICT (path) DO UPDATE SET
 			title=EXCLUDED.title, artist=EXCLUDED.artist, artist_id=EXCLUDED.artist_id,
 			album=EXCLUDED.album, album_id=EXCLUDED.album_id, year=EXCLUDED.year,
@@ -93,11 +93,11 @@ func (s *Store) UpsertSong(ctx context.Context, song *model.Song, mtime time.Tim
 			bitrate=EXCLUDED.bitrate, sample_rate=EXCLUDED.sample_rate,
 			track_number=EXCLUDED.track_number, disc_number=EXCLUDED.disc_number,
 			size=EXCLUDED.size, mtime=EXCLUDED.mtime, has_cover=EXCLUDED.has_cover,
-			lyrics=EXCLUDED.lyrics, updated_at=now()
+			updated_at=now()
 		RETURNING id`,
 		song.ID, song.Path, song.Title, song.Artist, song.ArtistID, song.Album, song.AlbumID,
 		song.Year, song.Genre, song.Duration, song.Format, song.Bitrate, song.SampleRate,
-		song.TrackNumber, song.DiscNumber, size, mtime, song.HasCover, song.Lyrics).Scan(&id)
+		song.TrackNumber, song.DiscNumber, size, mtime, song.HasCover).Scan(&id)
 	if err != nil {
 		return "", err
 	}
@@ -344,7 +344,7 @@ func collectSongs(rows pgx.Rows) ([]model.Song, error) {
 		if err := rows.Scan(
 			&s.ID, &s.Path, &s.Title, &s.Artist, &s.ArtistID, &s.Album, &s.AlbumID,
 			&s.Year, &s.Genre, &s.Duration, &s.Format, &s.Bitrate, &s.SampleRate,
-			&s.TrackNumber, &s.DiscNumber, &size, new(bool), new(string), &s.CreatedAt,
+			&s.TrackNumber, &s.DiscNumber, &size, new(bool), &s.CreatedAt,
 			&s.UpdatedAt, &s.PlayCount, &s.Liked,
 		); err != nil {
 			return nil, err

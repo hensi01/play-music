@@ -1352,59 +1352,6 @@ img {
   transform: scale(1.05);
 }
 
-/* ---------- Lyrics ---------- */
-
-.lyrics-page {
-  max-width: 672px;
-  margin: 0 auto;
-  padding: 24px;
-}
-
-.lyrics-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 32px;
-}
-
-.lyrics-art {
-  width: 64px;
-  height: 64px;
-  border-radius: 8px;
-  object-fit: cover;
-}
-
-.lyrics-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.lyrics-artist {
-  margin: 0;
-  font-size: 14px;
-  color: var(--subtext);
-}
-
-.lyrics-lines {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.lyric-line {
-  margin: 0;
-  font-size: 18px;
-  color: var(--subtext);
-  transition: color 0.15s;
-}
-
-.lyric-line.active {
-  font-size: 24px;
-  font-weight: 700;
-  color: #fff;
-}
-
 /* ---------- Settings ---------- */
 
 .settings-page {

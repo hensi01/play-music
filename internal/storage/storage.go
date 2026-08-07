@@ -49,8 +49,41 @@ func (s *Storage) List(ctx context.Context) <-chan minio.ObjectInfo {
 	})
 }
 
+// Stat returns the object metadata. The caching proxy in front of MinIO
+// occasionally answers Access Denied for a few seconds after idle time, so
+// transient errors are retried with a short backoff (observed pattern, same
+// as waitForObject in the server package).
 func (s *Storage) Stat(ctx context.Context, key string) (minio.ObjectInfo, error) {
-	return s.client.StatObject(ctx, s.bucket, key, minio.StatObjectOptions{})
+	var last error
+	for i := 0; i < 4; i++ {
+		info, err := s.client.StatObject(ctx, s.bucket, key, minio.StatObjectOptions{})
+		if err == nil {
+			return info, nil
+		}
+		last = err
+		if i < 3 && isTransientStat(err) {
+			select {
+			case <-time.After(time.Duration(i+1) * time.Second):
+			case <-ctx.Done():
+				return minio.ObjectInfo{}, ctx.Err()
+			}
+			continue
+		}
+		break
+	}
+	return minio.ObjectInfo{}, last
+}
+
+func isTransientStat(err error) bool {
+	var resp minio.ErrorResponse
+	if !errors.As(err, &resp) {
+		return false
+	}
+	switch resp.Code {
+	case "AccessDenied", "RequestTimeout", "SlowDown", "InternalError":
+		return true
+	}
+	return false
 }
 
 func (s *Storage) ObjectExists(ctx context.Context, key string) (bool, error) {

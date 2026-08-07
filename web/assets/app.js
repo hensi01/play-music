@@ -356,7 +356,6 @@ const pages = {
   '/liked': renderLiked,
   '/history': renderHistory,
   '/queue': renderQueue,
-  '/lyrics': renderLyrics,
   '/settings': renderSettings,
   '/admin': renderAdminPage,
   '/category/:id': renderCategory,
@@ -876,71 +875,6 @@ function renderQueue(container) {
   container.append(el('div', { class: 'page' }, page))
 }
 
-// ---------- Lyrics ----------
-
-let lyricsData = null
-let lyricsLoaded = false
-
-async function renderLyrics(container) {
-  const { current } = player.getPlayerState()
-  container.innerHTML = ''
-  if (!current) {
-    container.append(emptyState('Nenhuma música tocando. Inicie uma reprodução para ver as letras.'))
-    return
-  }
-
-  lyricsData = null
-  lyricsLoaded = false
-
-  const page = el(
-    'div',
-    { class: 'lyrics-page' },
-    el('button', { class: 'back-link', onclick: () => history.back() }, icon('arrowLeft'), 'Voltar'),
-    el(
-      'div',
-      { class: 'lyrics-header' },
-      el('img', { class: 'lyrics-art', src: artworkUrl(current.id, 96), alt: '' }),
-      el('div', {},
-        el('h1', { class: 'lyrics-title' }, current.title),
-        el('p', { class: 'lyrics-artist' }, current.artist),
-      ),
-    ),
-  )
-  container.append(el('div', { class: 'page' }, page))
-
-  try {
-    lyricsData = await endpoints.lyrics(current.id)
-  } catch {
-    lyricsData = null
-  }
-  lyricsLoaded = true
-
-  const linesEl = el('div', { class: 'lyrics-lines' })
-  if (!lyricsData || lyricsData.lines.length === 0) {
-    page.append(emptyState('Nenhuma letra encontrada para esta música.'))
-    return
-  }
-  lyricsData.lines.forEach((line, i) => {
-    linesEl.append(el('p', { class: 'lyric-line', 'data-idx': i }, line.text || '♪'))
-  })
-  page.append(linesEl)
-  updateLyricsHighlight()
-}
-
-function updateLyricsHighlight() {
-  if (!lyricsData || !lyricsData.synced) return
-  const { progress } = player.getPlayerState()
-  const activeIndex = lyricsData.lines.findIndex((l, i) => {
-    const next = lyricsData.lines[i + 1]
-    if (l.start == null) return false
-    if (next && next.start != null) return progress * 1000 >= l.start && progress * 1000 < next.start
-    return progress * 1000 >= l.start
-  })
-  document.querySelectorAll('.lyric-line').forEach((n) => {
-    n.classList.toggle('active', Number(n.dataset.idx) === activeIndex)
-  })
-}
-
 // ---------- Settings ----------
 
 async function renderSettings(container) {
@@ -1317,7 +1251,6 @@ function bottomBar(refs) {
       volIcon,
       volInput,
       el('button', { class: 'icon-btn', 'aria-label': 'Fila', onclick: () => navigate('/queue') }, icon('list')),
-      el('button', { class: 'icon-btn', 'aria-label': 'Letras', onclick: () => navigate('/lyrics') }, el('span', { style: 'font-size:12px;font-weight:700;letter-spacing:0.05em' }, 'LYR')),
       el('button', { class: 'icon-btn', 'aria-label': 'Tela cheia', onclick: openFullscreen }, icon('max')),
     ),
   )
@@ -1402,13 +1335,12 @@ function fullscreenPlayer(refs) {
     el(
       'div',
       { class: 'fullscreen-top' },
-      el('button', { class: 'icon-btn', 'aria-label': 'Fechar', onclick: () => player.setFullScreen(false) }, icon('chevronDown')),
-      el(
-        'div',
-        { style: 'display:flex;gap:8px' },
-        el('button', { class: 'icon-btn', 'aria-label': 'Letras', onclick: () => navigate('/lyrics') }, el('span', { style: 'font-size:12px;font-weight:700' }, 'LYR')),
-        el('button', { class: 'icon-btn', 'aria-label': 'Fila', onclick: () => navigate('/queue') }, icon('list')),
-      ),
+        el('button', { class: 'icon-btn', 'aria-label': 'Fechar', onclick: () => player.setFullScreen(false) }, icon('chevronDown')),
+        el(
+          'div',
+          { style: 'display:flex;gap:8px' },
+          el('button', { class: 'icon-btn', 'aria-label': 'Fila', onclick: () => navigate('/queue') }, icon('list')),
+        ),
     ),
     el(
       'div',
@@ -1570,12 +1502,10 @@ function refreshPlayerBar() {
     barRenderTimer = setTimeout(() => {
       barRenderTimer = null
       renderPlayerBar()
-      updateLyricsHighlight()
     }, 50)
     return
   }
   updateBarInPlace()
-  updateLyricsHighlight()
 }
 
 player.subscribe(refreshPlayerBar)

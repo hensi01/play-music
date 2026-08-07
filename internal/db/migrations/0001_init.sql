@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS songs (
     size BIGINT NOT NULL DEFAULT 0,
     mtime TIMESTAMPTZ,
     has_cover BOOLEAN NOT NULL DEFAULT false,
-    lyrics TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     play_count BIGINT NOT NULL DEFAULT 0,

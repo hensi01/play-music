@@ -87,11 +87,10 @@ func (s *Store) GetPlaylist(ctx context.Context, userID, accessUserID, id string
 	for rows.Next() {
 		var e model.PlaylistEntry
 		var hasCover bool
-		var lyrics string
 		if err := rows.Scan(&e.EntryID, &e.Song.ID, &e.Song.Path, &e.Song.Title, &e.Song.Artist,
 			&e.Song.ArtistID, &e.Song.Album, &e.Song.AlbumID, &e.Song.Year, &e.Song.Genre,
 			&e.Song.Duration, &e.Song.Format, &e.Song.Bitrate, &e.Song.SampleRate,
-			&e.Song.TrackNumber, &e.Song.DiscNumber, &e.Song.Size, &hasCover, &lyrics,
+			&e.Song.TrackNumber, &e.Song.DiscNumber, &e.Song.Size, &hasCover,
 			&e.Song.CreatedAt, &e.Song.UpdatedAt, &e.Song.PlayCount, &e.Song.Liked); err != nil {
 			return nil, err
 		}
