@@ -1,28 +1,26 @@
 # Loop State — My Project
 
-Last run: 2026-08-07 (delete categoria "music" — COMMITTED f9e2dcc + pushed)
+Last run: 2026-08-09 — teamwork `fix-bugs-design-20260808` (bugs frontend+backend, redesign profissional, suíte Playwright) — COMMITTED + pushed
 
 ## High Priority (loop is acting or waiting on human)
 
-0. **DELETE categoria "music"** → **DONE + COMMITTED (f9e2dcc, pushed)**: migration `0008_delete_music_category.sql` (`DELETE FROM categories WHERE lower(name)='music'`, CASCADE limpa category_songs/user_categories) + scanner.go ignora gênero "music" (case-insensitive) na criação automática de categorias. Evidência: `go build`/`go vet` OK, `go test ./...` OK (phone, stream), verifier APROVADO. Gap não bloqueante: admin ainda pode recriar/renomear para "music" via painel (decisão humana pendente).
+0. **Correções de bugs frontend/backend + redesign + suíte Playwright** → **DONE + COMMITTED + pushed** (run teamwork fix-bugs-design-20260808, 5/5 tasks, auditoria CLEAN). Bugs corrigidos (12): B1 (401 /api/me no console — jwtExpiry com padding base64url, token expirado limpo sem fetch), B2 (createdAt zero-value em users — RETURNING created_at), B-NEW-1 (rota API inexistente → 404 JSON, assets → 404), B-NEW-3 (liked/{inexistente} → 404), B-NEW-4 (cleanup órfão no bucket), B-NEW-2 (validação categoryIds + TODO security), upload de não-áudio → 400 (validação pré-storage), createdAt real no 201 do upload, a11y (aria-valuemax/now sync), data-icon do volume, removePlaylistTrack/toggleLike/teclado/race admin/aria-pressed/duplo submit. Design: bloco aditivo M4 em style.css (vision 8.5/10, contraste AA 15/15, responsivo 375px). Suíte: e2e/ com 9 specs — 53 passed / 1 skipped / 0 failed, zero console errors. Evidência: teamwork-state/fix-bugs-design-20260808/ (REPORT/REVIEW/CRITIQUE/AUDIT/MEMORY + screenshots antes/depois em artifacts/).
 
-1. ~~**Uncommitted WIP in `web/assets/player.js`**~~ → **COMMITTED (152fc66, pushed)**: playAudio() catch desync fixed (guard `if (!switching)` restored); volume 0.8, direct mediaSession handlers, readyState guards, end-of-queue clamp, optimistic pending-seek all validated and live.
-2. ~~**ORIGINAL_REQUEST.md acceptance criteria unverified**~~ → **RESOLVED + COMMITTED**: all 6 checkboxes ticked with evidence (loop-reports/qa-r1r3.md). C4 admin render fully covered by T4 (loop-reports/qa-v116.md).
-3. ~~**BUG-1 (duplicate email → 500)**~~ → **FIXED + COMMITTED (152fc66, pushed)**: SQLSTATE 23505 → ErrDuplicate → 409 "Já existe um usuário com esse e-mail, usuário ou telefone". Live-verified (409).
-4. **Frontend design overhaul** → **DONE + COMMITTED (152fc66, pushed)**: loop (frontend-design-overhaul, 4/4 VERIFIED_PASS) — design system em tokens 2 camadas + `[data-theme="light"]`, contraste WCAG AA (accent 4.79, green 5.02, faint ≥4.5, outline ≥3.1), ~30 componentes, loja unificada no style.css (body.loja), tipografia clamp, 30 transições ≤0.25s, prefers-reduced-motion, :focus-visible, 12 aria-pressed aditivos. Diffs: loop-reports/design-t{2,3,4}.diff.
+1. **Dívidas documentadas (não bloqueantes, decisão de produto)** — B-NEW-2 (register público concede categorias sem prova de pagamento — integrar gateway), categoryIds vazio em /api/admin/songs (category_songs sem backfill; scanner não reindexa; cliente novo vê tudo vazio — B4), overlay PWA re-exibe a cada load (persistir dismiss?), suíte deixa 2 WAVs de teste por rodada no catálogo/bucket (sem API de delete de songs — cleanup manual documentado em e2e/tests/upload.spec.js), transcode format=mp3 sem fixture (seed 100% mp3), ND_FFMPEGPATH não setado no .env.
 
 ## Watch List
 
-1. **Dependabot PRs #1, #2, #5, #6, #9, #19** → verdict CLOSE (all stale, deps removed by b2e353f8). Report: loop-reports/dependabot-review.md. Needs human: `gh pr close 1 2 5 6 9 19` (gh CLI not installed locally).
-2. **Front-end regression risk** — design overhaul landed (big CSS change + additive aria in app.js/admin.js). Watch for visual/behavioral regressions in player controls, admin forms, loja checkout next 48h. Zero front-end tests exist.
-3. **Server logs healthy** — restarted post-overhaul (HTTP 200), all 200s, srv-err empty. CSS/JS served byte-identical to committed tree.
+1. **Servidor local** — play-music.exe rodando em :4533 (iniciado via teamwork-state/fix-bugs-design-20260808/m1-start.ps1, que carrega .env — o app NÃO auto-carrega .env). Logs em m1-srv.log / m1-srv-err.log (gitignored). Catalogo em 146 músicas.
+2. **Upload de músicas via e2e** — a suíte (upload.spec) insere WAVs de teste no catálogo; rodadas futuras precisam do cleanup documentado (DELETE LIKE 'pw-e2e%' + objetos órfãos do bucket, senão o scanner reindexa).
+3. **Postgres remoto (72.62.11.235)** — kill -Force do servidor deixa transações abertas que seguram locks (DELETEs travam); usar pg_terminate_backend se ocorrer.
+4. **Front-end regression risk** — redesign + fixes JS commitados; suíte e2e (53 testes) cobre as rotas principais como rede de segurança.
 
 ## Recent Noise (ignored this run)
 
-- v1.16.0 feature QA: no regressions (login user/email/phone, admin/cliente forms, tipo cleanup, guards 400, thumbnails 0 broken, covers OK).
-- Throwaway clients deleted via admin API (11999990001, 11999998888) — only seed admin remains.
-- Optional: enable CI (.github/) so future Dependabot PRs validate.
-- Optional: self-hosted WOFF2 webfont (offline-safe) — decided against in design-proposal, revisitable.
+- Deleções pré-existentes de .opencode/agents/knowledge-sources/* e skills/loop-triage/ (anteriores ao run; não commitadas — verificar se são intencionais).
+- B5 overlay PWA: comportamento intencional (pwa.js "mostra sempre em toda visita").
+- Manifest webmanifest servido como text/plain (deveria ser application/manifest+json) — cosmético.
+- .genre-card é dead code no CSS (pré-existente).
 
 ---
-Run log: 2026-08-07 — delete categoria "music": commit f9e2dcc (migration 0008 + guard do scanner) merged em master e pushed to origin/master; working tree clean.
+Run log: 2026-08-09 — teamwork fix-bugs-design-20260808: 5/5 tasks (baseline, fixes backend, fixes frontend, polimento visual, suíte Playwright), auditoria CLEAN, push concluído. Ver teamwork-state/fix-bugs-design-20260808/REPORT.md para detalhes.
