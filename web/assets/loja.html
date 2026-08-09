@@ -152,9 +152,14 @@
         const cfg = STORE_CONFIG.categories[c.name] || STORE_CONFIG.categories[c.id]
         const price = cfg ? cfg.price : 'Consultar'
         const url = (c.checkoutUrl && c.checkoutUrl.trim()) ? c.checkoutUrl : (cfg ? cfg.url : null)
+        // Capa da categoria (rota pública da loja). O ♫ fica de fundo e o
+        // <img> cobre o card; se a imagem falhar (sem foto/capa), onerror
+        // remove o <img> e o ♫ volta a aparecer.
         return (
           '<div class="card">' +
-            '<div class="thumb">&#9835;</div>' +
+            '<div class="thumb">&#9835;' +
+              '<img class="thumb-img" src="/api/store/categories/' + encodeURIComponent(c.id) + '/photo?size=300" alt="Capa da categoria ' + esc(c.name) + '" loading="lazy" onerror="this.remove()" />' +
+            '</div>' +
             '<h3>' + esc(c.name) + '</h3>' +
             '<p class="desc">' + fmt(c.songCount || 0) + '</p>' +
             '<span class="price">' + esc(price) + '</span>' +

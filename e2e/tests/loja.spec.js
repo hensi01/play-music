@@ -29,6 +29,25 @@ test.describe('Loja', () => {
     expectClean(testInfo, clean)
   })
 
+  test('card de categoria exibe a foto (capa pública, sem JWT)', async ({ page, request }) => {
+    const testInfo = test.info()
+    const clean = trackConsole(page)
+    await page.goto('/loja.html')
+    const card = page.locator('#catGrid .card').first()
+    const img = card.locator('img.thumb-img')
+    // A capa vem da rota pública da loja (não de /api/artwork que exige JWT).
+    await expect(img).toBeVisible()
+    const src = await img.getAttribute('src')
+    expect(src).toMatch(/^\/api\/store\/categories\/[0-9a-f]+\/photo\?size=300$/)
+    // A rota pública responde sem autenticação com a imagem (foto ou
+    // placeholder) — nunca 401. `request.get` resolve contra a baseURL da
+    // config (mesmo host do servidor sob teste).
+    const res = await request.get(src)
+    expect(res.status()).toBe(200)
+    expect(res.headers()['content-type'] || '').toContain('image/jpeg')
+    expectClean(testInfo, clean)
+  })
+
   test('login de cliente na loja (registro por telefone)', async ({ page }) => {
     const testInfo = test.info()
     const clean = trackConsole(page)

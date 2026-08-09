@@ -64,6 +64,9 @@ func (s *Server) Handler() http.Handler {
 
 	// Store (public): phone registration + category releases after checkout.
 	mux.HandleFunc("GET /api/store/categories", s.handleStoreCategories)
+	// Public category cover: the store page lists categories without login,
+	// so their covers must be reachable without a JWT too.
+	mux.HandleFunc("GET /api/store/categories/{id}/photo", s.handleStoreCategoryPhoto)
 	mux.HandleFunc("POST /api/store/register", s.handleStoreRegister)
 	mux.Handle("POST /api/store/purchase", s.requireAuth(http.HandlerFunc(s.handleStorePurchase)))
 

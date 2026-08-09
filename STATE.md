@@ -1,19 +1,19 @@
 # Loop State — My Project
 
-Last run: 2026-08-09 — teamwork `fix-bugs-design-20260808` (bugs frontend+backend, redesign profissional, suíte Playwright) — COMMITTED + pushed
+Last run: 2026-08-09 — verificação foto/capa de categoria + fix loja (branch `fix/categoria-foto-loja`, worktree play-music-fix-foto) — aguardando merge
 
 ## High Priority (loop is acting or waiting on human)
 
-0. **Correções de bugs frontend/backend + redesign + suíte Playwright** → **DONE + COMMITTED + pushed** (run teamwork fix-bugs-design-20260808, 5/5 tasks, auditoria CLEAN). Bugs corrigidos (12): B1 (401 /api/me no console — jwtExpiry com padding base64url, token expirado limpo sem fetch), B2 (createdAt zero-value em users — RETURNING created_at), B-NEW-1 (rota API inexistente → 404 JSON, assets → 404), B-NEW-3 (liked/{inexistente} → 404), B-NEW-4 (cleanup órfão no bucket), B-NEW-2 (validação categoryIds + TODO security), upload de não-áudio → 400 (validação pré-storage), createdAt real no 201 do upload, a11y (aria-valuemax/now sync), data-icon do volume, removePlaylistTrack/toggleLike/teclado/race admin/aria-pressed/duplo submit. Design: bloco aditivo M4 em style.css (vision 8.5/10, contraste AA 15/15, responsivo 375px). Suíte: e2e/ com 9 specs — 53 passed / 1 skipped / 0 failed, zero console errors. Evidência: teamwork-state/fix-bugs-design-20260808/ (REPORT/REVIEW/CRITIQUE/AUDIT/MEMORY + screenshots antes/depois em artifacts/).
+0. **Foto/capa de categoria — verificação e fix da loja** → branch `fix/categoria-foto-loja` (worktree play-music-fix-foto), suíte 57 passed / 1 skipped / 0 failed. Diagnóstico: (a) a loja (loja.html) NÃO usava a foto da categoria — card usava ícone ♫ estático (`<div class="thumb">&#9835;</div>`), nenhum request a /api/artwork; (b) `GET /api/artwork/{id}` exige JWT → 401 sem token, incompatível com loja pública; (c) cache em disco tinha lixo (`ac6333…-96.jpg` = screenshot de página web de upload antigo não invalidado). Teste e2e do upload na categoria "Cristão" (ac6333…): POST photo → 204 + foto aplicada (artwork 300 = 7409B ≠ placeholder 7836B, visão confirmou logo do app), invalidate limpou cache sujo, DELETE → 204 + volta ao placeholder, erros 400 (não-imagem/sem campo), 404 (categoria inexistente), 401 (sem token) — upload 100% funcional. Fix: rota pública `GET /api/store/categories/{id}/photo` (serve capa via artwork.Serve, sem JWT) + loja.html categoryCard com `<img class="thumb-img">` (rota pública, loading=lazy, onerror remove → ♫ de fundo reaparece) + CSS .thumb-img (object-fit: cover, overflow hidden). Testes novos: loja.spec "card de categoria exibe a foto (capa pública, sem JWT)" (img visível + GET 200 image/jpeg sem auth) e admin.spec "upload e remoção de foto de categoria via API" (categoria descartável: artwork placeholder → upload → muda → não-imagem 400 → delete → placeholder) + helpers apiUploadCategoryPhoto/apiDeleteCategoryPhoto/apiArtworkBytes. Validação: go test ./... ok, suíte completa rodada contra servidor de validação :4534 (play-music-fix.exe) — 57/1/0; servidor :4533 ainda com binário ANTIGO (sem a rota pública) — substituir e reiniciar com aprovação humana. Foto aplicada na "Cristão" (decisão do usuário).
 
 1. **Dívidas documentadas (não bloqueantes, decisão de produto)** — B-NEW-2 (register público concede categorias sem prova de pagamento — integrar gateway), categoryIds vazio em /api/admin/songs (category_songs sem backfill; scanner não reindexa; cliente novo vê tudo vazio — B4), overlay PWA re-exibe a cada load (persistir dismiss?), suíte deixa 2 WAVs de teste por rodada no catálogo/bucket (sem API de delete de songs — cleanup manual documentado em e2e/tests/upload.spec.js), transcode format=mp3 sem fixture (seed 100% mp3), ND_FFMPEGPATH não setado no .env.
 
 ## Watch List
 
-1. **Servidor local** — play-music.exe rodando em :4533 (iniciado via teamwork-state/fix-bugs-design-20260808/m1-start.ps1, que carrega .env — o app NÃO auto-carrega .env). Logs em m1-srv.log / m1-srv-err.log (gitignored). Catalogo em 146 músicas.
+1. **Servidor local** — play-music.exe rodando em :4533 (iniciado via teamwork-state/fix-bugs-design-20260808/m1-start.ps1, que carrega .env — o app NÃO auto-carrega .env). Logs em m1-srv.log / m1-srv-err.log (gitignored). Catalogo em 146 músicas. **PENDENTE**: binário antigo não tem a rota pública de capa — substituir por play-music-fix.exe após merge/aprovação.
 2. **Upload de músicas via e2e** — a suíte (upload.spec) insere WAVs de teste no catálogo; rodadas futuras precisam do cleanup documentado (DELETE LIKE 'pw-e2e%' + objetos órfãos do bucket, senão o scanner reindexa).
 3. **Postgres remoto (72.62.11.235)** — kill -Force do servidor deixa transações abertas que seguram locks (DELETEs travam); usar pg_terminate_backend se ocorrer.
-4. **Front-end regression risk** — redesign + fixes JS commitados; suíte e2e (53 testes) cobre as rotas principais como rede de segurança.
+4. **Front-end regression risk** — redesign + fixes JS commitados; suíte e2e (57 testes) cobre as rotas principais como rede de segurança.
 
 ## Recent Noise (ignored this run)
 
@@ -21,6 +21,7 @@ Last run: 2026-08-09 — teamwork `fix-bugs-design-20260808` (bugs frontend+back
 - B5 overlay PWA: comportamento intencional (pwa.js "mostra sempre em toda visita").
 - Manifest webmanifest servido como text/plain (deveria ser application/manifest+json) — cosmético.
 - .genre-card é dead code no CSS (pré-existente).
+- Cache HTTP do navegador (Cache-Control max-age=86400) mascara mudanças de artwork em fetches sem no-store (comportamento esperado, não bug).
 
 ---
-Run log: 2026-08-09 — teamwork fix-bugs-design-20260808: 5/5 tasks (baseline, fixes backend, fixes frontend, polimento visual, suíte Playwright), auditoria CLEAN, push concluído. Ver teamwork-state/fix-bugs-design-20260808/REPORT.md para detalhes.
+Run log: 2026-08-09 — verificação foto/capa de categoria: diagnóstico (loja sem capa, artwork exige JWT, cache sujo) + teste e2e de upload na "Cristão" (OK, foto deixada aplicada) + fix backend rota pública + fix loja + 2 testes novos + suíte 57 passed/1 skipped/0 failed em :4534. Branch fix/categoria-foto-loja aguardando aprovação de merge/restart do :4533.

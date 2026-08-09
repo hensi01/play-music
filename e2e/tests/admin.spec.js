@@ -14,6 +14,9 @@ const {
   apiDeleteUser,
   apiListUsers,
   apiListCategories,
+  apiUploadCategoryPhoto,
+  apiDeleteCategoryPhoto,
+  apiArtworkBytes,
 } = require('./helpers')
 
 test.describe('Admin', () => {
@@ -148,6 +151,44 @@ test.describe('Admin', () => {
     await modal.getByRole('button', { name: 'Cancelar' }).click()
     await expect(modal).toBeHidden()
     expectClean(testInfo, clean)
+  })
+
+  test('upload e remoção de foto de categoria via API', async ({ request }) => {
+    const testInfo = test.info()
+    const catName = randomName('PW-CatFoto')
+    let catId = null
+    try {
+      const cat = await apiCreateCategory(request, catName)
+      catId = cat.id
+
+      // Antes do upload: artwork = placeholder (mesmo tamanho de um id
+      // inexistente).
+      const ghost = await apiArtworkBytes(request, 'categoria-inexistente-' + Date.now())
+      const before = await apiArtworkBytes(request, catId)
+      expect(before).toBe(ghost)
+
+      // Upload de imagem válida → 204 e o artwork muda (não é placeholder).
+      await apiUploadCategoryPhoto(request, catId)
+      const after = await apiArtworkBytes(request, catId)
+      expect(after).not.toBe(ghost)
+
+      // Upload de não-imagem → 400 (validação pré-storage).
+      await expect(apiUploadCategoryPhoto(request, catId, { invalid: true })).rejects.toThrow()
+
+      // DELETE → volta ao placeholder.
+      await apiDeleteCategoryPhoto(request, catId)
+      const reverted = await apiArtworkBytes(request, catId)
+      expect(reverted).toBe(ghost)
+    } finally {
+      if (catId) {
+        try {
+          await apiDeleteCategory(request, catId)
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+    testInfo.annotations.push({ type: 'api-only', description: 'sem navegação de página — nada a rastrear no console' })
   })
 
   test('Salvar desabilita durante save (PUT atrasado)', async ({ page }) => {

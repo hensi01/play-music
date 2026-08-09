@@ -2212,6 +2212,16 @@ body.loja .card .thumb {
   align-items: center;
   justify-content: center;
   font-size: 40px;
+  position: relative;
+  overflow: hidden;
+}
+body.loja .card .thumb-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
 }
 body.loja .card h3 { margin: 4px 0 0; font-size: 16px; }
 body.loja .card .desc { margin: 0; font-size: 13px; color: var(--subtext); min-height: 18px; }

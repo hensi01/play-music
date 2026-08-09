@@ -16,6 +16,16 @@ import (
 
 // ---------- store: user registration / category releases ----------
 
+// handleStoreCategoryPhoto serves the category cover publicly (store page, no
+// auth). Categories are listed publicly by the store, so their covers are
+// public too. Reuses the artwork pipeline (custom photo -> placeholder) and
+// its cache; the id never reaches the access-guarded chain, so no content is
+// exposed beyond the category cover itself.
+func (s *Server) handleStoreCategoryPhoto(w http.ResponseWriter, r *http.Request) {
+	size := parseIntQuery(r, "size", 300)
+	s.artwork.Serve(w, r, r.PathValue("id"), size)
+}
+
 // handleStoreCategories lists all categories publicly (store page, no auth).
 func (s *Server) handleStoreCategories(w http.ResponseWriter, r *http.Request) {
 	cats, err := s.store.GetCategories(r.Context())

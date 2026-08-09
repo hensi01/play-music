@@ -210,6 +210,47 @@ async function apiAdminSongs(request) {
   return res.json()
 }
 
+// Uploads a category cover via API. Uses the app's own PNG (icon-512.png,
+// served at the root) so no binary fixture has to live in the repo. With
+// `invalid: true` it uploads the WAV fixture instead (validation must 400).
+async function apiUploadCategoryPhoto(request, id, { invalid = false } = {}) {
+  const headers = await apiAuthHeaders(request)
+  let buffer, name, mimeType
+  if (invalid) {
+    buffer = fs.readFileSync(ensureSilenceWav(30))
+    name = 'silence.wav'
+    mimeType = 'audio/wav'
+  } else {
+    const img = await request.get(`${BASE}/icon-512.png`)
+    if (!img.ok()) throw new Error(`fixture png unavailable: ${img.status()}`)
+    buffer = await img.body()
+    name = 'icon-512.png'
+    mimeType = 'image/png'
+  }
+  const res = await request.post(`${BASE}/api/admin/categories/${id}/photo`, {
+    headers,
+    multipart: { photo: { name, mimeType, buffer } },
+  })
+  if (!res.ok()) throw new Error(`category photo upload failed ${res.status()}`)
+  return res
+}
+
+async function apiDeleteCategoryPhoto(request, id) {
+  const headers = await apiAuthHeaders(request)
+  const res = await request.delete(`${BASE}/api/admin/categories/${id}/photo`, { headers })
+  if (!res.ok()) throw new Error(`category photo delete failed ${res.status()}`)
+}
+
+// Fetches the artwork byte length for an entity as an authenticated client.
+// Used to prove a category cover changed (upload ≠ placeholder) and reverted
+// (delete = placeholder again).
+async function apiArtworkBytes(request, id, size = 300) {
+  const headers = await apiAuthHeaders(request)
+  const res = await request.get(`${BASE}/api/artwork/${id}?size=${size}`, { headers })
+  if (!res.ok()) throw new Error(`artwork fetch failed ${res.status()}`)
+  return (await res.body()).length
+}
+
 // ---------- audio fixture (deterministic player) ----------
 
 // A silent WAV so the audio element can actually play/seek in headless.
@@ -264,5 +305,8 @@ module.exports = {
   apiListCategories,
   apiStoreRegister,
   apiAdminSongs,
+  apiUploadCategoryPhoto,
+  apiDeleteCategoryPhoto,
+  apiArtworkBytes,
   ensureSilenceWav,
 }
