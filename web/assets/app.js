@@ -120,9 +120,38 @@ function setAuth(patch) {
   render()
 }
 
+// Lê a claim `exp` de um JWT (header.payload.signature, base64url) sem
+// validar a assinatura — suficiente para evitar o fetch de /api/me com token
+// expirado (o 401 resultante vira ruído no console na tela de login).
+// Retorna timestamp em ms, ou null se o token não tiver exp decodificável.
+function jwtExpiry(token) {
+  try {
+    const payload = token.split('.')[1]
+    if (!payload) return null
+    // JWT (RFC 7515) é base64url SEM padding; atob() no browser é estrito e
+    // lança InvalidCharacterError se o comprimento não for múltiplo de 4 —
+    // repor o padding '=' antes de decodificar.
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (payload.length % 4)) % 4)
+    const json = JSON.parse(atob(b64))
+    return typeof json.exp === 'number' ? json.exp * 1000 : null
+  } catch {
+    return null
+  }
+}
+
 async function refreshAuth() {
-  if (!getToken()) {
+  const token = getToken()
+  if (!token) {
     setAuth({ loading: false, user: null })
+    return
+  }
+  const exp = jwtExpiry(token)
+  if (exp !== null && exp <= Date.now()) {
+    // Token expirado: limpa silenciosamente e nem faz o fetch — sem 401 no
+    // console. (Token sem exp decodificável segue o fluxo antigo: fetch e,
+    // em 401, o api.js já limpa o token.)
+    setToken(null)
+    setAuth({ user: null, loading: false })
     return
   }
   try {
@@ -288,16 +317,20 @@ function openPlaylistPicker(song) {
 async function toggleLike(songId, btn) {
   const wasLiked = btn.classList.contains('liked')
   btn.classList.toggle('liked', !wasLiked)
+  const isCurrent = () => player.getPlayerState().current?.id === songId
   try {
     if (!wasLiked) await endpoints.like(songId)
     else await endpoints.unlike(songId)
-  } catch {
+  } catch (err) {
+    // Falha: reverte o botão E o estado do player (barra inferior) — o
+    // otimismo só vale em sucesso, senão a lista e a barra dessincronizam.
     btn.classList.toggle('liked', wasLiked)
+    if (isCurrent()) player.setLiked(wasLiked)
+    console.error('Falha ao alternar curtida:', err)
+    return
   }
   // Sincroniza a barra inferior quando a música curtida é a atual.
-  if (player.getPlayerState().current?.id === songId) {
-    player.setLiked(!wasLiked)
-  }
+  if (isCurrent()) player.setLiked(!wasLiked)
 }
 
 // ---------- Card ----------
@@ -775,8 +808,14 @@ async function renderPlaylist(container, params) {
 }
 
 async function removePlaylistTrack(id, entryId) {
-  await endpoints.removePlaylistTrack(id, entryId)
-  render()
+  try {
+    await endpoints.removePlaylistTrack(id, entryId)
+    render()
+  } catch (err) {
+    // Falha do DELETE: a lista permanece intacta (nenhum render) e o erro
+    // vira feedback visível em vez de unhandled promise rejection.
+    alert(err.message)
+  }
 }
 
 // ---------- Liked ----------
@@ -1193,6 +1232,7 @@ function bottomBar(refs) {
     { class: 'progress-track', role: 'slider', 'aria-valuemin': 0, 'aria-valuemax': totalDuration, 'aria-valuenow': safeProgress },
     progressFill,
   )
+  refs.track = progressTrack
 
   const likeBtn = el(
     'button',
@@ -1308,13 +1348,21 @@ function endSeekDrag(e) {
 document.addEventListener('pointerup', endSeekDrag)
 document.addEventListener('pointercancel', endSeekDrag)
 
-function toggleLikeCurrent() {
+async function toggleLikeCurrent() {
   const state = player.getPlayerState()
   if (!state.current) return
-  const next = !state.current.liked
+  const wasLiked = state.current.liked
+  const next = !wasLiked
   player.setLiked(next)
-  if (next) void endpoints.like(state.current.id)
-  else void endpoints.unlike(state.current.id)
+  try {
+    if (next) await endpoints.like(state.current.id)
+    else await endpoints.unlike(state.current.id)
+  } catch (err) {
+    // Reverte o estado do player (barra e listas) — sem desync nem
+    // unhandled rejection.
+    player.setLiked(wasLiked)
+    console.error('Falha ao alternar curtida:', err)
+  }
   refreshPlayerBar()
 }
 
@@ -1488,11 +1536,21 @@ function updateBarInPlace() {
   if (barRefs.fill) barRefs.fill.style.width = `${pct}%`
   if (barRefs.cur) barRefs.cur.textContent = fmtDuration(prog)
   if (barRefs.dur) barRefs.dur.textContent = fmtDuration(total)
+  // Keep the slider's ARIA values in sync with the live state (they are
+  // baked at render time when duration may still be unknown — a11y bug fix).
+  if (barRefs.track) {
+    barRefs.track.setAttribute('aria-valuemax', String(Math.round(total)))
+    barRefs.track.setAttribute('aria-valuenow', String(Math.round(prog)))
+  }
   if (barRefs.volIcon) {
     const want = s.volume === 0 ? 'volumeX' : 'volume'
-    if ((barRefs.volIcon.dataset.icon || '') !== want) {
+    const cur = barRefs.volIcon.firstElementChild?.dataset?.icon ?? ''
+    if (cur !== want) {
       barRefs.volIcon.innerHTML = icons[want]
-      barRefs.volIcon.dataset.icon = want
+      const svg = barRefs.volIcon.firstElementChild
+      // data-icon lives on the <svg> (same as the initial render) so both
+      // render paths stay consistent for selectors/tests.
+      if (svg) svg.dataset.icon = want
     }
   }
   if (barRefs.volInput && Math.abs(parseFloat(barRefs.volInput.value) - s.volume) > 0.005) {
@@ -1583,7 +1641,10 @@ document.addEventListener('keydown', (e) => {
     return
   }
   const t = e.target
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+  // Elementos interativos têm atalhos nativos próprios (espaço/arrows ativam
+  // botões e links). Sem esta exclusão, Espaço num botão focado dispararia o
+  // clique nativo E o toggle do player — duplo-disparo.
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.tagName === 'BUTTON' || t.tagName === 'A' || t.isContentEditable)) return
   const s = player.getPlayerState()
   if (!s.current) return
   switch (e.key) {

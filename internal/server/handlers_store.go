@@ -30,6 +30,13 @@ func (s *Server) handleStoreCategories(w http.ResponseWriter, r *http.Request) {
 // grants the given categories. Used after an external checkout (payment) or
 // for manual releases. Returns the created/updated user with a fresh token
 // (auto-login).
+//
+// TODO(security): this endpoint is public and grants PAID categories without
+// proof of payment — the external checkout is not integrated yet and the
+// store UI depends on this flow. When the payment gateway is wired in,
+// verify the payment/webhook before granting categories and only grant the
+// ids present in the paid order. The validation below (unknown category ids
+// rejected with 400) is a minimal mitigation, not a payment check.
 func (s *Server) handleStoreRegister(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Phone       string   `json:"phone"`
@@ -46,6 +53,35 @@ func (s *Server) handleStoreRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
+
+	// Reject unknown category ids with a 400 listing them, instead of
+	// silently dropping them (a silent drop would make the client believe a
+	// category was granted). The store UI sends categoryIds:[] for plain
+	// registrations, so an empty list is valid and yields no error. This
+	// runs BEFORE any user creation so a rejected request leaves no state.
+	valid, err := s.store.GetCategories(ctx)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	validIDs := make(map[string]bool, len(valid))
+	for _, c := range valid {
+		validIDs[c.ID] = true
+	}
+	var invalid []string
+	for _, cid := range req.CategoryIDs {
+		if cid != "" && !validIDs[cid] {
+			invalid = append(invalid, cid)
+		}
+	}
+	if len(invalid) > 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error":              "Categorias inexistentes",
+			"invalidCategoryIds": invalid,
+		})
+		return
+	}
+
 	u, _, err := s.store.GetUserByPhone(ctx, normalized)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		handleStoreError(w, err)
@@ -66,23 +102,7 @@ func (s *Server) handleStoreRegister(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Este telefone pertence a uma conta de administrador")
 		return
 	}
-	// Only grant categories that actually exist (ignore invalid ids).
-	valid, err := s.store.GetCategories(ctx)
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	validIDs := make(map[string]bool, len(valid))
-	for _, c := range valid {
-		validIDs[c.ID] = true
-	}
-	var grantIDs []string
-	for _, cid := range req.CategoryIDs {
-		if validIDs[cid] {
-			grantIDs = append(grantIDs, cid)
-		}
-	}
-	if err := s.store.GrantUserCategories(ctx, u.ID, grantIDs); err != nil {
+	if err := s.store.GrantUserCategories(ctx, u.ID, req.CategoryIDs); err != nil {
 		handleStoreError(w, err)
 		return
 	}

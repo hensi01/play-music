@@ -43,7 +43,21 @@ func (s *Server) handleStatic() http.Handler {
 			return
 		}
 		if _, err := fs.Stat(fsys, p); err != nil {
-			// SPA fallback: every unknown route serves the app shell.
+			// Unknown /api/* path: answer a JSON 404, never the SPA shell.
+			// The SPA fallback used to mask missing API endpoints (clients
+			// got 200 + HTML instead of a 404 JSON contract error).
+			if p == "api" || strings.HasPrefix(p, "api/") {
+				writeError(w, http.StatusNotFound, "Não encontrado")
+				return
+			}
+			// Unknown /assets/* path: plain 404, never HTML. Serving HTML
+			// for a script URL makes browsers refuse it with "Refused to
+			// execute script" (MIME mismatch).
+			if p == "assets" || strings.HasPrefix(p, "assets/") {
+				http.NotFound(w, r)
+				return
+			}
+			// SPA fallback: every unknown non-API route serves the app shell.
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Write(index)
 			return

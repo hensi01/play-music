@@ -31,12 +31,16 @@ func scanUser(row pgx.Row) (*model.User, error) {
 }
 
 // CreateUser creates a user with a pre-hashed password and category grants.
+// The generated created_at is returned from the INSERT so the caller can
+// echo it back in the API response (fixes the zero-value "0001-01-01T00:00:00Z"
+// bug: time.Time zero values are not omitted by omitempty).
 func (s *Store) CreateUser(ctx context.Context, u *model.User, passwordHash string, categoryIDs []string) error {
 	err := dbTx(ctx, s, func(q queryer) error {
-		if _, err := q.Exec(ctx, `
+		if err := q.QueryRow(ctx, `
 			INSERT INTO users (id, username, email, phone, name, password_hash, is_admin, created_at)
-			VALUES ($1, NULLIF($2, ''), $3, NULLIF($4, ''), $5, $6, $7, now())`,
-			u.ID, u.Username, u.Email, u.Phone, u.Name, passwordHash, u.IsAdmin); err != nil {
+			VALUES ($1, NULLIF($2, ''), $3, NULLIF($4, ''), $5, $6, $7, now())
+			RETURNING created_at`,
+			u.ID, u.Username, u.Email, u.Phone, u.Name, passwordHash, u.IsAdmin).Scan(&u.CreatedAt); err != nil {
 			return err
 		}
 		return setUserCategories(ctx, q, u.ID, categoryIDs)

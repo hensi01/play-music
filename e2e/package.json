@@ -1,0 +1,10 @@
+{
+  "name": "play-music-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Playwright e2e suite for Play Music (reuses the global playwright install; the Go server must run on :4533).",
+  "scripts": {
+    "test": "set NODE_PATH=C:\\Users\\hensi\\AppData\\Roaming\\npm\\node_modules\\omniroute\\node_modules&& C:\\Users\\hensi\\AppData\\Roaming\\npm\\node_modules\\omniroute\\node_modules\\.bin\\playwright.cmd test --config playwright.config.js",
+    "test:desktop": "set NODE_PATH=C:\\Users\\hensi\\AppData\\Roaming\\npm\\node_modules\\omniroute\\node_modules&& C:\\Users\\hensi\\AppData\\Roaming\\npm\\node_modules\\omniroute\\node_modules\\.bin\\playwright.cmd test --config playwright.config.js --project desktop"
+  }
+}

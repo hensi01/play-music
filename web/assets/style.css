@@ -59,6 +59,7 @@
   --text:#1a1a1f; --subtext:#4a4a55; --faint:#666670;
   --grid:#6d6d75; --hover:rgba(0,0,0,0.05);
   --accent:#2f5fff; --accent-fill:#2f5fff; --on-accent:#fff; --outline:#6d6d75; --focus:#2a5df2;
+  --accent-2:#15803d; /* M4: green-700 no light — #1db954 falha AA (2.59:1) sobre branco; #15803d = 5.02:1 */
   --border-soft:rgba(0,0,0,0.12); --topbar-glass:rgba(255,255,255,0.9);
   --wash:rgba(0,0,0,0.04); --wash-strong:rgba(0,0,0,0.08); --wash-soft:rgba(0,0,0,0.03);
   --accent-wash:rgba(29,185,84,0.12); --accent-wash-soft:rgba(29,185,84,0.06); --warn-wash:rgba(255,200,60,0.25);
@@ -2240,6 +2241,331 @@ body.loja footer { text-align: center; color: var(--faint); font-size: 12px; pad
 @media (max-width: 560px) {
   body.loja .topbar { flex-direction: column; align-items: stretch; }
   body.loja .login-box input { width: 100%; }
+}
+
+/* ================= M4 — Polimento visual profissional (additive, sobre os tokens) ================= */
+
+/* --- Login: ambiente com glow + logo em tile + card elevado + erro em pill --- */
+
+.login-screen {
+  background:
+    radial-gradient(ellipse 65% 55% at 50% -5%, rgba(77, 125, 255, 0.12), transparent 70%),
+    linear-gradient(to bottom, rgba(26, 26, 31, 0.6), var(--bg));
+}
+
+.login-brand svg {
+  width: 54px;
+  height: 54px;
+  padding: 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--accent-fill, #3865f8), rgba(97, 141, 255, 0.55));
+  color: #fff;
+  box-shadow: var(--shadow-2);
+}
+
+.login-form {
+  transition: box-shadow var(--dur, 0.2s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+  box-shadow: var(--shadow-3);
+}
+
+.login-form:focus-within {
+  box-shadow: var(--shadow-3), 0 0 0 1px var(--accent);
+}
+
+.login-form:has(.login-error:not(:empty)) {
+  border-color: rgba(248, 113, 113, 0.55);
+}
+
+.login-error:not(:empty) {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.login-toggle {
+  box-shadow: inset 0 0 0 1px var(--outline, #6d6d75);
+}
+
+.login-toggle-btn.active {
+  box-shadow: var(--shadow-1);
+}
+
+.login-submit {
+  transition: opacity var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), transform var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), box-shadow var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+  box-shadow: 0 8px 20px rgba(56, 101, 248, 0.25);
+}
+
+.login-submit:hover:not(:disabled) {
+  opacity: 1;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(56, 101, 248, 0.35);
+}
+
+.login-submit:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+/* --- Player bar: elevação, capa com sombra, controles com hover/active --- */
+
+.bottom-bar {
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.now-playing-art {
+  box-shadow: var(--shadow-1);
+}
+
+.player-btn {
+  transition: color var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), transform var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.player-btn:hover {
+  transform: scale(1.12);
+}
+
+.player-btn:active {
+  transform: scale(0.92);
+}
+
+.player-btn-main {
+  box-shadow: var(--shadow-1);
+}
+
+.player-btn-main:hover {
+  box-shadow: 0 0 0 4px var(--wash-strong, rgba(255, 255, 255, 0.1)), var(--shadow-2);
+}
+
+.player-btn-main:active {
+  transform: scale(0.94);
+}
+
+.progress-fill {
+  transition: height var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), background var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.progress-track:hover .progress-fill,
+.progress-track.dragging .progress-fill {
+  height: 6px;
+}
+
+.fullscreen-btn-main {
+  box-shadow: var(--shadow-2);
+}
+
+.fullscreen-btn-main:active {
+  transform: scale(0.95);
+}
+
+/* --- Cards: hover-lift + sombra + overlay play com feedback --- */
+
+.card {
+  transition: background 0.15s, border-color 0.15s, transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  border-color: var(--grid);
+  box-shadow: var(--shadow-2);
+}
+
+.card-play {
+  transition: opacity 0.15s, transform 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.card-play:hover {
+  transform: translateY(0) scale(1.08);
+}
+
+.card-play:focus-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.genre-card {
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.genre-card:hover {
+  box-shadow: var(--shadow-2);
+}
+
+.card-row {
+  scrollbar-width: thin;
+  scrollbar-color: var(--grid) transparent;
+}
+
+.card-row::-webkit-scrollbar {
+  height: 8px;
+}
+
+.card-row::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+}
+
+/* --- Sidebar: logo em tile + item ativo com indicador lateral --- */
+
+.sidebar-brand svg {
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--accent-wash, rgba(29, 185, 84, 0.14));
+}
+
+.nav-link {
+  position: relative;
+  transition: color var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), background var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.nav-link:hover {
+  background: var(--wash-soft, rgba(255, 255, 255, 0.04));
+}
+
+.nav-link.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* --- Admin: tabs, rows, badges, chips e botões com estados --- */
+
+.tab-btn {
+  transition: color var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), background var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), box-shadow var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.tab-btn:hover:not(.active) {
+  background: var(--wash-soft, rgba(255, 255, 255, 0.04));
+}
+
+.tab-btn.active {
+  box-shadow: var(--shadow-1);
+}
+
+.admin-row {
+  transition: background var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), border-color var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), box-shadow var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.admin-row:hover {
+  background: var(--surface-3, #22222a);
+  border-color: var(--grid, #6d6d75);
+  box-shadow: var(--shadow-1);
+}
+
+.badge {
+  background: rgba(255, 200, 60, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(255, 200, 60, 0.3);
+}
+
+.chip {
+  box-shadow: inset 0 0 0 1px rgba(29, 185, 84, 0.2);
+}
+
+.btn-accent {
+  transition: transform var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), box-shadow var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), background var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+  box-shadow: 0 6px 16px rgba(56, 101, 248, 0.28);
+}
+
+.btn-accent:hover:not(:disabled) {
+  box-shadow: 0 8px 22px rgba(56, 101, 248, 0.4);
+}
+
+.btn-accent:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn-secondary {
+  transition: color var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), background var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), transform var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.btn-secondary:hover {
+  background: var(--surface-3, #22222a);
+}
+
+.btn-secondary:active {
+  transform: scale(0.97);
+}
+
+.form-input {
+  transition: box-shadow var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), background var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.modal {
+  box-shadow: var(--shadow-3);
+  animation: modal-in var(--dur, 0.2s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --- Micro-interações: ícones e toques consistentes --- */
+
+.icon-btn {
+  transition: background var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), color var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), transform var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.icon-btn:active {
+  transform: scale(0.92);
+}
+
+/* --- Empty states: card tracejado sutil --- */
+
+.empty-state {
+  border: 1.5px dashed var(--outline, #6d6d75);
+  border-radius: var(--radius-lg, 14px);
+  background: var(--wash-soft, rgba(255, 255, 255, 0.04));
+  margin: 8px 0;
+}
+
+/* --- Loja: cards com hover-lift, CTA verde com elevação, empty tracejado --- */
+
+body.loja .card {
+  transition: transform var(--dur, 0.2s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), box-shadow var(--dur, 0.2s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), border-color var(--dur, 0.2s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+body.loja .card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(29, 185, 84, 0.45);
+  box-shadow: var(--shadow-2);
+}
+
+body.loja .buy-btn {
+  transition: filter var(--dur, 0.2s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), transform var(--dur, 0.2s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), box-shadow var(--dur, 0.2s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+  box-shadow: 0 6px 16px rgba(21, 128, 61, 0.25);
+}
+
+body.loja .buy-btn:hover {
+  transform: translateY(-1px);
+}
+
+body.loja .buy-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+body.loja .login-box input:focus {
+  box-shadow: 0 0 0 2px var(--accent-2, #1db954);
+}
+
+body.loja .back-btn:hover {
+  background: var(--surface-3, #22222a);
+}
+
+body.loja .empty {
+  padding: 40px 24px;
+  border: 1.5px dashed var(--outline, #6d6d75);
+  border-radius: 16px;
+  text-align: center;
+  background: var(--wash-soft, rgba(255, 255, 255, 0.04));
 }
 
 /* ================= Reduced motion (T4 — must stay LAST) ================= */

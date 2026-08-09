@@ -1,0 +1,33 @@
+﻿# Teamwork Memory
+Updated continuously by all agents as they discover things.
+## Learnings
+- .env NÃO é auto-carregado pelo app Go — precisa carregar vars no ambiente do processo (script m1-start.ps1 lê .env em runtime; env vars não persistem entre chamadas de shell).
+- Clientes NÃO são seedados pelas migrations — para testar login de cliente, criar via admin (POST /api/admin/users com {name, phone}; payload não inclui senha para clientes).
+- Redis indisponível no ambiente local → artwork cache em disco (warn não crítico).
+- Overlay PWA re-exibe a cada page load (~1.5s) — fechar com "Agora não" antes de asserts Playwright.
+- Refs do Playwright MCP invalidam após re-render SPA — sempre re-snapshotar antes de fill/click.
+- POST /api/admin/users retorna createdAt zero-value (0001-01-01T00:00:00Z) — possível bug backend (B2).
+- Console error 401 @ /api/me na tela de login é ruído esperado (fetch de auth sem token) mas viola meta zero console errors (B1).
+- Login admin: toggle "Administrador" + usuário/senha do .env; login cliente: telefone (99) 99999-9999 após criação via admin.
+- Modelo de acesso: cliente só vê conteúdo de categorias atribuídas a ele (user_categories) — cliente novo tem tudo vazio (B4, confirmar intencionalidade).
+- [M4] `[data-theme="light"]` NUNCA é ativado por JS (nenhum setAttribute/dataset.theme em app.js/admin.js) — tema light é dormante mas o bloco deve ser preservado; contraste light ainda conta (regra dura).
+- [M4] go:embed exige rebuild do binário (`go build -o play-music.exe .`) e restart (parar PID do m1-srv.pid + `.\teamwork-state\fix-bugs-design-20260808\m1-start.ps1`) para servir CSS/HTML editados; validar marker no served: `Invoke-WebRequest http://localhost:4533/style.css` + regex.
+- [M4] m1-start.ps1 via bash tool pode ser morto com "ChildProcess.kill" — o Start-Process detached sobrevive; verificar health e o processo play-music mesmo assim.
+- [M4] Playwright MCP instável no ambiente (caiu 2x); fallback: script Node local com require absoluto de `C:/Users/hensi/AppData/Roaming/npm/node_modules/dev-browser/node_modules/playwright` (1.58.2), launch com `--autoplay-policy=no-user-gesture-required`.
+- [M4] CSS :has() (login-form:has(.login-error:not(:empty))) funciona em Chromium moderno; fallback gracioso em engines antigas (sem efeito).
+- [M4] Contraste: green #1db954 sobre branco = 2.59:1 (FAIL AA) — usar green-700 #15803d (5.02:1) para texto verde no tema light; sobre dark #1b1b20 o #1db954 = 6.63:1 (OK). Cálculo WCAG em node: luminance por canal sRGB + fórmula 0.2126/0.7152/0.0722.
+- [M4] Overlay PWA (pwa.js) re-exibe ~1.5s após cada page load real (goto/reload) — dismiss "Agora não" obrigatório antes de screenshot; navegação hash SPA NÃO re-dispara.
+- [M4] Screenshot estático não captura hover states nem pills de erro — o subagente vision precisa disso explicitado no prompt para não "inventar" ausência.
+- [M4] `.empty-state` (app) ≠ `.playlists-empty` (sidebar) — classes distintas; polimento tracejado aplicado só no primeiro.
+- [M2] B2 fixed: INSERT users agora faz RETURNING created_at e preenche o campo no handler; time.Time zero-value NÃO é omitido por omitempty (JSON mostra 0001-01-01T00:00:00Z).
+- [M2] Fallback SPA do static.go serve index.html para QUALQUER path desconhecido — /api/* e /assets/* agora têm tratamento próprio (404 JSON / 404 plain). Assets reais são servidos na RAIZ (./app.js), não sob /assets/.
+- [M2] Testes Go com DB: handlers dependem de *store.Store concreto (sem mock sem refactor invasivo) — integração gated: ler DATABASE_URL do env, senão parsear .env do repo root (CWD do teste = dir do pacote, repo = ../..), t.Skip limpo se indisponível.
+- [M2] Gotcha vet: t.Skip() não satisfaz o checker missing-return — função com return value precisa `return ""` explícito após t.Skip.
+- [M2] Gotcha Go: r.PathValue("id") só é populado pelo ServeMux — chamando handler direto em teste, usar req.SetPathValue("id", ...).
+- [M2] Gotcha PS 5.1: argumentos não-ASCII a curl.exe são corrompidos (encoding ANSI) — gravar body JSON em arquivo UTF-8 e usar `-d @arquivo`; `$args` é variável automática (nunca usar como array local em function); `-w` com newline embutida quebra o argumento.
+- [M2] user_likes.user_id NÃO tem FK (migration 0002) — testes podem usar user_id aleatório sem criar usuário.
+- [M2] maxUploadBytes = 512MB (áudio) vs maxPhotoBytes = 15MB (fotos) — PLAN.md/STRATEGY.md diziam 15MB para upload, incorreto; limite 512MB mantido, documentado em comentário.
+- [M2] Restart do servidor: Stop-Process pelo PID do m1-srv.pid (pode mudar entre runs — verificar listener real na porta 4533), go build -o play-music.exe ., m1-start.ps1, health check 200. PID mudou 24836 → 20516 → 18948.
+- [M3] JWT (RFC 7515) é base64url SEM padding — payload real do servidor tem 222 chars (222 % 4 = 2). `atob` no BROWSER é ESTRITO e lança InvalidCharacterError para base64 sem múltiplo de 4; o atob do Node (Buffer) é LENIENTE — testes em Node podem passar enquanto o browser quebra. Sempre repor padding antes do atob: `payload.replace(/-/g,'+').replace(/_/g,'/') + '='.repeat((4 - (payload.length % 4)) % 4)`.
+- [M3] Validação de JWT no browser exige token REAL do servidor (login POST /auth/login) — token fabricado com payload com padding passa mesmo com o bug. Técnica de expirar token real mantendo o comprimento: substituir os 10 dígitos do exp por outros 10 dígitos (ex.: 1000000000) na string JSON da payload — base64url resultante mantém o mesmo número de chars (222).
+- [M3] NODE_PATH para playwright no ambiente: 'C:\Users\hensi\AppData\Roaming\npm\node_modules\omniroute\node_modules' (require('playwright') resolve por aí).

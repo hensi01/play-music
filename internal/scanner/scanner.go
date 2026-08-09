@@ -2,6 +2,8 @@ package scanner
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -16,6 +18,12 @@ import (
 	"play-music/internal/storage"
 	"play-music/internal/store"
 )
+
+// ErrInvalidAudio marks files whose metadata cannot be read or that report
+// no duration — i.e. not actually decodable audio (junk bytes renamed to an
+// audio extension, truncated/corrupt files). Uploads map it to a 400; scans
+// skip the file instead of inserting a duration-0 song.
+var ErrInvalidAudio = errors.New("arquivo de áudio inválido ou corrompido")
 
 var audioExts = map[string]bool{
 	".mp3": true, ".flac": true, ".m4a": true, ".aac": true, ".ogg": true,
@@ -219,7 +227,10 @@ func (s *Scanner) indexAudio(ctx context.Context, a audioObj, prev store.SongFil
 	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(key)), ".")
 	tags, err := metadata.Read(tmp.Name(), size)
 	if err != nil {
-		s.log.Debug("metadata read failed", "key", key, "err", err)
+		return nil, fmt.Errorf("%w: metadados ilegíveis (%v)", ErrInvalidAudio, err)
+	}
+	if tags.Duration <= 0 {
+		return nil, fmt.Errorf("%w: duração não detectada (arquivo sem áudio decodificável)", ErrInvalidAudio)
 	}
 	if displayName == "" {
 		displayName = key

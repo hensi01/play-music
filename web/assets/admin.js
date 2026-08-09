@@ -4,6 +4,13 @@ import { endpoints, artworkUrl, applyPhoneMask } from './api.js'
 
 let adminTab = 'users'
 let adminState = { users: [], categories: [], songs: [], songCategoryIds: {}, categoryNames: {} }
+// Race guard do refresh: cada chamada incrementa o seq; respostas de
+// requisições antigas (troca rápida de abas) são descartadas.
+let adminRefreshSeq = 0
+
+function isAdminRefreshCurrent(seq) {
+  return seq === adminRefreshSeq
+}
 
 export function renderAdmin() {
   const page = document.createElement('div')
@@ -22,10 +29,11 @@ export function renderAdmin() {
   page.append(wrap)
 
   async function refresh() {
+    const seq = ++adminRefreshSeq
     wrap.innerHTML = ''
-    if (adminTab === 'users') await renderUsers(wrap)
-    else if (adminTab === 'categories') await renderCategories(wrap)
-    else await renderSongs(wrap)
+    if (adminTab === 'users') await renderUsers(wrap, seq)
+    else if (adminTab === 'categories') await renderCategories(wrap, seq)
+    else await renderSongs(wrap, seq)
   }
 
   refresh()
@@ -59,11 +67,14 @@ function refreshApp() {
 
 // ---------- Users ----------
 
-async function renderUsers(wrap) {
+async function renderUsers(wrap, seq) {
   const [users, categories] = await Promise.all([
     endpoints.admin.users().catch(() => []),
     endpoints.admin.categories().catch(() => []),
   ])
+  // Resposta obsoleta (outra aba já disparou um refresh mais novo): descarta
+  // antes de tocar no estado compartilhado ou no DOM.
+  if (!isAdminRefreshCurrent(seq)) return
   adminState.users = users
   adminState.categories = categories
 
@@ -127,6 +138,9 @@ function userForm(existing) {
   function sync() {
     adminBtn.classList.toggle('active', isAdmin)
     clientBtn.classList.toggle('active', !isAdmin)
+    // aria-pressed acompanha o toggle (antes ficava preso ao estado inicial).
+    adminBtn.setAttribute('aria-pressed', isAdmin ? 'true' : 'false')
+    clientBtn.setAttribute('aria-pressed', !isAdmin ? 'true' : 'false')
     adminFields.style.display = isAdmin ? '' : 'none'
     clientFields.style.display = isAdmin ? 'none' : ''
     catLabel.style.display = isAdmin ? 'none' : ''
@@ -157,6 +171,10 @@ function userForm(existing) {
     errorEl.textContent = ''
     const payload = { name: nameInput.value.trim(), isAdmin }
     if (isAdmin) {
+      // Nota (contrato): o backend LIMPA o telefone ao virar admin
+      // (handleAdminUpdateUser faz patch.Phone = "" no ramo admin) — enviar
+      // phone aqui seria ignorado. O telefone só entra no payload do ramo
+      // cliente, onde o backend o exige.
       payload.username = usernameInput.value.trim()
       payload.email = emailInput.value.trim()
       if (passInput.value) payload.password = passInput.value
@@ -250,8 +268,9 @@ function newCategoryForm() {
   }
 }
 
-async function renderCategories(wrap) {
+async function renderCategories(wrap, seq) {
   const categories = await endpoints.admin.categories().catch(() => [])
+  if (!isAdminRefreshCurrent(seq)) return
   adminState.categories = categories
 
   wrap.append(
@@ -412,12 +431,17 @@ function categoryForm(cat) {
     errEl.textContent = ''
     const name = overlay.querySelector('#cat-name').value.trim()
     const checkoutUrl = overlay.querySelector('#cat-checkout').value.trim()
+    const saveBtn = overlay.querySelector('.btn-accent')
+    // Desabilita durante o save: evita duplo submit (cliques repetidos).
+    saveBtn.disabled = true
     try {
       await endpoints.admin.updateCategory(cat.id, { name, checkoutUrl, songIds: assigned.songIds })
       overlay.remove()
       refreshApp()
     } catch (err) {
       errEl.textContent = err.message
+    } finally {
+      saveBtn.disabled = false
     }
   }
 }
@@ -434,8 +458,9 @@ async function deleteCategory(c) {
 
 // ---------- Songs (upload + list) ----------
 
-async function renderSongs(wrap) {
+async function renderSongs(wrap, seq) {
   const data = await endpoints.admin.songs().catch(() => ({ songs: [], categoryIds: {}, categoryList: [] }))
+  if (!isAdminRefreshCurrent(seq)) return
   const songs = data.songs ?? []
   adminState.songs = songs
   adminState.songCategoryIds = data.categoryIds ?? {}

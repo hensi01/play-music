@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -10,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"play-music/internal/metadata"
 	"play-music/internal/model"
 	"play-music/internal/phone"
+	"play-music/internal/scanner"
 	"play-music/internal/store"
 	"play-music/internal/version"
 )
@@ -427,7 +430,20 @@ func (s *Server) handleLiked(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLike(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.SetLike(r.Context(), userIDOf(r.Context()), "song", parseID(r), true); err != nil {
+	ctx := r.Context()
+	id := parseID(r)
+	// Validate the song exists before recording the like; a silent 204 for
+	// an unknown id desyncs the client state (B-NEW-3).
+	ok, err := s.store.SongExists(ctx, id)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, "Música não encontrada")
+		return
+	}
+	if err := s.store.SetLike(ctx, userIDOf(ctx), "song", id, true); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -435,7 +451,20 @@ func (s *Server) handleLike(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUnlike(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.SetLike(r.Context(), userIDOf(r.Context()), "song", parseID(r), false); err != nil {
+	ctx := r.Context()
+	id := parseID(r)
+	// Unlike of an unknown song is a client error too: report 404 instead
+	// of silently succeeding (B-NEW-3).
+	ok, err := s.store.SongExists(ctx, id)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, "Música não encontrada")
+		return
+	}
+	if err := s.store.SetLike(ctx, userIDOf(ctx), "song", id, false); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -931,6 +960,9 @@ func (s *Server) handleAdminDeleteCategoryPhoto(w http.ResponseWriter, r *http.R
 
 // ---------- admin: song upload ----------
 
+// maxUploadBytes is the song upload limit (512MB). Note: the 15MB cap
+// (maxPhotoBytes) applies ONLY to photos — the audio upload is 512MB by
+// design (lossless FLAC/WAV libraries). Keep the message in sync.
 const maxUploadBytes = 512 << 20 // 512MB
 
 // waitForObject polls the storage until a freshly uploaded object is readable.
@@ -1015,6 +1047,16 @@ func (s *Server) handleAdminUploadSong(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate the payload is actually decodable audio BEFORE it hits the
+	// bucket: a file renamed to .mp3 with junk bytes used to be accepted and
+	// indexed with duration 0 (the metadata read error was only Debug-logged
+	// and the upsert proceeded with empty tags). Files with no readable
+	// metadata or no detected duration are rejected without touching storage.
+	if tags, err := metadata.Read(tmp.Name(), size); err != nil || tags.Duration <= 0 {
+		writeError(w, http.StatusBadRequest, "Arquivo de áudio inválido ou corrompido")
+		return
+	}
+
 	key := "uploads/" + store.NewID() + ext
 	in, err := os.Open(tmp.Name())
 	if err != nil {
@@ -1036,6 +1078,18 @@ func (s *Server) handleAdminUploadSong(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		s.log.Error("upload index", "key", key, "err", err)
+		// The object was already Put into the bucket: remove it so a failed
+		// upload does not leave an orphaned object behind (B-NEW-4). This is
+		// best-effort — the client still gets an error either way.
+		if rerr := s.storage.Remove(r.Context(), key); rerr != nil {
+			s.log.Warn("upload cleanup", "key", key, "err", rerr)
+		}
+		// Invalid audio (reached via a scan/race, since the pre-Put check
+		// above already rejects it): 400, not 500.
+		if errors.Is(err, scanner.ErrInvalidAudio) {
+			writeError(w, http.StatusBadRequest, "Arquivo de áudio inválido ou corrompido")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "Falha ao indexar a música")
 		return
 	}
@@ -1045,9 +1099,6 @@ func (s *Server) handleAdminUploadSong(w http.ResponseWriter, r *http.Request) {
 	if title != "" || artist != "" {
 		if err := s.store.UpdateSongMeta(r.Context(), song.ID, title, artist); err != nil {
 			s.log.Warn("upload meta update", "err", err)
-		}
-		if fresh, err := s.store.GetSong(r.Context(), song.ID); err == nil {
-			song = fresh
 		}
 	}
 
@@ -1065,6 +1116,14 @@ func (s *Server) handleAdminUploadSong(w http.ResponseWriter, r *http.Request) {
 				s.log.Warn("upload photo", "err", err)
 			}
 		}
+	}
+
+	// Re-read the persisted row so the 201 echoes the real created_at /
+	// updated_at. The struct returned by the scanner never carries
+	// CreatedAt (the upsert only RETURNING id) — same zero-value pattern as
+	// the B2 user fix; time.Time zero is NOT omitted by omitempty.
+	if fresh, err := s.store.GetSong(r.Context(), song.ID); err == nil {
+		song = fresh
 	}
 
 	writeJSON(w, http.StatusCreated, song)
