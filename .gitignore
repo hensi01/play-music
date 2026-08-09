@@ -18,3 +18,5 @@ openspec/
 .playwright-mcp/
 .graphify/
 srv*.log
+
+m1-srv*
