@@ -341,7 +341,7 @@ function categoryForm(cat) {
     assigned = { songIds: d.songIds ?? [], karaokeIds: d.karaokeIds ?? [] }
     buildList('')
     buildKaraokeList('')
-  }).catch(() => buildList(''))
+  }).catch(() => { buildList(''); buildKaraokeList('') })
 
   function buildList(filter) {
     songsBox.innerHTML = ''
@@ -380,34 +380,44 @@ function categoryForm(cat) {
 
   function buildKaraokeList(filter) {
     karaokesBox.innerHTML = ''
-    endpoints.admin.karaokes()
-      .then((data) => {
-        const list = data.karaokes ?? []
-        adminState.karaokes = list
-        const f = filter.toLowerCase()
-        for (const k of list) {
-          if (f && !k.title.toLowerCase().includes(f) && !(k.artist || '').toLowerCase().includes(f)) continue
-          const box = el('input', { type: 'checkbox', id: `karaoke-${k.id}` })
-          box.checked = assigned.karaokeIds.includes(k.id)
-          box.addEventListener('change', () => {
-            if (box.checked) assigned.karaokeIds.push(k.id)
-            else assigned.karaokeIds = assigned.karaokeIds.filter((x) => x !== k.id)
-          })
-          karaokesBox.append(
-            el('div', { class: 'admin-row' },
-              el('div', { class: 'admin-row-main', style: 'display:flex;align-items:center;gap:8px' },
-                el('img', { class: 'track-art', src: artworkUrl(k.id, 48), alt: '' }),
-                box,
-                el('span', {}, `${k.title}${k.artist ? ` — ${k.artist}` : ''}`),
-              ),
-            ),
-          )
-        }
-        if (karaokesBox.children.length === 0) karaokesBox.append(el('p', { class: 'modal-empty' }, 'Nenhum karaokê. Envie vídeos na aba "Karaokês".'))
+    // Filtra em memória quando a lista já foi carregada; busca no servidor
+    // apenas na primeira vez (evita N requisições por tecla digitada).
+    if (adminState.karaokes.length === 0) {
+      endpoints.admin.karaokes()
+        .then((data) => {
+          adminState.karaokes = data.karaokes ?? []
+          renderKaraokeRows(filter)
+        })
+        .catch(() => {
+          karaokesBox.append(el('p', { class: 'modal-empty' }, 'Nenhum karaokê disponível.'))
+        })
+      return
+    }
+    renderKaraokeRows(filter)
+  }
+
+  function renderKaraokeRows(filter) {
+    const list = adminState.karaokes
+    const f = filter.toLowerCase()
+    for (const k of list) {
+      if (f && !k.title.toLowerCase().includes(f) && !(k.artist || '').toLowerCase().includes(f)) continue
+      const box = el('input', { type: 'checkbox', id: `karaoke-${k.id}` })
+      box.checked = assigned.karaokeIds.includes(k.id)
+      box.addEventListener('change', () => {
+        if (box.checked) assigned.karaokeIds.push(k.id)
+        else assigned.karaokeIds = assigned.karaokeIds.filter((x) => x !== k.id)
       })
-      .catch(() => {
-        karaokesBox.append(el('p', { class: 'modal-empty' }, 'Nenhum karaokê disponível.'))
-      })
+      karaokesBox.append(
+        el('div', { class: 'admin-row' },
+          el('div', { class: 'admin-row-main', style: 'display:flex;align-items:center;gap:8px' },
+            el('img', { class: 'track-art', src: artworkUrl(k.id, 48), alt: '' }),
+            box,
+            el('span', {}, `${k.title}${k.artist ? ` — ${k.artist}` : ''}`),
+          ),
+        ),
+      )
+    }
+    if (karaokesBox.children.length === 0) karaokesBox.append(el('p', { class: 'modal-empty' }, 'Nenhum karaokê. Envie vídeos na aba "Karaokês".'))
   }
 
   overlay.querySelector('#cat-song-filter').addEventListener('input', (e) => buildList(e.target.value))

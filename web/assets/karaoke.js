@@ -225,6 +225,11 @@ function open() {
   renderControls()
 }
 
+// Formats the playback rate label: 1 -> "1x", 1.25 -> "1.25x", 2 -> "2x".
+function rateLabel(rate) {
+  return `${Number(rate.toFixed(2))}x`
+}
+
 // Rebuilds the control bar on structural changes; progress ticks update in
 // place via sync().
 function buildControls() {
@@ -244,7 +249,7 @@ function buildControls() {
   const rateBtn = el(
     'button',
     { class: 'player-btn karaoke-rate', 'aria-label': 'Velocidade', onclick: cycleRate },
-    `${state.rate.toFixed(2).replace(/0$/, '')}x`,
+    rateLabel(state.rate),
   )
   barRefs.rateBtn = rateBtn
 
@@ -360,7 +365,7 @@ function sync() {
   }
   // Speed label follows the current rate.
   if (barRefs.rateBtn) {
-    barRefs.rateBtn.textContent = `${state.rate.toFixed(2).replace(/0$/, '')}x`
+    barRefs.rateBtn.textContent = rateLabel(state.rate)
   }
   // Play/pause button icon.
   const mainBtn = overlayEl.querySelector('.player-btn-main')
