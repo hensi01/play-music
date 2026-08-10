@@ -252,6 +252,38 @@ function enterFullscreen(el) {
   })
 }
 
+// ---------- landscape orientation ----------
+//
+// Android Chrome supports screen.orientation.lock() while the document is in
+// fullscreen (or an installed standalone PWA): locking "landscape" makes the
+// karaoke player rotate the screen to landscape automatically, like YouTube
+// does for videos. iOS Safari has no such API — its native video fullscreen
+// already rotates to landscape on its own, so everything here is a guarded
+// no-op there. Desktop browsers also reject the lock: the try/catch swallows
+// the failure and nothing breaks.
+
+function lockLandscape() {
+  try {
+    if (screen.orientation && typeof screen.orientation.lock === 'function') {
+      const p = screen.orientation.lock('landscape')
+      if (p && typeof p.catch === 'function') p.catch(() => undefined)
+    }
+  } catch {
+    // Unsupported (iOS Safari) / rejected by policy: keep the current
+    // orientation, the player still works.
+  }
+}
+
+function unlockOrientation() {
+  try {
+    if (screen.orientation && typeof screen.orientation.unlock === 'function') {
+      screen.orientation.unlock()
+    }
+  } catch {
+    // no-op
+  }
+}
+
 export function toggleFullscreen() {
   if (isFullscreen()) {
     const exit = document.exitFullscreen || document.webkitExitFullscreen
@@ -286,6 +318,9 @@ export function close() {
       if (p && typeof p.catch === 'function') p.catch(() => {})
     }
   }
+  // Release the landscape lock so the device returns to its previous
+  // orientation (e.g. portrait) once the karaoke player is closed.
+  unlockOrientation()
 }
 
 // ---------- player DOM (YouTube-style overlays) ----------
@@ -335,6 +370,17 @@ function open() {
   attachStageEvents()
   showControls()
   enterFullscreen(overlayEl)
+  // Force landscape (Android Chrome): screen.orientation.lock requires the
+  // document to be in fullscreen, so if the fullscreen transition is still
+  // pending we wait for it to activate before locking.
+  const lockWhenFullscreen = () => {
+    if (isFullscreen() && !isIOS()) lockLandscape()
+  }
+  if (isFullscreen() && !isIOS()) {
+    lockLandscape()
+  } else if (!isIOS()) {
+    document.addEventListener('fullscreenchange', lockWhenFullscreen, { once: true })
+  }
 }
 
 // Click on the video (outside the control overlays) toggles play/pause;
@@ -545,6 +591,9 @@ video.addEventListener('ended', () => {
 // fires webkitfullscreenchange on the video element instead of the document.
 function onFullscreenChange() {
   sync()
+  // Leaving fullscreen while the player stays open: release the landscape
+  // lock so the orientation is not stuck while the user is out of fullscreen.
+  if (!isFullscreen()) unlockOrientation()
 }
 document.addEventListener('fullscreenchange', onFullscreenChange)
 document.addEventListener('webkitfullscreenchange', onFullscreenChange)

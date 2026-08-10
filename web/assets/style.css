@@ -2753,11 +2753,11 @@ body.loja .empty {
 @media (max-width: 768px) {
   /* The video covers the full stage (object-fit: cover) — no height limit,
      it fills the screen like the YouTube player. */
-  /* Mobile: zero bottom spacing — the control bar sits flush with the
-     screen edge. Only the device safe-area (notch/home indicator) is kept,
-     so controls are never hidden behind the system bar on iPhones. */
+  /* Mobile: keep a clear gap between the controls and the bottom screen
+     edge (16px + the device safe-area / home indicator), so the bar never
+     looks glued to the screen. */
   .karaoke-controls {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
   }
   /* Let the button rows wrap onto a second line instead of overflowing
      horizontally (the fullscreen button used to fall off-screen). */

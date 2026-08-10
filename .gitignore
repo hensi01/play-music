@@ -51,3 +51,6 @@ karaoke-mobile-fs2.png
 # Karaoke android fs validation (worktree)
 k-srv*
 karaoke-android-cover.png
+
+# Karaoke landscape/spacing fix validation (worktree)
+kls-*
