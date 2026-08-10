@@ -2696,7 +2696,10 @@ body.loja .empty {
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 28px 14px calc(10px + env(safe-area-inset-bottom));
+  /* Bottom spacing so the controls never touch the screen edge: 20px +
+     safe-area (notch/home indicator). On phones without a safe area this
+     still leaves a clear gap from the bottom of the screen. */
+  padding: 28px 14px calc(20px + env(safe-area-inset-bottom));
   background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
   pointer-events: auto;
 }
@@ -2750,6 +2753,11 @@ body.loja .empty {
   .karaoke-stage video {
     max-height: 55vh;
     max-height: 55dvh;
+  }
+  /* Extra bottom spacing on phones: the bar must never touch the screen
+     edge, even without a safe-area inset. */
+  .karaoke-controls {
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
   }
   /* Let the button rows wrap onto a second line instead of overflowing
      horizontally (the fullscreen button used to fall off-screen). */
