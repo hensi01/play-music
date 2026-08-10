@@ -25,3 +25,9 @@ m1-srv*
 k-srv*
 pw-karaoke-teste.mp4
 karaoke-*.png
+
+# Karaoke fullscreen validation (worktree)
+k-srv*
+pw-k1.mp4
+pw-k2.mp4
+karaoke-fs-nativo.png
