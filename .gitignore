@@ -20,3 +20,8 @@ openspec/
 srv*.log
 
 m1-srv*
+
+# Karaoke validation server (worktree)
+k-srv*
+pw-karaoke-teste.mp4
+karaoke-*.png

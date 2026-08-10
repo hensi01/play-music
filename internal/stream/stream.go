@@ -178,6 +178,30 @@ var mimeByFormat = map[string]string{
 	"flac": "audio/flac",
 }
 
+// videoMimeByFormat maps a karaoke video format to its Content-Type.
+var videoMimeByFormat = map[string]string{
+	"mp4": "video/mp4", "m4v": "video/mp4", "webm": "video/webm",
+	"mkv": "video/x-matroska",
+}
+
+// mediaFile is the minimal object info the stream cache needs. Both songs and
+// karaokes convert to it, so audio and video share the same caching/ranging
+// pipeline without touching the song model.
+type mediaFile struct {
+	ID        string
+	Path      string
+	Size      int64
+	UpdatedAt time.Time
+}
+
+func mediaFileFromSong(song *model.Song) mediaFile {
+	return mediaFile{ID: song.ID, Path: song.Path, Size: song.Size, UpdatedAt: song.UpdatedAt}
+}
+
+func mediaFileFromKaraoke(k *model.Karaoke) mediaFile {
+	return mediaFile{ID: k.ID, Path: k.Path, Size: k.Size, UpdatedAt: k.UpdatedAt}
+}
+
 // streamChunkSize caps each response so the browser downloads the file piece
 // by piece instead of pulling the whole track in one request. 5 MiB matches
 // the Bunny CDN "large object" chunk size, keeps responses small (friendly to
@@ -194,8 +218,9 @@ const streamChunkSize = 5 << 20 // 5 MiB
 // which makes <audio> progressively fetch the file in small pieces (CDN-safe)
 // and seeking work even though the Bunny CDN also drops Range on cache miss.
 func (s *Service) ServeNative(ctx context.Context, w http.ResponseWriter, r *http.Request, song *model.Song) error {
-	cacheFile := filepath.Join(s.dirs.Stream, song.ID+filepath.Ext(song.Path))
-	if err := s.ensureStreamCache(ctx, song, cacheFile); err != nil {
+	media := mediaFileFromSong(song)
+	cacheFile := filepath.Join(s.dirs.Stream, media.ID+filepath.Ext(media.Path))
+	if err := s.ensureStreamCache(ctx, media, cacheFile); err != nil {
 		return err
 	}
 	if mime := mimeByFormat[song.Format]; mime != "" {
@@ -207,7 +232,7 @@ func (s *Service) ServeNative(ctx context.Context, w http.ResponseWriter, r *htt
 	// each response is bounded and the browser asks for the next chunk when
 	// its buffer runs low.
 	if rng := r.Header.Get("Range"); rng != "" {
-		if start, end, ok := parseRange(rng, songSize(song, cacheFile)); ok && end-start+1 > streamChunkSize {
+		if start, end, ok := parseRange(rng, mediaSize(media, cacheFile)); ok && end-start+1 > streamChunkSize {
 			r.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, start+streamChunkSize-1))
 		}
 	}
@@ -215,41 +240,63 @@ func (s *Service) ServeNative(ctx context.Context, w http.ResponseWriter, r *htt
 	return nil
 }
 
-func songSize(song *model.Song, cacheFile string) int64 {
+// ServeVideo streams a karaoke video through w with full HTTP Range support,
+// reusing the same disk cache + progressive chunking pipeline as audio.
+func (s *Service) ServeVideo(ctx context.Context, w http.ResponseWriter, r *http.Request, k *model.Karaoke) error {
+	media := mediaFileFromKaraoke(k)
+	cacheFile := filepath.Join(s.dirs.Stream, media.ID+filepath.Ext(media.Path))
+	if err := s.ensureStreamCache(ctx, media, cacheFile); err != nil {
+		return err
+	}
+	if mime := videoMimeByFormat[k.Format]; mime != "" {
+		w.Header().Set("Content-Type", mime)
+	}
+	w.Header().Set("Accept-Ranges", "bytes")
+
+	if rng := r.Header.Get("Range"); rng != "" {
+		if start, end, ok := parseRange(rng, mediaSize(media, cacheFile)); ok && end-start+1 > streamChunkSize {
+			r.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, start+streamChunkSize-1))
+		}
+	}
+	http.ServeFile(w, r, cacheFile)
+	return nil
+}
+
+func mediaSize(media mediaFile, cacheFile string) int64 {
 	if fi, err := os.Stat(cacheFile); err == nil {
 		return fi.Size()
 	}
-	return song.Size
+	return media.Size
 }
 
-// ensureStreamCache downloads the song to the local stream cache when stale
+// ensureStreamCache downloads the object to the local stream cache when stale
 // or missing. The MinIO endpoint ignores Range requests, so a full download
 // is required before the file can be served locally with ranges.
-func (s *Service) ensureStreamCache(ctx context.Context, song *model.Song, cacheFile string) error {
+func (s *Service) ensureStreamCache(ctx context.Context, media mediaFile, cacheFile string) error {
 	if info, err := os.Stat(cacheFile); err == nil {
-		if s.fresh(info.ModTime(), song.UpdatedAt) {
+		if s.fresh(info.ModTime(), media.UpdatedAt) {
 			return nil
 		}
 	}
 
-	mu := s.flight(song.ID)
+	mu := s.flight(media.ID)
 	mu.Lock()
 	defer mu.Unlock()
 
 	if info, err := os.Stat(cacheFile); err == nil {
-		if s.fresh(info.ModTime(), song.UpdatedAt) {
+		if s.fresh(info.ModTime(), media.UpdatedAt) {
 			return nil
 		}
 	}
 
-	tmp, err := os.CreateTemp(s.dirs.Stream, "s-*"+filepath.Ext(song.Path))
+	tmp, err := os.CreateTemp(s.dirs.Stream, "s-*"+filepath.Ext(media.Path))
 	if err != nil {
 		return err
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
 
-	src, err := s.st.Open(ctx, song.Path, 0, -1)
+	src, err := s.st.Open(ctx, media.Path, 0, -1)
 	if err != nil {
 		tmp.Close()
 		return err

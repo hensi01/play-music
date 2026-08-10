@@ -2,6 +2,7 @@
 
 import { api, endpoints, artworkUrl, getToken, setToken, readAppConfig, applyPhoneMask, phoneMask } from './api.js'
 import * as player from './player.js'
+import * as karaoke from './karaoke.js'
 // admin.js is imported with the build version so the service worker (which
 // caches by URL) never serves a stale copy after a redeploy.
 const { renderAdmin } = await import(`./admin.js?v=${readAppConfig().version}`)
@@ -77,6 +78,7 @@ const icons = {
   search: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
   library: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg>',
   heart: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>',
+  video: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>',
   clock: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
   music: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
   settings: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -386,12 +388,25 @@ function categoryCard(c) {
   })
 }
 
+// karaokeCard: a playable card for a karaoke video (16:9 thumbnail).
+function karaokeCard(k, onPlay) {
+  return card({
+    image: artworkUrl(k.id, 300),
+    title: k.title,
+    subtitle: [k.artist, fmtDuration(k.duration)].filter(Boolean).join(' • '),
+    onClick: onPlay,
+    onPlay,
+    square: false,
+  })
+}
+
 // ---------- Pages ----------
 
 const pages = {
   '/': renderHome,
   '/search': renderSearch,
   '/library': renderLibrary,
+  '/karaoke': renderKaraoke,
   '/liked': renderLiked,
   '/history': renderHistory,
   '/queue': renderQueue,
@@ -440,11 +455,20 @@ async function renderHome(container) {
     const sectionsEl = []
     for (const s of home.sections ?? []) {
       const songs = s.songs ?? []
-      if (songs.length === 0) continue
-      const cards = songs.map((song) =>
-        songCard(song, () => player.playContext(songs, songs.indexOf(song))),
-      )
-      sectionsEl.push(section(s.title, cards))
+      const karaokes = s.karaokes ?? []
+      if (songs.length === 0 && karaokes.length === 0) continue
+      if (karaokes.length > 0) {
+        const cards = karaokes.map((k) =>
+          karaokeCard(k, () => karaoke.playKaraokeContext(karaokes, karaokes.indexOf(k))),
+        )
+        sectionsEl.push(section(s.title, cards))
+      }
+      if (songs.length > 0) {
+        const cards = songs.map((song) =>
+          songCard(song, () => player.playContext(songs, songs.indexOf(song))),
+        )
+        sectionsEl.push(section(s.title, cards))
+      }
     }
     const myPlaylists = playlistsCache ?? []
     if (myPlaylists.length > 0) {
@@ -467,6 +491,35 @@ async function renderHome(container) {
       )
     }
   } catch (err) {
+    container.append(emptyState(err.message))
+  }
+}
+
+// ---------- Karaoke ----------
+
+async function renderKaraoke(container) {
+  container.innerHTML = ''
+  container.append(spinner())
+  try {
+    const list = await endpoints.karaokes()
+    const page = el(
+      'div',
+      { class: 'page-padding' },
+      el('h1', { class: 'page-title' }, 'Karaokê – Vídeos'),
+      el('p', { class: 'detail-meta' }, 'Assista e cante junto com os vídeos'),
+    )
+    if (list.length === 0) {
+      page.append(emptyState('Nenhum karaokê disponível ainda.'))
+    } else {
+      const cards = list.map((k) =>
+        karaokeCard(k, () => karaoke.playKaraokeContext(list, list.indexOf(k))),
+      )
+      page.append(el('div', { class: 'card-row' }, ...cards))
+    }
+    container.innerHTML = ''
+    container.append(el('div', { class: 'page' }, page))
+  } catch (err) {
+    container.innerHTML = ''
     container.append(emptyState(err.message))
   }
 }
@@ -687,6 +740,7 @@ async function renderCategory(container, params) {
   try {
     const cat = await endpoints.category(params.id)
     const songs = cat.songs ?? []
+    const karaokes = cat.karaokes ?? []
 
     const header = el(
       'div',
@@ -720,6 +774,16 @@ async function renderCategory(container, params) {
         trackRow(s, i, { onPlay: (_song, idx) => player.playContext(songs, idx) }),
       )
       content.append(el('div', { class: 'track-list' }, ...rows))
+    }
+    if (karaokes.length > 0) {
+      content.append(
+        section(
+          'Karaokês',
+          karaokes.map((k) =>
+            karaokeCard(k, () => karaoke.playKaraokeContext(karaokes, karaokes.indexOf(k))),
+          ),
+        ),
+      )
     }
     content.append(
       el('button', { class: 'back-link', onclick: () => navigate('/library') }, icon('arrowLeft'), 'Voltar para a biblioteca'),
@@ -1165,6 +1229,7 @@ function sidebarContent(onNavigate) {
       nav('/', 'Início', 'home'),
       nav('/search', 'Buscar', 'search'),
       nav('/library', 'Sua Biblioteca', 'library'),
+      nav('/karaoke', 'Karaokê', 'video'),
       nav('/liked', 'Curtidas', 'heart'),
       nav('/history', 'Histórico', 'clock'),
       el(

@@ -114,7 +114,8 @@ func (s *Service) writeImage(w http.ResponseWriter, data []byte) {
 
 // resolve finds artwork for an entity, following the fallback chain:
 // song (custom photo) -> album -> artist (first album) -> playlist (first
-// song album) -> song album cover -> category (Postgres, then MinIO).
+// song album) -> song album cover -> karaoke (custom photo) -> karaoke
+// thumbnail (ffmpeg frame) -> category (Postgres, then MinIO).
 func (s *Service) resolve(ctx context.Context, entityID string) (*store.Art, error) {
 	// Custom photo uploaded for a song (or album/artist entity directly).
 	if art, ok, err := s.store.GetArt(ctx, "song", entityID); err != nil || ok {
@@ -137,6 +138,13 @@ func (s *Service) resolve(ctx context.Context, entityID string) (*store.Art, err
 		if art, ok, err := s.store.GetArt(ctx, "album", albumID); err != nil || ok {
 			return art, err
 		}
+	}
+	// Karaoke: custom photo overrides the auto-generated thumbnail.
+	if art, ok, err := s.store.GetArt(ctx, "karaoke", entityID); err != nil || ok {
+		return art, err
+	}
+	if art, ok, err := s.store.GetArt(ctx, "karaoke_thumb", entityID); err != nil || ok {
+		return art, err
 	}
 	return s.resolveCategory(ctx, entityID)
 }
@@ -218,6 +226,34 @@ func (s *Service) DeleteSongPhoto(ctx context.Context, songID string) error {
 		return err
 	}
 	s.invalidate(songID)
+	return nil
+}
+
+// UploadKaraokePhoto validates and stores a custom photo for a karaoke,
+// overriding the auto-generated thumbnail. Resized to at most 1024px, JPEG.
+func (s *Service) UploadKaraokePhoto(ctx context.Context, karaokeID string, data []byte) error {
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return errors.New("imagem inválida ou corrompida")
+	}
+	out := s.encode(s.fit(img, 1024))
+	if out == nil {
+		return errors.New("falha ao processar imagem")
+	}
+	if err := s.store.UpsertArt(ctx, "karaoke", karaokeID, out, "image/jpeg"); err != nil {
+		return err
+	}
+	s.invalidate(karaokeID)
+	return nil
+}
+
+// DeleteKaraokePhoto removes a custom karaoke photo, restoring the
+// auto-generated thumbnail (if any).
+func (s *Service) DeleteKaraokePhoto(ctx context.Context, karaokeID string) error {
+	if err := s.store.DeleteArt(ctx, "karaoke", karaokeID); err != nil {
+		return err
+	}
+	s.invalidate(karaokeID)
 	return nil
 }
 

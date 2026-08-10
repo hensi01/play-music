@@ -60,7 +60,8 @@ func (s *Store) GetOrCreateCategory(ctx context.Context, name string) (string, e
 func (s *Store) GetCategories(ctx context.Context) ([]model.Category, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT c.id, c.name, c.checkout_url,
-			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id) AS song_count
+			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id) AS song_count,
+			(SELECT count(*)::int FROM category_karaokes ck WHERE ck.category_id = c.id) AS karaoke_count
 		FROM categories c ORDER BY c.name`)
 	if err != nil {
 		return nil, err
@@ -69,7 +70,7 @@ func (s *Store) GetCategories(ctx context.Context) ([]model.Category, error) {
 	var out []model.Category
 	for rows.Next() {
 		var c model.Category
-		if err := rows.Scan(&c.ID, &c.Name, &c.CheckoutURL, &c.SongCount); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.CheckoutURL, &c.SongCount, &c.KaraokeCount); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -81,9 +82,10 @@ func (s *Store) GetCategory(ctx context.Context, id string) (*model.Category, er
 	var c model.Category
 	err := s.pool.QueryRow(ctx, `
 		SELECT c.id, c.name, c.checkout_url,
-			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id)
+			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id),
+			(SELECT count(*)::int FROM category_karaokes ck WHERE ck.category_id = c.id)
 		FROM categories c WHERE c.id=$1`, id).
-		Scan(&c.ID, &c.Name, &c.CheckoutURL, &c.SongCount)
+		Scan(&c.ID, &c.Name, &c.CheckoutURL, &c.SongCount, &c.KaraokeCount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -112,10 +114,30 @@ func (s *Store) CategoryDetail(ctx context.Context, id string) (songIDs []string
 	return songIDs, rows.Err()
 }
 
+// CategoryKaraokeIDs returns the assigned karaoke ids (assignment screen).
+func (s *Store) CategoryKaraokeIDs(ctx context.Context, id string) (karaokeIDs []string, err error) {
+	rows, err := s.pool.Query(ctx,
+		"SELECT karaoke_id FROM category_karaokes WHERE category_id=$1 ORDER BY position, karaoke_id", id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	karaokeIDs = []string{}
+	for rows.Next() {
+		var kid string
+		if err := rows.Scan(&kid); err != nil {
+			return nil, err
+		}
+		karaokeIDs = append(karaokeIDs, kid)
+	}
+	return karaokeIDs, rows.Err()
+}
+
 // UpdateCategory renames, updates the checkout link and/or replaces the song
-// assignments. checkoutURL nil keeps the current value; a pointer (even "")
-// sets it (allows clearing).
-func (s *Store) UpdateCategory(ctx context.Context, id, name string, checkoutURL *string, songIDs []string) error {
+// and karaoke assignments. checkoutURL nil keeps the current value; a pointer
+// (even "") sets it (allows clearing). songIDs/karaokeIDs nil keep the
+// current assignment; a non-nil slice replaces it.
+func (s *Store) UpdateCategory(ctx context.Context, id, name string, checkoutURL *string, songIDs []string, karaokeIDs []string) error {
 	return dbTx(ctx, s, func(q queryer) error {
 		if name != "" {
 			if _, err := q.Exec(ctx, "UPDATE categories SET name=$2 WHERE id=$1", id, name); err != nil {
@@ -135,6 +157,18 @@ func (s *Store) UpdateCategory(ctx context.Context, id, name string, checkoutURL
 				if _, err := q.Exec(ctx,
 					"INSERT INTO category_songs (category_id, song_id, position) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
 					id, sid, i); err != nil {
+					return err
+				}
+			}
+		}
+		if karaokeIDs != nil {
+			if _, err := q.Exec(ctx, "DELETE FROM category_karaokes WHERE category_id=$1", id); err != nil {
+				return err
+			}
+			for i, kid := range karaokeIDs {
+				if _, err := q.Exec(ctx,
+					"INSERT INTO category_karaokes (category_id, karaoke_id, position) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+					id, kid, i); err != nil {
 					return err
 				}
 			}
@@ -196,12 +230,55 @@ func (s *Store) CategorySongIDs(ctx context.Context) (map[string][]string, error
 	return out, rows.Err()
 }
 
+// AddKaraokeToCategory assigns a single karaoke to a category (used on upload).
+func (s *Store) AddKaraokeToCategory(ctx context.Context, categoryID, karaokeID string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO category_karaokes (category_id, karaoke_id, position)
+		VALUES ($1, $2, (SELECT COALESCE(max(position)+1, 0) FROM category_karaokes WHERE category_id=$1))
+		ON CONFLICT DO NOTHING`, categoryID, karaokeID)
+	return err
+}
+
+// CategoryKaraokes returns the karaokes assigned to a category, in order.
+func (s *Store) CategoryKaraokes(ctx context.Context, categoryID string) ([]model.Karaoke, error) {
+	rows, err := s.pool.Query(ctx,
+		"SELECT "+karaokeCols+` FROM karaokes k
+		 WHERE k.id IN (SELECT karaoke_id FROM category_karaokes ck WHERE ck.category_id=$1)
+		 ORDER BY (SELECT position FROM category_karaokes ck2 WHERE ck2.category_id=$1 AND ck2.karaoke_id=k.id),
+		          k.title COLLATE "C" ASC`, categoryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return collectKaraokes(rows)
+}
+
+// KaraokeCategoryIDs returns karaoke_id -> category ids for the whole library
+// (admin karaoke listing).
+func (s *Store) KaraokeCategoryIDs(ctx context.Context) (map[string][]string, error) {
+	rows, err := s.pool.Query(ctx, "SELECT category_id, karaoke_id FROM category_karaokes")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]string{}
+	for rows.Next() {
+		var cid, kid string
+		if err := rows.Scan(&cid, &kid); err != nil {
+			return nil, err
+		}
+		out[kid] = append(out[kid], cid)
+	}
+	return out, rows.Err()
+}
+
 // SearchCategories searches categories by name. Clients only see the
 // categories granted to them; admins (userID "") see all.
 func (s *Store) SearchCategories(ctx context.Context, userID, q string, limit int) ([]model.Category, error) {
 	like := likePattern(q)
 	base := `SELECT c.id, c.name, c.checkout_url,
-			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id) AS song_count
+			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id) AS song_count,
+			(SELECT count(*)::int FROM category_karaokes ck WHERE ck.category_id = c.id) AS karaoke_count
 		FROM categories c WHERE unaccent(c.name) ILIKE unaccent($1) ESCAPE '\'`
 	args := []any{like}
 	limPh := "$2"
@@ -220,7 +297,7 @@ func (s *Store) SearchCategories(ctx context.Context, userID, q string, limit in
 	out := []model.Category{}
 	for rows.Next() {
 		var c model.Category
-		if err := rows.Scan(&c.ID, &c.Name, &c.CheckoutURL, &c.SongCount); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.CheckoutURL, &c.SongCount, &c.KaraokeCount); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

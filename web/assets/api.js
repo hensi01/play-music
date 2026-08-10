@@ -94,6 +94,10 @@ export const endpoints = {
   songs: () => api.get('/api/songs'),
   song: (id) => api.get(`/api/songs/${id}`),
 
+  karaokes: () => api.get('/api/karaokes'),
+  karaoke: (id) => api.get(`/api/karaokes/${id}`),
+  registerKaraokePlay: (id) => api.post(`/api/me/karaoke/${id}`),
+
   playlists: () => api.get('/api/playlists'),
   playlist: (id) => api.get(`/api/playlists/${id}`),
   createPlaylist: (name, songIds) => api.post('/api/playlists', { name, songIds }),
@@ -132,6 +136,10 @@ export const endpoints = {
     deleteSongPhoto: (id) => api.del(`/api/admin/songs/${id}/photo`),
     uploadCategoryPhoto: (id, file) => api.upload(`/api/admin/categories/${id}/photo`, file),
     deleteCategoryPhoto: (id) => api.del(`/api/admin/categories/${id}/photo`),
+    karaokes: () => api.get('/api/admin/karaokes'),
+    uploadKaraoke: (fd) => apiFetch('/api/admin/karaokes', { method: 'POST', body: fd }),
+    uploadKaraokePhoto: (id, file) => api.upload(`/api/admin/karaokes/${id}/photo`, file),
+    deleteKaraokePhoto: (id) => api.del(`/api/admin/karaokes/${id}/photo`),
   },
 }
 
@@ -156,6 +164,15 @@ export function streamUrl(song, fallback = false) {
   if (token) q.set('jwt', token)
   const qs = q.toString()
   return resolve(`/api/stream/${song.id}${qs ? `?${qs}` : ''}`)
+}
+
+// karaokeStreamUrl builds the <video> src for a karaoke (JWT as ?jwt=).
+export function karaokeStreamUrl(karaoke) {
+  const q = new URLSearchParams()
+  const token = getToken()
+  if (token) q.set('jwt', token)
+  const qs = q.toString()
+  return resolve(`/api/karaoke/stream/${karaoke.id}${qs ? `?${qs}` : ''}`)
 }
 
 // Phone mask: formats input as (99) 99999-9999 / (99) 9999-9999.
