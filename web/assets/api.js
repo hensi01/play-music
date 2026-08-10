@@ -1,5 +1,7 @@
 // API client: fetch wrapper with JWT auth, token refresh and all endpoints.
 
+import { translateBackendError } from './i18n.js'
+
 const AUTH_HEADER = 'X-ND-Authorization'
 export const TOKEN_KEY = 'pm_token'
 
@@ -38,7 +40,7 @@ export async function apiFetch(path, options = {}) {
     } catch {
       /* not json */
     }
-    throw new Error(msg)
+    throw new Error(translateBackendError(msg, res.status))
   }
 
   if (!res.ok) {
@@ -49,7 +51,7 @@ export async function apiFetch(path, options = {}) {
     } catch {
       /* not json */
     }
-    throw new Error(msg)
+    throw new Error(translateBackendError(msg, res.status))
   }
 
   if (res.status === 204) return undefined

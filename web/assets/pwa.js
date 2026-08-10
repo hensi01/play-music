@@ -53,39 +53,26 @@
   const musicIcon =
     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>'
 
+  // Tradução via window.__i18n (o i18n.js é um módulo ES; o pwa.js é um
+  // script clássico — as funções só usam t() no evento load, já com o
+  // i18n carregado). Fallback: devolve a própria chave.
+  const tt = (key) => (window.__i18n ? window.__i18n.t(key) : key)
+
   function stepsFor() {
     if (isIOS()) {
-      return [
-        'Abra no Safari e toque no botão Compartilhar (ícone de seta para cima) na barra inferior',
-        'Role a lista e toque em "Adicionar à Tela de Início"',
-        'Toque em "Adicionar" no canto superior direito',
-      ]
+      return [tt('pwa.ios.1'), tt('pwa.ios.2'), tt('pwa.ios.3')]
     }
     if (isAndroid()) {
-      return [
-        'Abra no Chrome e toque no menu de três pontos (⋮) no canto superior direito',
-        'Toque em "Adicionar à tela inicial" (ou "Instalar aplicativo")',
-        'Confirme tocando em "Instalar"',
-      ]
+      return [tt('pwa.android.1'), tt('pwa.android.2'), tt('pwa.android.3')]
     }
     if (isSafariDesktop()) {
-      return [
-        'No Safari, abra o menu "Arquivo" e escolha "Adicionar ao Dock"',
-        'Confirme tocando em "Adicionar"',
-      ]
+      return [tt('pwa.safari.1'), tt('pwa.safari.2')]
     }
-    return [
-      'No Chrome, toque no ícone de instalação (monitor com seta) no fim da barra de endereço',
-      'Confirme tocando em "Instalar"',
-    ]
+    return [tt('pwa.other.1'), tt('pwa.other.2')]
   }
 
   function buildCard() {
-    const tips = [
-      'Acesso em 1 toque pela tela de início',
-      'Abre em tela cheia, sem a barra do navegador',
-      'Ícone próprio do Play Music no seu dispositivo',
-    ]
+    const tips = [tt('pwa.tip1'), tt('pwa.tip2'), tt('pwa.tip3')]
     const canInstall = deferredPrompt != null
     const steps = stepsFor()
 
@@ -94,15 +81,15 @@
     card.innerHTML =
       '<div class="pwa-header">' +
         '<span class="pwa-icon">' + musicIcon + '</span>' +
-        '<h2>Instale o Play Music</h2>' +
+        '<h2>' + tt('pwa.install') + '</h2>' +
       '</div>' +
-      '<p class="pwa-desc">Ouça suas músicas como um aplicativo:</p>' +
+      '<p class="pwa-desc">' + tt('pwa.desc') + '</p>' +
       '<ul class="pwa-tips">' + tips.map((t) => '<li>' + t + '</li>').join('') + '</ul>' +
-      '<p class="pwa-steps-title">Como instalar:</p>' +
+      '<p class="pwa-steps-title">' + tt('pwa.howTo') + '</p>' +
       '<ol class="pwa-steps">' + steps.map((s) => '<li>' + s + '</li>').join('') + '</ol>' +
       '<div class="pwa-actions">' +
-        (canInstall ? '<button type="button" class="pwa-btn primary" data-act="install">Instalar</button>' : '') +
-        '<button type="button" class="pwa-btn" data-act="dismiss">Agora não</button>' +
+        (canInstall ? '<button type="button" class="pwa-btn primary" data-act="install">' + tt('pwa.installBtn') + '</button>' : '') +
+        '<button type="button" class="pwa-btn" data-act="dismiss">' + tt('pwa.dismiss') + '</button>' +
       '</div>'
 
     card.querySelector('[data-act="dismiss"]').addEventListener('click', () => {

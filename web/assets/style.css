@@ -2818,3 +2818,52 @@ body.loja .empty {
 }
 
 
+
+/* ---------- Language selector ---------- */
+
+.lang-selector {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.login-lang {
+  margin-bottom: 14px;
+}
+
+.lang-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border, #2a2a33);
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--subtext, #9a9aa5);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.lang-btn:hover {
+  border-color: var(--accent, #3865f8);
+  color: var(--text, #fff);
+}
+
+.lang-btn.active {
+  background: var(--accent-fill, #3865f8);
+  border-color: var(--accent-fill, #3865f8);
+  color: #fff;
+}
+
+.sidebar-lang {
+  justify-content: flex-start;
+}
+
+.sidebar-lang .lang-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+}

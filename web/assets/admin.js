@@ -1,6 +1,7 @@
 // Admin page: users, categories (songs per category) and song uploads.
 
 import { endpoints, artworkUrl, applyPhoneMask } from './api.js'
+import { t, plural } from './i18n.js'
 
 let adminTab = 'users'
 let adminState = { users: [], categories: [], songs: [], karaokes: [], songCategoryIds: {}, categoryNames: {} }
@@ -19,12 +20,12 @@ export function renderAdmin() {
   const tabs = el(
     'div',
     { class: 'tabs' },
-    el('button', { class: `tab-btn ${adminTab === 'users' ? 'active' : ''}`, onclick: () => { adminTab = 'users'; refresh() } }, 'Usuários'),
-    el('button', { class: `tab-btn ${adminTab === 'categories' ? 'active' : ''}`, onclick: () => { adminTab = 'categories'; refresh() } }, 'Categorias'),
-    el('button', { class: `tab-btn ${adminTab === 'songs' ? 'active' : ''}`, onclick: () => { adminTab = 'songs'; refresh() } }, 'Músicas'),
-    el('button', { class: `tab-btn ${adminTab === 'karaokes' ? 'active' : ''}`, onclick: () => { adminTab = 'karaokes'; refresh() } }, 'Karaokês'),
+    el('button', { class: `tab-btn ${adminTab === 'users' ? 'active' : ''}`, onclick: () => { adminTab = 'users'; refresh() } }, t('admin.users')),
+    el('button', { class: `tab-btn ${adminTab === 'categories' ? 'active' : ''}`, onclick: () => { adminTab = 'categories'; refresh() } }, t('admin.categories')),
+    el('button', { class: `tab-btn ${adminTab === 'songs' ? 'active' : ''}`, onclick: () => { adminTab = 'songs'; refresh() } }, t('admin.songs')),
+    el('button', { class: `tab-btn ${adminTab === 'karaokes' ? 'active' : ''}`, onclick: () => { adminTab = 'karaokes'; refresh() } }, t('admin.karaokes')),
   )
-  page.append(el('h1', { class: 'page-title' }, 'Administração'), tabs)
+  page.append(el('h1', { class: 'page-title' }, t('admin.title')), tabs)
 
   const wrap = document.createElement('div')
   page.append(wrap)
@@ -58,7 +59,7 @@ function el(tag, attrs = {}, ...children) {
   return node
 }
 
-function plural(n, singular, pluralForm) {
+function pluralCount(n, singular, pluralForm) {
   return `${n} ${n === 1 ? singular : pluralForm}`
 }
 
@@ -84,12 +85,12 @@ async function renderUsers(wrap, seq) {
     el(
       'div',
       { class: 'admin-toolbar' },
-      el('button', { class: 'btn-accent', onclick: () => userForm() }, 'Novo usuário'),
+      el('button', { class: 'btn-accent', onclick: () => userForm() }, t('admin.newUser')),
     ),
   )
 
   const table = el('div', { class: 'admin-table' })
-  if (users.length === 0) table.append(el('p', { class: 'empty-state' }, 'Nenhum usuário ainda.'))
+  if (users.length === 0) table.append(el('p', { class: 'empty-state' }, t('admin.noUsers')))
   for (const u of users) {
     const chips = (u.categories ?? []).map((c) => el('span', { class: 'chip' }, c.name))
     table.append(
@@ -97,13 +98,13 @@ async function renderUsers(wrap, seq) {
         'div',
         { class: 'admin-row' },
         el('div', { class: 'admin-row-main' },
-          el('p', { class: 'admin-row-title' }, u.name, u.isAdmin ? el('span', { class: 'badge' }, 'Admin') : null),
+          el('p', { class: 'admin-row-title' }, u.name, u.isAdmin ? el('span', { class: 'badge' }, t('admin.admin')) : null),
           el('p', { class: 'admin-row-sub' }, u.isAdmin ? `@${u.username}` : (u.phone || '')),
           el('div', { class: 'admin-chips' }, ...chips),
         ),
         el('div', { class: 'admin-row-actions' },
-          el('button', { class: 'icon-btn', 'aria-label': 'Editar', onclick: () => userForm(u) }, '✎'),
-          el('button', { class: 'icon-btn', 'aria-label': 'Excluir', onclick: () => deleteUser(u) }, '✕'),
+          el('button', { class: 'icon-btn', 'aria-label': t('admin.edit'), onclick: () => userForm(u) }, '✎'),
+          el('button', { class: 'icon-btn', 'aria-label': t('admin.delete'), onclick: () => deleteUser(u) }, '✕'),
         ),
       ),
     )
@@ -114,18 +115,18 @@ async function renderUsers(wrap, seq) {
 function userForm(existing) {
   const isEdit = !!existing
   let isAdmin = !!existing?.isAdmin
-  const nameInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Nome', value: existing?.name ?? '', autocomplete: 'name' })
-  const phoneInput = el('input', { class: 'form-input', type: 'tel', inputmode: 'numeric', placeholder: 'Telefone (99) 99999-9999', value: existing && !existing.isAdmin ? existing.phone : '', autocomplete: 'tel' })
+  const nameInput = el('input', { class: 'form-input', type: 'text', placeholder: t('admin.name'), value: existing?.name ?? '', autocomplete: 'name' })
+  const phoneInput = el('input', { class: 'form-input', type: 'tel', inputmode: 'numeric', placeholder: t('admin.phone'), value: existing && !existing.isAdmin ? existing.phone : '', autocomplete: 'tel' })
   phoneInput.addEventListener('input', () => applyPhoneMask(phoneInput))
-  const usernameInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Usuário', value: existing?.username ?? '', autocomplete: 'username' })
-  const emailInput = el('input', { class: 'form-input', type: 'email', placeholder: 'E-mail', value: existing?.email ?? '', autocomplete: 'email' })
-  const passInput = el('input', { class: 'form-input', type: 'password', placeholder: isEdit ? 'Nova senha (opcional)' : 'Senha', autocomplete: 'new-password' })
+  const usernameInput = el('input', { class: 'form-input', type: 'text', placeholder: t('admin.username'), value: existing?.username ?? '', autocomplete: 'username' })
+  const emailInput = el('input', { class: 'form-input', type: 'email', placeholder: t('admin.email'), value: existing?.email ?? '', autocomplete: 'email' })
+  const passInput = el('input', { class: 'form-input', type: 'password', placeholder: isEdit ? t('admin.newPassword') : t('admin.password'), autocomplete: 'new-password' })
   const errorEl = el('p', { class: 'login-error' })
 
   const adminFields = el('div', {}, usernameInput, emailInput, passInput)
   const clientFields = el('div', {}, phoneInput)
 
-  const catLabel = el('div', { class: 'modal-section-label' }, 'Categorias liberadas')
+  const catLabel = el('div', { class: 'modal-section-label' }, t('admin.grantedCategories'))
   const catsWrap = el('div', {},
     adminState.categories.map((c) => {
       const box = el('input', { type: 'checkbox', id: `cat-${c.id}` })
@@ -134,8 +135,8 @@ function userForm(existing) {
     }),
   )
 
-  const adminBtn = el('button', { class: 'login-toggle-btn', 'aria-pressed': isAdmin ? 'true' : 'false', onclick: () => { isAdmin = true; sync() } }, 'Administrador')
-  const clientBtn = el('button', { class: 'login-toggle-btn', 'aria-pressed': !isAdmin ? 'true' : 'false', onclick: () => { isAdmin = false; sync() } }, 'Cliente')
+  const adminBtn = el('button', { class: 'login-toggle-btn', 'aria-pressed': isAdmin ? 'true' : 'false', onclick: () => { isAdmin = true; sync() } }, t('admin.admin'))
+  const clientBtn = el('button', { class: 'login-toggle-btn', 'aria-pressed': !isAdmin ? 'true' : 'false', onclick: () => { isAdmin = false; sync() } }, t('admin.client'))
 
   function sync() {
     adminBtn.classList.toggle('active', isAdmin)
@@ -151,7 +152,7 @@ function userForm(existing) {
 
   const overlay = el('div', { class: 'modal-overlay' },
     el('div', { class: 'modal' },
-      el('h3', {}, isEdit ? 'Editar usuário' : 'Novo usuário'),
+      el('h3', {}, isEdit ? t('admin.editUser') : t('admin.newUserTitle')),
       el('div', { class: 'login-toggle' }, clientBtn, adminBtn),
       nameInput,
       clientFields,
@@ -160,8 +161,8 @@ function userForm(existing) {
       catsWrap,
       errorEl,
       el('div', { class: 'modal-actions' },
-        el('button', { class: 'btn-accent', onclick: save }, 'Salvar'),
-        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
+        el('button', { class: 'btn-accent', onclick: save }, t('admin.save')),
+        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, t('admin.cancel')),
       ),
     ),
   )
@@ -196,7 +197,7 @@ function userForm(existing) {
 }
 
 async function deleteUser(u) {
-  if (!window.confirm(`Excluir o usuário “${u.name}”?`)) return
+  if (!window.confirm(t('admin.confirmDeleteUser', { name: u.name }))) return
   try {
     await endpoints.admin.deleteUser(u.id)
     refreshApp()
@@ -209,7 +210,7 @@ async function deleteUser(u) {
 
 // newCategoryForm: modal with name + checkout link + photo (used for creation).
 function newCategoryForm() {
-  const nameInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Nome da categoria', autofocus: true })
+  const nameInput = el('input', { class: 'form-input', type: 'text', placeholder: t('admin.categoryName'), autofocus: true })
   const urlInput = el('input', { class: 'form-input', type: 'url', placeholder: 'https://checkout.exemplo.com/...', autocomplete: 'off' })
   const errorEl = el('p', { class: 'login-error' })
 
@@ -218,7 +219,7 @@ function newCategoryForm() {
     'div',
     { class: 'upload-photo-drop' },
     el('span', { html: '&#128247;' }),
-    el('span', {}, 'Foto da categoria (opcional)'),
+    el('span', {}, t('admin.categoryPhoto')),
   )
   photoDrop.addEventListener('click', () => photoInput.click())
   photoInput.addEventListener('change', () => {
@@ -228,19 +229,19 @@ function newCategoryForm() {
 
   const overlay = el('div', { class: 'modal-overlay' },
     el('div', { class: 'modal' },
-      el('h3', {}, 'Nova categoria'),
+      el('h3', {}, t('admin.newCategory')),
       nameInput,
       el('label', { class: 'upload-field' },
-        el('span', { class: 'upload-label' }, 'Link do checkout (loja)'),
+        el('span', { class: 'upload-label' }, t('admin.checkout')),
         urlInput,
       ),
-      el('div', { class: 'modal-section-label' }, 'Foto da categoria (opcional)'),
+      el('div', { class: 'modal-section-label' }, t('admin.categoryPhoto')),
       photoDrop,
       photoInput,
       errorEl,
       el('div', { class: 'modal-actions' },
-        el('button', { class: 'btn-accent', onclick: save }, 'Criar'),
-        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
+        el('button', { class: 'btn-accent', onclick: save }, t('admin.create')),
+        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, t('admin.cancel')),
       ),
     ),
   )
@@ -250,10 +251,10 @@ function newCategoryForm() {
   async function save() {
     errorEl.textContent = ''
     const name = nameInput.value.trim()
-    if (!name) { errorEl.textContent = 'Informe o nome da categoria.'; return }
+    if (!name) { errorEl.textContent = t('admin.categoryNameRequired'); return }
     const btn = overlay.querySelector('.btn-accent')
     btn.disabled = true
-    btn.textContent = 'Salvando…'
+    btn.textContent = t('admin.saving')
     try {
       const cat = await endpoints.admin.createCategory(name, urlInput.value.trim())
       // A categoria precisa existir antes do upload da foto (id gerado no create).
@@ -265,7 +266,7 @@ function newCategoryForm() {
     } catch (err) {
       errorEl.textContent = err.message
       btn.disabled = false
-      btn.textContent = 'Criar'
+      btn.textContent = t('admin.create')
     }
   }
 }
@@ -277,25 +278,25 @@ async function renderCategories(wrap, seq) {
 
   wrap.append(
     el('div', { class: 'admin-toolbar' },
-      el('button', { class: 'btn-accent', onclick: newCategoryForm }, 'Nova categoria'),
+      el('button', { class: 'btn-accent', onclick: newCategoryForm }, t('admin.newCategory')),
     ),
   )
 
   const table = el('div', { class: 'admin-table' })
-  if (categories.length === 0) table.append(el('p', { class: 'empty-state' }, 'Nenhuma categoria ainda.'))
+  if (categories.length === 0) table.append(el('p', { class: 'empty-state' }, t('admin.noCategories')))
   for (const c of categories) {
     table.append(
       el('div', { class: 'admin-row' },
         el('div', { class: 'admin-row-main', style: 'cursor:pointer' },
           el('p', { class: 'admin-row-title', onclick: () => categoryForm(c) }, c.name),
           el('p', { class: 'admin-row-sub' }, [
-            plural(c.songCount ?? 0, 'música', 'músicas'),
-            (c.karaokeCount ?? 0) > 0 ? plural(c.karaokeCount, 'karaokê', 'karaokês') : null,
+            plural('count.songs', c.songCount ?? 0),
+            (c.karaokeCount ?? 0) > 0 ? plural('count.karaokes', c.karaokeCount) : null,
           ].filter(Boolean).join(' • ')),
         ),
         el('div', { class: 'admin-row-actions' },
-          el('button', { class: 'btn-secondary', onclick: () => categoryForm(c) }, 'Gerenciar'),
-          el('button', { class: 'icon-btn', 'aria-label': 'Excluir', onclick: () => deleteCategory(c) }, '✕'),
+          el('button', { class: 'btn-secondary', onclick: () => categoryForm(c) }, t('admin.manage')),
+          el('button', { class: 'icon-btn', 'aria-label': t('admin.delete'), onclick: () => deleteCategory(c) }, '✕'),
         ),
       ),
     )
@@ -306,27 +307,27 @@ async function renderCategories(wrap, seq) {
 function categoryForm(cat) {
   const overlay = el('div', { class: 'modal-overlay' },
     el('div', { class: 'modal modal-wide' },
-      el('h3', {}, `Categoria: ${cat.name}`),
-      el('input', { class: 'form-input', id: 'cat-name', type: 'text', value: cat.name, placeholder: 'Nome da categoria' }),
-      el('input', { class: 'form-input', id: 'cat-checkout', type: 'url', value: cat.checkoutUrl || '', placeholder: 'Link do checkout (loja) — ex.: https://checkout.exemplo.com/cristao', autocomplete: 'off' }),
-      el('div', { class: 'modal-section-label' }, 'Foto da categoria'),
+      el('h3', {}, `${t('admin.categoryName')}: ${cat.name}`),
+      el('input', { class: 'form-input', id: 'cat-name', type: 'text', value: cat.name, placeholder: t('admin.categoryName') }),
+      el('input', { class: 'form-input', id: 'cat-checkout', type: 'url', value: cat.checkoutUrl || '', placeholder: t('admin.checkoutHint'), autocomplete: 'off' }),
+      el('div', { class: 'modal-section-label' }, t('admin.categoryPhoto')),
       el('div', { style: 'display:flex;align-items:center;gap:12px' },
         el('img', { id: 'cat-photo-preview', class: 'track-art', src: artworkUrl(cat.id, 96), alt: '', style: 'width:56px;height:56px;border-radius:8px;display:block;object-fit:cover' }),
         el('div', { style: 'display:flex;flex-direction:column;gap:6px' },
-          el('button', { class: 'btn-secondary', onclick: () => uploadCatPhoto() }, 'Enviar foto'),
-          el('button', { class: 'btn-secondary', onclick: () => removeCatPhoto() }, 'Remover foto'),
+          el('button', { class: 'btn-secondary', onclick: () => uploadCatPhoto() }, t('admin.uploadPhoto')),
+          el('button', { class: 'btn-secondary', onclick: () => removeCatPhoto() }, t('admin.removePhoto')),
         ),
       ),
-      el('div', { class: 'modal-section-label' }, 'Músicas'),
-      el('input', { class: 'form-input', id: 'cat-song-filter', type: 'text', placeholder: 'Filtrar músicas…' }),
+      el('div', { class: 'modal-section-label' }, t('admin.songs')),
+      el('input', { class: 'form-input', id: 'cat-song-filter', type: 'text', placeholder: t('admin.filterSongs') }),
       el('div', { class: 'modal-scroll', id: 'cat-songs' }),
-      el('div', { class: 'modal-section-label' }, 'Karaokês'),
-      el('input', { class: 'form-input', id: 'cat-karaoke-filter', type: 'text', placeholder: 'Filtrar karaokês…' }),
+      el('div', { class: 'modal-section-label' }, t('admin.karaokes')),
+      el('input', { class: 'form-input', id: 'cat-karaoke-filter', type: 'text', placeholder: t('admin.filterKaraokes') }),
       el('div', { class: 'modal-scroll', id: 'cat-karaokes' }),
       el('p', { class: 'login-error', id: 'cat-error' }),
       el('div', { class: 'modal-actions' },
-        el('button', { class: 'btn-accent', onclick: save }, 'Salvar'),
-        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
+        el('button', { class: 'btn-accent', onclick: save }, t('admin.save')),
+        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, t('admin.cancel')),
       ),
     ),
   )
@@ -368,13 +369,13 @@ function categoryForm(cat) {
                 el('span', {}, `${s.title}${s.artist ? ` — ${s.artist}` : ''}`),
               ),
               el('div', { class: 'admin-row-actions' },
-                el('button', { class: 'btn-secondary', onclick: () => uploadSongPhoto(s) }, 'Enviar foto'),
-                el('button', { class: 'btn-secondary', onclick: () => removeSongPhoto(s) }, 'Remover foto'),
+                el('button', { class: 'btn-secondary', onclick: () => uploadSongPhoto(s) }, t('admin.sendPhoto')),
+                el('button', { class: 'btn-secondary', onclick: () => removeSongPhoto(s) }, t('admin.removePhoto')),
               ),
             ),
           )
         }
-        if (songsBox.children.length === 0) songsBox.append(el('p', { class: 'modal-empty' }, 'Nenhuma música. Envie músicas na aba "Músicas".'))
+        if (songsBox.children.length === 0) songsBox.append(el('p', { class: 'modal-empty' }, t('admin.noSongMatch')))
       })
   }
 
@@ -389,7 +390,7 @@ function categoryForm(cat) {
           renderKaraokeRows(filter)
         })
         .catch(() => {
-          karaokesBox.append(el('p', { class: 'modal-empty' }, 'Nenhum karaokê disponível.'))
+          karaokesBox.append(el('p', { class: 'modal-empty' }, t('admin.noKaraokesAvailable')))
         })
       return
     }
@@ -417,7 +418,7 @@ function categoryForm(cat) {
         ),
       )
     }
-    if (karaokesBox.children.length === 0) karaokesBox.append(el('p', { class: 'modal-empty' }, 'Nenhum karaokê. Envie vídeos na aba "Karaokês".'))
+    if (karaokesBox.children.length === 0) karaokesBox.append(el('p', { class: 'modal-empty' }, t('admin.noKaraokeMatch')))
   }
 
   overlay.querySelector('#cat-song-filter').addEventListener('input', (e) => buildList(e.target.value))
@@ -430,7 +431,7 @@ function categoryForm(cat) {
       if (!file) return
       try {
         await endpoints.admin.uploadSongPhoto(s.id, file)
-        alert('Foto atualizada.')
+        alert(t('admin.photoUpdated'))
       } catch (err) {
         alert(err.message)
       }
@@ -442,7 +443,7 @@ function categoryForm(cat) {
   async function removeSongPhoto(s) {
     try {
       await endpoints.admin.deleteSongPhoto(s.id)
-      alert('Foto removida.')
+      alert(t('admin.photoRemoved'))
     } catch (err) {
       alert(err.message)
     }
@@ -470,7 +471,7 @@ function categoryForm(cat) {
   }
 
   async function removeCatPhoto() {
-    if (!window.confirm('Remover a foto desta categoria?')) return
+    if (!window.confirm(t('admin.confirmDeleteCategory', { name: cat.name }))) return
     try {
       await endpoints.admin.deleteCategoryPhoto(cat.id)
       refreshCatPhotoPreview()
@@ -500,7 +501,7 @@ function categoryForm(cat) {
 }
 
 async function deleteCategory(c) {
-  if (!window.confirm(`Excluir a categoria “${c.name}”? Os clientes perdem o acesso imediatamente.`)) return
+  if (!window.confirm(t('admin.confirmDeleteCategory', { name: c.name }))) return
   try {
     await endpoints.admin.deleteCategory(c.id)
     refreshApp()
@@ -522,14 +523,14 @@ async function renderSongs(wrap, seq) {
 
   wrap.append(
     el('div', { class: 'admin-toolbar' },
-      el('button', { class: 'btn-accent', onclick: uploadForm }, 'Enviar música'),
-      el('button', { class: 'btn-secondary', onclick: uploadFolderForm }, 'Enviar pasta'),
+      el('button', { class: 'btn-accent', onclick: uploadForm }, t('admin.uploadSong')),
+      el('button', { class: 'btn-secondary', onclick: uploadFolderForm }, t('admin.uploadFolder')),
     ),
   )
 
   const table = el('div', { class: 'admin-table' })
   if (songs.length === 0) {
-    table.append(el('p', { class: 'empty-state' }, 'Nenhuma música no sistema ainda. Use "Enviar música".'))
+    table.append(el('p', { class: 'empty-state' }, t('admin.noSongs')))
   }
   for (const s of songs) {
     const cats = (adminState.songCategoryIds[s.id] ?? []).map((cid) => adminState.categoryNames[cid]).filter(Boolean)
@@ -540,13 +541,13 @@ async function renderSongs(wrap, seq) {
           el('img', { class: 'track-art', src: artworkUrl(s.id, 48), alt: '' }),
           el('div', { style: 'min-width:0' },
             el('p', { class: 'admin-row-title' }, s.title),
-            el('p', { class: 'admin-row-sub' }, [s.artist || 'Desconhecido', s.format, fmtDur(s.duration)].filter(Boolean).join(' • ')),
+            el('p', { class: 'admin-row-sub' }, [s.artist || t('common.unknown'), s.format, fmtDur(s.duration)].filter(Boolean).join(' • ')),
             el('div', { class: 'admin-chips' }, ...chips),
           ),
         ),
         el('div', { class: 'admin-row-actions' },
-          el('button', { class: 'btn-secondary', onclick: () => uploadSongPhoto(s) }, 'Enviar foto'),
-          el('button', { class: 'btn-secondary', onclick: () => removeSongPhoto(s) }, 'Remover foto'),
+          el('button', { class: 'btn-secondary', onclick: () => uploadSongPhoto(s) }, t('admin.sendPhoto')),
+          el('button', { class: 'btn-secondary', onclick: () => removeSongPhoto(s) }, t('admin.removePhoto')),
         ),
       ),
     )
@@ -567,7 +568,7 @@ function uploadForm() {
     'div',
     { class: 'upload-dropzone' },
     el('span', { class: 'upload-dropzone-icon', html: '&#9835;' }),
-    el('p', { class: 'upload-dropzone-title' }, 'Arraste o arquivo de áudio ou clique para escolher'),
+    el('p', { class: 'upload-dropzone-title' }, t('admin.uploadAudioTitle')),
     el('p', { class: 'upload-dropzone-hint' }, 'mp3, m4a, flac, ogg, wav…'),
   )
   dropzone.addEventListener('click', () => fileInput.click())
@@ -588,10 +589,10 @@ function uploadForm() {
     dropzone.querySelector('.upload-dropzone-hint').textContent = `${(f.size / 1024 / 1024).toFixed(2)} MB`
   }
 
-  const titleInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Ex.: Louvor da Manhã', autocomplete: 'off' })
-  const artistInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Ex.: Ministério Coral', autocomplete: 'off' })
+  const titleInput = el('input', { class: 'form-input', type: 'text', placeholder: t('admin.titleOptional'), autocomplete: 'off' })
+  const artistInput = el('input', { class: 'form-input', type: 'text', placeholder: t('admin.artistOptional'), autocomplete: 'off' })
   const catSelect = el('select', { class: 'form-input' },
-    el('option', { value: '' }, 'Sem categoria'),
+    el('option', { value: '' }, t('admin.noCategory')),
     ...adminState.categories.map((c) => el('option', { value: c.id }, c.name)),
   )
   const photoInput = el('input', { class: 'upload-file-input', type: 'file', accept: 'image/*' })
@@ -599,7 +600,7 @@ function uploadForm() {
     'div',
     { class: 'upload-photo-drop' },
     el('span', { html: '&#128247;' }),
-    el('span', {}, 'Adicionar foto da música'),
+    el('span', {}, t('admin.songPhoto')),
   )
   photoDrop.addEventListener('click', () => photoInput.click())
   photoInput.addEventListener('change', () => {
@@ -613,23 +614,23 @@ function uploadForm() {
 
   const overlay = el('div', { class: 'modal-overlay' },
     el('div', { class: 'modal modal-upload' },
-      el('h3', {}, 'Enviar música'),
-      el('div', { class: 'modal-section-label' }, 'Arquivo de áudio'),
+      el('h3', {}, t('admin.uploadAudioTitle')),
+      el('div', { class: 'modal-section-label' }, t('admin.fileAudio')),
       dropzone,
       fileInput,
       el('div', { class: 'upload-grid' },
-        field('Título (opcional)', titleInput),
-        field('Artista (opcional)', artistInput),
+        field(t('admin.titleOptional'), titleInput),
+        field(t('admin.artistOptional'), artistInput),
       ),
-      field('Categoria', catSelect),
-      el('div', { class: 'modal-section-label' }, 'Foto da música (opcional)'),
+      field(t('admin.category'), catSelect),
+      el('div', { class: 'modal-section-label' }, t('admin.songPhoto')),
       photoDrop,
       photoInput,
-      el('p', { class: 'upload-info' }, 'Se o arquivo tiver capa embutida, ela é usada automaticamente. Uma foto enviada aqui substitui a embutida.'),
+      el('p', { class: 'upload-info' }, t('admin.photoHint')),
       statusEl,
       el('div', { class: 'modal-actions' },
-        el('button', { class: 'btn-accent', onclick: submit }, 'Enviar'),
-        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
+        el('button', { class: 'btn-accent', onclick: submit }, t('admin.uploadSong')),
+        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, t('admin.cancel')),
       ),
     ),
   )
@@ -639,7 +640,7 @@ function uploadForm() {
   async function submit() {
     const file = fileInput.files[0]
     if (!file) {
-      statusEl.textContent = 'Selecione um arquivo de áudio.'
+      statusEl.textContent = t('admin.selectAudio')
       dropzone.classList.add('error')
       return
     }
@@ -652,21 +653,21 @@ function uploadForm() {
 
     const btn = overlay.querySelector('.btn-accent')
     btn.disabled = true
-    btn.textContent = 'Enviando…'
-    statusEl.textContent = 'Enviando e indexando…'
+    btn.textContent = t('admin.uploading')
+    statusEl.textContent = t('admin.uploadingIndex')
     statusEl.classList.remove('login-error')
     statusEl.classList.add('upload-info')
     try {
       await endpoints.admin.uploadSong(fd)
       overlay.remove()
-      alert('Música enviada com sucesso.')
+      alert(t('admin.uploaded'))
       refreshApp()
     } catch (err) {
       statusEl.textContent = err.message
       statusEl.classList.remove('upload-info')
       statusEl.classList.add('login-error')
       btn.disabled = false
-      btn.textContent = 'Enviar'
+      btn.textContent = t('admin.uploadSong')
     }
   }
 }
@@ -692,8 +693,8 @@ function uploadFolderForm() {
     'div',
     { class: 'upload-dropzone' },
     el('span', { class: 'upload-dropzone-icon', html: '&#128193;' }),
-    el('p', { class: 'upload-dropzone-title' }, 'Selecione a pasta de músicas ou arraste aqui'),
-    el('p', { class: 'upload-dropzone-hint' }, 'Todas as músicas (mp3, flac, m4a, ogg, wav…) serão enviadas em sequência'),
+    el('p', { class: 'upload-dropzone-title' }, t('admin.selectFolder')),
+    el('p', { class: 'upload-dropzone-hint' }, t('admin.folderHint')),
   )
   dropzone.addEventListener('click', () => fileInput.click())
   dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag') })
@@ -712,17 +713,17 @@ function uploadFolderForm() {
     const total = selected.reduce((acc, f) => acc + f.size, 0)
     dropzone.classList.toggle('has-file', selected.length > 0)
     if (selected.length === 0) {
-      dropzone.querySelector('.upload-dropzone-title').textContent = 'Nenhum arquivo de áudio encontrado'
-      dropzone.querySelector('.upload-dropzone-hint').textContent = 'Escolha outra pasta'
+      dropzone.querySelector('.upload-dropzone-title').textContent = t('admin.noAudioFound')
+      dropzone.querySelector('.upload-dropzone-hint').textContent = t('admin.chooseOtherFolder')
     } else {
-      dropzone.querySelector('.upload-dropzone-title').textContent = `${selected.length} ${selected.length === 1 ? 'música' : 'músicas'} na pasta`
-      dropzone.querySelector('.upload-dropzone-hint').textContent = `Total de ${fmtMB(total)}`
+      dropzone.querySelector('.upload-dropzone-title').textContent = plural('admin.songsInFolder', selected.length)
+      dropzone.querySelector('.upload-dropzone-hint').textContent = t('admin.totalSize', { n: fmtMB(total) })
     }
     updateStartBtn()
   }
 
   const catSelect = el('select', { class: 'form-input' },
-    el('option', { value: '' }, 'Selecione a categoria…'),
+    el('option', { value: '' }, t('admin.selectCategory')),
     ...adminState.categories.map((c) => el('option', { value: c.id }, c.name)),
   )
   catSelect.addEventListener('change', updateStartBtn)
@@ -736,18 +737,18 @@ function uploadFolderForm() {
 
   const overlay = el('div', { class: 'modal-overlay' },
     el('div', { class: 'modal modal-upload' },
-      el('h3', {}, 'Enviar pasta'),
+      el('h3', {}, t('admin.uploadFolderTitle')),
       dropzone,
       fileInput,
-      el('div', { class: 'modal-section-label' }, 'Categoria das músicas'),
+      el('div', { class: 'modal-section-label' }, t('admin.folderCategory')),
       catSelect,
-      el('p', { class: 'upload-info' }, 'Todas as músicas da pasta entram nesta categoria. Título, artista e capa embutida vêm das tags do arquivo.'),
+      el('p', { class: 'upload-info' }, t('admin.folderInfo')),
       statusEl,
       progressWrap,
       failsEl,
       el('div', { class: 'modal-actions' },
-        el('button', { class: 'btn-accent', id: 'folder-upload-start', onclick: start }, 'Enviar'),
-        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
+        el('button', { class: 'btn-accent', id: 'folder-upload-start', onclick: start }, t('admin.uploadFolder')),
+        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, t('admin.cancel')),
       ),
     ),
   )
@@ -764,12 +765,12 @@ function uploadFolderForm() {
 
   async function start() {
     if (selected.length === 0) {
-      statusEl.textContent = 'Selecione uma pasta com músicas.'
+      statusEl.textContent = t('admin.selectFolder')
       statusEl.classList.add('login-error')
       return
     }
     if (!catSelect.value) {
-      statusEl.textContent = 'Escolha uma categoria para as músicas.'
+      statusEl.textContent = t('admin.chooseCategory')
       statusEl.classList.add('login-error')
       return
     }
@@ -781,13 +782,13 @@ function uploadFolderForm() {
     startBtn.disabled = true
     const cancelBtn = overlay.querySelector('.btn-secondary')
     cancelBtn.disabled = true
-    cancelBtn.textContent = 'Aguarde…'
+    cancelBtn.textContent = t('login.waiting')
 
     let ok = 0
     const fails = []
     for (let i = 0; i < selected.length; i++) {
       const f = selected[i]
-      textEl.textContent = `Enviando ${i + 1} de ${selected.length}: ${f.name} (${fmtMB(f.size)})`
+      textEl.textContent = t('admin.sending', { i: i + 1, total: selected.length, name: f.name, size: fmtMB(f.size) })
       fillEl.style.width = `${Math.round((i / selected.length) * 100)}%`
       const fd = new FormData()
       fd.append('song', f)
@@ -803,9 +804,9 @@ function uploadFolderForm() {
       }
     }
     fillEl.style.width = '100%'
-    textEl.textContent = `Concluído: ${ok} ${ok === 1 ? 'música enviada' : 'músicas enviadas'}${fails.length ? `, ${fails.length} ${fails.length === 1 ? 'falha' : 'falhas'}` : ''}.`
+    textEl.textContent = t('admin.done', { ok, fails: fails.length ? `, ${fails.length} ${fails.length === 1 ? t('admin.fail') : t('admin.fails')}` : '' })
     startBtn.disabled = false
-    startBtn.textContent = 'Fechar'
+    startBtn.textContent = t('common.close')
     startBtn.onclick = () => overlay.remove()
     cancelBtn.style.display = 'none'
     refreshApp()
@@ -819,7 +820,7 @@ function uploadSongPhoto(s) {
     if (!file) return
     try {
       await endpoints.admin.uploadSongPhoto(s.id, file)
-      alert('Foto atualizada.')
+      alert(t('admin.photoUpdated'))
     } catch (err) {
       alert(err.message)
     }
@@ -831,7 +832,7 @@ function uploadSongPhoto(s) {
 async function removeSongPhoto(s) {
   try {
     await endpoints.admin.deleteSongPhoto(s.id)
-    alert('Foto removida.')
+    alert(t('admin.photoRemoved'))
   } catch (err) {
     alert(err.message)
   }
@@ -850,13 +851,13 @@ async function renderKaraokes(wrap, seq) {
 
   wrap.append(
     el('div', { class: 'admin-toolbar' },
-      el('button', { class: 'btn-accent', onclick: uploadKaraokeForm }, 'Enviar vídeo'),
+      el('button', { class: 'btn-accent', onclick: uploadKaraokeForm }, t('admin.uploadVideo')),
     ),
   )
 
   const table = el('div', { class: 'admin-table' })
   if (list.length === 0) {
-    table.append(el('p', { class: 'empty-state' }, 'Nenhum karaokê no sistema ainda. Use "Enviar vídeo".'))
+    table.append(el('p', { class: 'empty-state' }, t('admin.noKaraokes')))
   }
   for (const k of list) {
     const cats = (adminState.karaokeCategoryIds[k.id] ?? []).map((cid) => adminState.categoryNames[cid]).filter(Boolean)
@@ -867,13 +868,13 @@ async function renderKaraokes(wrap, seq) {
           el('img', { class: 'track-art', src: artworkUrl(k.id, 48), alt: '', style: 'border-radius:6px;object-fit:cover' }),
           el('div', { style: 'min-width:0' },
             el('p', { class: 'admin-row-title' }, k.title),
-            el('p', { class: 'admin-row-sub' }, [k.artist || 'Desconhecido', k.format, fmtDur(k.duration)].filter(Boolean).join(' • ')),
+            el('p', { class: 'admin-row-sub' }, [k.artist || t('common.unknown'), k.format, fmtDur(k.duration)].filter(Boolean).join(' • ')),
             el('div', { class: 'admin-chips' }, ...chips),
           ),
         ),
         el('div', { class: 'admin-row-actions' },
-          el('button', { class: 'btn-secondary', onclick: () => uploadKaraokePhoto(k) }, 'Enviar foto'),
-          el('button', { class: 'btn-secondary', onclick: () => removeKaraokePhoto(k) }, 'Remover foto'),
+          el('button', { class: 'btn-secondary', onclick: () => uploadKaraokePhoto(k) }, t('admin.sendPhoto')),
+          el('button', { class: 'btn-secondary', onclick: () => removeKaraokePhoto(k) }, t('admin.removePhoto')),
         ),
       ),
     )
@@ -887,7 +888,7 @@ function uploadKaraokeForm() {
     'div',
     { class: 'upload-dropzone' },
     el('span', { class: 'upload-dropzone-icon', html: '&#127909;' }),
-    el('p', { class: 'upload-dropzone-title' }, 'Arraste o vídeo ou clique para escolher'),
+    el('p', { class: 'upload-dropzone-title' }, t('admin.uploadVideoTitle')),
     el('p', { class: 'upload-dropzone-hint' }, 'mp4, webm, mkv…'),
   )
   dropzone.addEventListener('click', () => fileInput.click())
@@ -908,10 +909,10 @@ function uploadKaraokeForm() {
     dropzone.querySelector('.upload-dropzone-hint').textContent = `${(f.size / 1024 / 1024).toFixed(2)} MB`
   }
 
-  const titleInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Título (opcional)', autocomplete: 'off' })
-  const artistInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Artista (opcional)', autocomplete: 'off' })
+  const titleInput = el('input', { class: 'form-input', type: 'text', placeholder: t('admin.titleOptional'), autocomplete: 'off' })
+  const artistInput = el('input', { class: 'form-input', type: 'text', placeholder: t('admin.artistOptional'), autocomplete: 'off' })
   const catSelect = el('select', { class: 'form-input' },
-    el('option', { value: '' }, 'Sem categoria'),
+    el('option', { value: '' }, t('admin.noCategory')),
     ...adminState.categories.map((c) => el('option', { value: c.id }, c.name)),
   )
   const photoInput = el('input', { class: 'upload-file-input', type: 'file', accept: 'image/*' })
@@ -919,7 +920,7 @@ function uploadKaraokeForm() {
     'div',
     { class: 'upload-photo-drop' },
     el('span', { html: '&#128247;' }),
-    el('span', {}, 'Adicionar foto do vídeo (opcional)'),
+    el('span', {}, t('admin.videoPhoto')),
   )
   photoDrop.addEventListener('click', () => photoInput.click())
   photoInput.addEventListener('change', () => {
@@ -933,23 +934,23 @@ function uploadKaraokeForm() {
 
   const overlay = el('div', { class: 'modal-overlay' },
     el('div', { class: 'modal modal-upload' },
-      el('h3', {}, 'Enviar vídeo de karaokê'),
-      el('div', { class: 'modal-section-label' }, 'Arquivo de vídeo'),
+      el('h3', {}, t('admin.uploadVideoTitle')),
+      el('div', { class: 'modal-section-label' }, t('admin.fileVideo')),
       dropzone,
       fileInput,
       el('div', { class: 'upload-grid' },
-        field('Título (opcional)', titleInput),
-        field('Artista (opcional)', artistInput),
+        field(t('admin.titleOptional'), titleInput),
+        field(t('admin.artistOptional'), artistInput),
       ),
-      field('Categoria', catSelect),
-      el('div', { class: 'modal-section-label' }, 'Foto do vídeo (opcional)'),
+      field(t('admin.category'), catSelect),
+      el('div', { class: 'modal-section-label' }, t('admin.videoPhoto')),
       photoDrop,
       photoInput,
-      el('p', { class: 'upload-info' }, 'Uma miniatura é gerada automaticamente do vídeo. Uma foto enviada aqui substitui a miniatura.'),
+      el('p', { class: 'upload-info' }, t('admin.thumbHint')),
       statusEl,
       el('div', { class: 'modal-actions' },
-        el('button', { class: 'btn-accent', onclick: submit }, 'Enviar'),
-        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
+        el('button', { class: 'btn-accent', onclick: submit }, t('admin.uploadVideo')),
+        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, t('admin.cancel')),
       ),
     ),
   )
@@ -959,7 +960,7 @@ function uploadKaraokeForm() {
   async function submit() {
     const file = fileInput.files[0]
     if (!file) {
-      statusEl.textContent = 'Selecione um arquivo de vídeo.'
+      statusEl.textContent = t('admin.selectVideo')
       dropzone.classList.add('error')
       return
     }
@@ -972,21 +973,21 @@ function uploadKaraokeForm() {
 
     const btn = overlay.querySelector('.btn-accent')
     btn.disabled = true
-    btn.textContent = 'Enviando…'
-    statusEl.textContent = 'Enviando e indexando…'
+    btn.textContent = t('admin.uploading')
+    statusEl.textContent = t('admin.uploadingIndex')
     statusEl.classList.remove('login-error')
     statusEl.classList.add('upload-info')
     try {
       await endpoints.admin.uploadKaraoke(fd)
       overlay.remove()
-      alert('Vídeo enviado com sucesso.')
+      alert(t('admin.videoUploaded'))
       refreshApp()
     } catch (err) {
       statusEl.textContent = err.message
       statusEl.classList.remove('upload-info')
       statusEl.classList.add('login-error')
       btn.disabled = false
-      btn.textContent = 'Enviar'
+      btn.textContent = t('admin.uploadVideo')
     }
   }
 }
@@ -998,7 +999,7 @@ function uploadKaraokePhoto(k) {
     if (!file) return
     try {
       await endpoints.admin.uploadKaraokePhoto(k.id, file)
-      alert('Foto atualizada.')
+      alert(t('admin.photoUpdated'))
     } catch (err) {
       alert(err.message)
     }
@@ -1010,7 +1011,7 @@ function uploadKaraokePhoto(k) {
 async function removeKaraokePhoto(k) {
   try {
     await endpoints.admin.deleteKaraokePhoto(k.id)
-    alert('Foto removida (volta à miniatura automática).')
+    alert(t('admin.photoRemovedThumb'))
   } catch (err) {
     alert(err.message)
   }
