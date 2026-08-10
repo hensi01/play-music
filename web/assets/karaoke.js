@@ -3,6 +3,7 @@
 // fullscreen on open, fully independent from the audio player (player.js).
 
 import { karaokeStreamUrl, endpoints } from './api.js'
+import { t } from './i18n.js'
 
 const video = document.createElement('video')
 video.playsInline = true
@@ -323,7 +324,7 @@ function open() {
         el(
           'div',
           { class: 'karaoke-top' },
-          el('button', { class: 'icon-btn', 'aria-label': 'Fechar', onclick: close }, icon('chevronDown')),
+          el('button', { class: 'icon-btn', 'aria-label': t('karaoke.close'), onclick: close }, icon('chevronDown')),
           el('div', { class: 'karaoke-top-title', id: 'karaoke-top-title' }, ''),
         ),
         el('div', { class: 'karaoke-controls' }, buildControls()),
@@ -372,7 +373,7 @@ function buildControls() {
 
   const rateBtn = el(
     'button',
-    { class: 'player-btn karaoke-rate', 'aria-label': 'Velocidade', onclick: cycleRate },
+    { class: 'player-btn karaoke-rate', 'aria-label': t('karaoke.speed'), onclick: cycleRate },
     rateLabel(state.rate),
   )
   barRefs.rateBtn = rateBtn
@@ -386,14 +387,14 @@ function buildControls() {
     max: 1,
     step: 0.01,
     value: state.volume,
-    'aria-label': 'Volume',
+    'aria-label': t('karaoke.volume'),
     oninput: (e) => setVolume(parseFloat(e.target.value)),
   })
   barRefs.volInput = volInput
 
   const fsBtn = el(
     'button',
-    { class: 'icon-btn karaoke-fs', 'aria-label': isFullscreen() ? 'Sair da tela cheia' : 'Tela cheia', onclick: toggleFullscreen },
+    { class: 'icon-btn karaoke-fs', 'aria-label': isFullscreen() ? t('karaoke.exitFullscreen') : t('karaoke.fullscreen'), onclick: toggleFullscreen },
     icon(isFullscreen() ? 'minimize' : 'max'),
   )
   barRefs.fsBtn = fsBtn
@@ -414,17 +415,17 @@ function buildControls() {
       el(
         'div',
         { class: 'player-buttons' },
-        el('button', { class: 'player-btn', 'aria-label': 'Anterior', onclick: prev }, icon('prev')),
-        el('button', { class: 'player-btn', 'aria-label': 'Retroceder 5 segundos', onclick: () => seekBy(-5) }, icon('rewind5')),
-        el('button', { class: 'player-btn-main', 'aria-label': 'Tocar', 'aria-pressed': 'false', onclick: togglePlay }, icon('play')),
-        el('button', { class: 'player-btn', 'aria-label': 'Avançar 5 segundos', onclick: () => seekBy(5) }, icon('forward5')),
-        el('button', { class: 'player-btn', 'aria-label': 'Próxima', onclick: next }, icon('next')),
+        el('button', { class: 'player-btn', 'aria-label': t('karaoke.prev'), onclick: prev }, icon('prev')),
+        el('button', { class: 'player-btn', 'aria-label': t('karaoke.rewind5'), onclick: () => seekBy(-5) }, icon('rewind5')),
+        el('button', { class: 'player-btn-main', 'aria-label': t('karaoke.play'), 'aria-pressed': 'false', onclick: togglePlay }, icon('play')),
+        el('button', { class: 'player-btn', 'aria-label': t('karaoke.forward5'), onclick: () => seekBy(5) }, icon('forward5')),
+        el('button', { class: 'player-btn', 'aria-label': t('karaoke.next'), onclick: next }, icon('next')),
       ),
       el(
         'div',
         { class: 'player-side' },
         rateBtn,
-        el('button', { class: 'icon-btn', 'aria-label': 'Mudo', onclick: toggleMute }, volIcon),
+        el('button', { class: 'icon-btn', 'aria-label': t('karaoke.mute'), onclick: toggleMute }, volIcon),
         volInput,
         fsBtn,
       ),
@@ -502,14 +503,14 @@ function sync() {
     barRefs.fsBtn.innerHTML = icons[inFs ? 'minimize' : 'max']
     const svg = barRefs.fsBtn.firstElementChild
     if (svg) svg.dataset.icon = inFs ? 'minimize' : 'max'
-    barRefs.fsBtn.setAttribute('aria-label', inFs ? 'Sair da tela cheia' : 'Tela cheia')
+    barRefs.fsBtn.setAttribute('aria-label', inFs ? t('karaoke.exitFullscreen') : t('karaoke.fullscreen'))
   }
   // Play/pause button icon.
   const mainBtn = overlayEl.querySelector('.player-btn-main')
   if (mainBtn) {
     const want = state.playing ? 'pause' : 'play'
     mainBtn.innerHTML = icons[want]
-    mainBtn.setAttribute('aria-label', state.playing ? 'Pausar' : 'Tocar')
+    mainBtn.setAttribute('aria-label', state.playing ? t('karaoke.pause') : t('karaoke.play'))
     mainBtn.setAttribute('aria-pressed', String(state.playing))
   }
 }

@@ -3,6 +3,7 @@
 import { api, endpoints, artworkUrl, getToken, setToken, readAppConfig, applyPhoneMask, phoneMask } from './api.js'
 import * as player from './player.js'
 import * as karaoke from './karaoke.js'
+import { t, plural, languageSelector } from './i18n.js'
 // admin.js is imported with the build version so the service worker (which
 // caches by URL) never serves a stale copy after a redeploy.
 const { renderAdmin } = await import(`./admin.js?v=${readAppConfig().version}`)
@@ -48,18 +49,18 @@ function fmtDurationLong(seconds) {
 }
 
 function musicas(n) {
-  return `${n} ${n === 1 ? 'música' : 'músicas'}`
+  return plural('count.songs', n)
 }
 
 function greeting() {
   const h = new Date().getHours()
-  if (h < 6) return 'Boa madrugada'
-  if (h < 12) return 'Bom dia'
-  if (h < 18) return 'Boa tarde'
-  return 'Boa noite'
+  if (h < 6) return t('home.greeting.night')
+  if (h < 12) return t('home.greeting.morning')
+  if (h < 18) return t('home.greeting.afternoon')
+  return t('home.greeting.evening')
 }
 
-function spinner(text = 'Carregando…') {
+function spinner(text = t('common.loading')) {
   return el('div', { class: 'spinner-wrap' }, el('div', { class: 'spinner' }), text)
 }
 
@@ -216,7 +217,7 @@ function trackRow(song, index, opts = {}) {
     onPlay
       ? el(
           'button',
-          { class: 'track-play-btn', 'aria-label': 'Tocar', onclick: () => onPlay(song, index ?? 0) },
+          { class: 'track-play-btn', 'aria-label': t('common.play'), onclick: () => onPlay(song, index ?? 0) },
           icon('playSmall'),
         )
       : null,
@@ -227,7 +228,7 @@ function trackRow(song, index, opts = {}) {
     {
       class: `track-like ${song.liked ? 'liked' : ''}`,
       'data-song-id': song.id,
-      'aria-label': song.liked ? 'Descurtir' : 'Curtir',
+      'aria-label': song.liked ? t('player.unlike') : t('player.like'),
       'aria-pressed': song.liked,
       onclick: () => toggleLike(song.id, likeBtn),
     },
@@ -236,7 +237,7 @@ function trackRow(song, index, opts = {}) {
 
   const addBtn = el(
     'button',
-    { class: 'track-add', 'aria-label': 'Adicionar à playlist', onclick: (e) => { e.stopPropagation(); openPlaylistPicker(song) } },
+    { class: 'track-add', 'aria-label': t('common.addToPlaylist'), onclick: (e) => { e.stopPropagation(); openPlaylistPicker(song) } },
     icon('plus'),
   )
 
@@ -252,7 +253,7 @@ function trackRow(song, index, opts = {}) {
         'div',
         { class: 'track-info' },
         el('p', { class: 'track-title' }, song.title),
-        el('p', { class: 'track-artist' }, song.artist || 'Desconhecido'),
+        el('p', { class: 'track-artist' }, song.artist || t('common.unknown')),
       ),
     ),
     el('div', { class: 'track-actions' }, likeBtn, addBtn, el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
@@ -268,7 +269,7 @@ function openPlaylistPicker(song) {
     el(
       'div',
       { class: 'modal' },
-      el('h3', {}, 'Adicionar à playlist'),
+      el('h3', {}, t('common.addToPlaylist')),
       el('p', { class: 'modal-sub' }, `${song.title}${song.artist ? ` — ${song.artist}` : ''}`),
       playlistsCache.length === 0
         ? el('p', { class: 'modal-empty' }, 'Nenhuma playlist ainda.')
@@ -280,7 +281,7 @@ function openPlaylistPicker(song) {
                 onclick: async () => {
                   try {
                     await endpoints.addPlaylistTracks(pl.id, [song.id])
-                    alert(`Adicionada à playlist “${pl.name}”.`)
+                    alert(t('common.addedToPlaylist', { name: pl.name }))
                     void loadPlaylists()
                   } catch (err) {
                     alert(err.message)
@@ -297,20 +298,20 @@ function openPlaylistPicker(song) {
           class: 'modal-item new',
           onclick: async () => {
             overlay.remove()
-            const name = window.prompt('Nome da nova playlist:')
+            const name = window.prompt(t('common.newPlaylist') + ':')
             if (!name?.trim()) return
             try {
               await endpoints.createPlaylist(name.trim(), [song.id])
               window.dispatchEvent(new Event('pm:playlists-changed'))
-              alert('Playlist criada com a música.')
+              alert(t('common.playlistCreated'))
             } catch (err) {
               alert(err.message)
             }
           },
         },
-        'Nova playlist',
+        t('common.newPlaylist'),
       ),
-      el('button', { class: 'modal-close', onclick: () => overlay.remove() }, 'Cancelar'),
+      el('button', { class: 'modal-close', onclick: () => overlay.remove() }, t('common.cancel')),
     ),
   )
   document.body.append(overlay)
@@ -348,7 +349,7 @@ function card({ image, title, subtitle, onClick, onPlay, square = true }) {
       onPlay
         ? el(
             'button',
-            { class: 'card-play', 'aria-label': 'Tocar', onclick: (e) => { e.stopPropagation(); onPlay() } },
+            { class: 'card-play', 'aria-label': t('common.play'), onclick: (e) => { e.stopPropagation(); onPlay() } },
             icon('playSmall'),
           )
         : null,
@@ -447,6 +448,19 @@ function matchRoute(path) {
 
 // ---------- Home ----------
 
+// Os títulos das seções vêm do backend em pt-BR; os conhecidos são
+// traduzidos, os demais (nomes de categorias) permanecem como estão.
+const sectionTitleMap = {
+  'Adicionadas recentemente': () => t('home.recentlyAdded'),
+  'Mais ouvidas': () => t('home.mostPlayed'),
+  'Karaokês': () => t('home.karaokes'),
+}
+
+function sectionTitle(raw) {
+  const fn = sectionTitleMap[raw]
+  return fn ? fn() : raw
+}
+
 async function renderHome(container) {
   container.innerHTML = ''
   container.append(el('div', { class: 'page-padding' }, el('h1', { class: 'page-title' }, greeting())))
@@ -461,20 +475,20 @@ async function renderHome(container) {
         const cards = karaokes.map((k) =>
           karaokeCard(k, () => karaoke.playKaraokeContext(karaokes, karaokes.indexOf(k))),
         )
-        sectionsEl.push(section(s.title, cards))
+        sectionsEl.push(section(sectionTitle(s.title), cards))
       }
       if (songs.length > 0) {
         const cards = songs.map((song) =>
           songCard(song, () => player.playContext(songs, songs.indexOf(song))),
         )
-        sectionsEl.push(section(s.title, cards))
+        sectionsEl.push(section(sectionTitle(s.title), cards))
       }
     }
     const myPlaylists = playlistsCache ?? []
     if (myPlaylists.length > 0) {
       sectionsEl.push(
         section(
-          'Playlists',
+          t('home.playlists'),
           myPlaylists.map((p) =>
             card({ image: artworkUrl(p.id, 300), title: p.name, subtitle: musicas(p.songCount), onClick: () => navigate(`/playlist/${p.id}`) }),
           ),
@@ -485,8 +499,8 @@ async function renderHome(container) {
     if ((home.sections ?? []).length === 0) {
       container.append(
         emptyState2(
-          'Sua biblioteca está vazia.',
-          'O administrador precisa fazer upload de músicas e atribuí-las a uma categoria.',
+          t('home.empty'),
+          t('home.emptyHint'),
         ),
       )
     }
@@ -505,11 +519,11 @@ async function renderKaraoke(container) {
     const page = el(
       'div',
       { class: 'page-padding' },
-      el('h1', { class: 'page-title' }, 'Karaokê – Vídeos'),
-      el('p', { class: 'detail-meta' }, 'Assista e cante junto com os vídeos'),
+      el('h1', { class: 'page-title' }, t('karaoke.title')),
+      el('p', { class: 'detail-meta' }, t('karaoke.subtitle')),
     )
     if (list.length === 0) {
-      page.append(emptyState('Nenhum karaokê disponível ainda.'))
+      page.append(emptyState(t('karaoke.empty')))
     } else {
       const cards = list.map((k) =>
         karaokeCard(k, () => karaoke.playKaraokeContext(list, list.indexOf(k))),
@@ -573,7 +587,7 @@ function renderSearchResults(container, results) {
     )
     container.append(
       el('div', {},
-        el('h2', { class: 'section-title' }, 'Músicas'),
+        el('h2', { class: 'section-title' }, t('search.songs')),
         el('div', { class: 'track-list' }, ...rows),
       ),
     )
@@ -581,7 +595,7 @@ function renderSearchResults(container, results) {
   if ((all || searchType === 'categories') && cats.length > 0) {
     container.append(
       section(
-        'Categorias',
+        t('search.categories'),
         cats.map((c) => categoryCard(c)),
       ),
     )
@@ -589,7 +603,7 @@ function renderSearchResults(container, results) {
   if ((all || searchType === 'playlists') && pls.length > 0) {
     container.append(
       section(
-        'Playlists',
+        t('search.playlists'),
         pls.map((p) =>
           card({ image: artworkUrl(p.id, 300), title: p.name, subtitle: p.owner, onClick: () => navigate(`/playlist/${p.id}`) }),
         ),
@@ -601,15 +615,15 @@ function renderSearchResults(container, results) {
     (all || searchType === 'categories' ? cats.length : 0) +
     (all || searchType === 'playlists' ? pls.length : 0)
   if (total === 0) {
-    container.append(el('p', { class: 'empty-state' }, `Nada encontrado para “${searchQuery}”.`))
+    container.append(el('p', { class: 'empty-state' }, t('search.nothing', { q: searchQuery })))
   }
 }
 
 const searchTypes = [
-  { id: 'all', label: 'Tudo' },
-  { id: 'songs', label: 'Músicas' },
-  { id: 'categories', label: 'Categorias' },
-  { id: 'playlists', label: 'Playlists' },
+  { id: 'all', label: () => t('search.type.all') },
+  { id: 'songs', label: () => t('search.type.songs') },
+  { id: 'categories', label: () => t('search.type.categories') },
+  { id: 'playlists', label: () => t('search.type.playlists') },
 ]
 
 async function renderSearch(container) {
@@ -619,7 +633,7 @@ async function renderSearch(container) {
   // filter coming from ?genre=.
   const initial = params.get('genre') || searchQuery || ''
 
-  const input = el('input', { class: 'search-input', placeholder: 'O que você quer ouvir?', value: initial })
+  const input = el('input', { class: 'search-input', placeholder: t('search.placeholder'), value: initial })
   let debounce
   input.addEventListener('input', (e) => {
     window.clearTimeout(debounce)
@@ -630,12 +644,12 @@ async function renderSearch(container) {
     'select',
     {
       class: 'search-type-select',
-      'aria-label': 'Tipo de pesquisa',
+      'aria-label': t('search.type.all'),
       onchange: (e) => { searchType = e.target.value; runSearch(input.value) },
     },
-    ...searchTypes.map((t) => el('option', { value: t.id }, t.label)),
+    ...searchTypes.map((opt) => el('option', { value: opt.id }, opt.label())),
   )
-  typeSelect.value = searchTypes.some((t) => t.id === searchType) ? searchType : 'all'
+  typeSelect.value = searchTypes.some((opt) => opt.id === searchType) ? searchType : 'all'
 
   const page = el(
     'div',
@@ -683,30 +697,30 @@ async function loadLibrary() {
 async function renderLibrary(container) {
   container.innerHTML = ''
   if (!libData) {
-    container.append(el('div', { class: 'page-padding' }, el('h1', { class: 'page-title' }, 'Sua Biblioteca'), spinner()))
+    container.append(el('div', { class: 'page-padding' }, el('h1', { class: 'page-title' }, t('library.title')), spinner()))
     void loadLibrary()
     return
   }
   const tabs = [
-    { id: 'songs', label: 'Músicas' },
-    { id: 'categories', label: 'Categorias' },
-    { id: 'playlists', label: 'Playlists' },
+    { id: 'songs', label: () => t('library.songs') },
+    { id: 'categories', label: () => t('library.categories') },
+    { id: 'playlists', label: () => t('library.playlists') },
   ]
   const tabsEl = el(
     'div',
     { class: 'tabs' },
-    ...tabs.map((t) =>
-      el('button', { class: `tab-btn ${libTab === t.id ? 'active' : ''}`, onclick: () => { libTab = t.id; render() } }, t.label),
+    ...tabs.map((tab) =>
+      el('button', { class: `tab-btn ${libTab === tab.id ? 'active' : ''}`, onclick: () => { libTab = tab.id; render() } }, tab.label()),
     ),
   )
-  const page = el('div', { class: 'page-padding' }, el('h1', { class: 'page-title' }, 'Sua Biblioteca'), tabsEl)
+  const page = el('div', { class: 'page-padding' }, el('h1', { class: 'page-title' }, t('library.title')), tabsEl)
   const wrap = el('div', { class: 'card-wrap' })
   page.append(wrap)
   container.append(page)
 
   if (libTab === 'songs') {
     if (libData.songs.length === 0) {
-      wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhuma música na biblioteca.'))
+      wrap.append(el('p', { style: 'color:var(--subtext)' }, t('library.noSongs')))
       return
     }
     const rows = libData.songs.map((s, i) =>
@@ -715,7 +729,7 @@ async function renderLibrary(container) {
     page.append(el('div', { class: 'track-list' }, ...rows))
   } else if (libTab === 'categories') {
     if (libData.categories.length === 0) {
-      wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhuma categoria ainda.'))
+      wrap.append(el('p', { style: 'color:var(--subtext)' }, t('library.noCategories')))
       return
     }
     for (const c of libData.categories) {
@@ -723,7 +737,7 @@ async function renderLibrary(container) {
     }
   } else {
     if (libData.playlists.length === 0) {
-      wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhuma playlist criada.'))
+      wrap.append(el('p', { style: 'color:var(--subtext)' }, t('library.noPlaylists')))
       return
     }
     for (const p of libData.playlists) {
@@ -749,7 +763,7 @@ async function renderCategory(container, params) {
       el(
         'div',
         { class: 'detail-info' },
-        el('p', { class: 'detail-type' }, 'Categoria'),
+        el('p', { class: 'detail-type' }, t('category.type')),
         el('h1', { class: 'detail-title' }, cat.name),
         el('p', { class: 'detail-meta' }, musicas(songs.length)),
         el(
@@ -759,7 +773,7 @@ async function renderCategory(container, params) {
             'button',
             { class: 'btn-accent', disabled: songs.length === 0, onclick: () => player.playContext(songs, 0) },
             icon('play'),
-            'Tocar',
+            t('common.play'),
           ),
           el('button', { class: 'btn-icon-lg', 'aria-label': 'Aleatório', onclick: () => playShuffle(songs) }, icon('shuffle')),
         ),
@@ -768,7 +782,7 @@ async function renderCategory(container, params) {
 
     const content = el('div', { class: 'detail-content' })
     if (songs.length === 0) {
-      content.append(emptyState('Esta categoria ainda não tem músicas.'))
+      content.append(emptyState(t('category.noSongs')))
     } else {
       const rows = songs.map((s, i) =>
         trackRow(s, i, { onPlay: (_song, idx) => player.playContext(songs, idx) }),
@@ -778,7 +792,7 @@ async function renderCategory(container, params) {
     if (karaokes.length > 0) {
       content.append(
         section(
-          'Karaokês',
+          t('category.karaokes'),
           karaokes.map((k) =>
             karaokeCard(k, () => karaoke.playKaraokeContext(karaokes, karaokes.indexOf(k))),
           ),
@@ -786,7 +800,7 @@ async function renderCategory(container, params) {
       )
     }
     content.append(
-      el('button', { class: 'back-link', onclick: () => navigate('/library') }, icon('arrowLeft'), 'Voltar para a biblioteca'),
+      el('button', { class: 'back-link', onclick: () => navigate('/library') }, icon('arrowLeft'), t('category.back')),
     )
 
     container.innerHTML = ''
@@ -818,7 +832,7 @@ async function renderPlaylist(container, params) {
       el(
         'div',
         { class: 'detail-info' },
-        el('p', { class: 'detail-type' }, 'Playlist'),
+        el('p', { class: 'detail-type' }, t('playlist.type')),
         el('h1', { class: 'detail-title' }, playlist.name),
         playlist.comment ? el('p', { class: 'detail-meta' }, playlist.comment) : null,
         el('p', { class: 'detail-meta' }, `${playlist.owner} • ${musicas(playlist.songCount)} • ${fmtDurationLong(playlist.duration)}`),
@@ -829,7 +843,7 @@ async function renderPlaylist(container, params) {
             'button',
             { class: 'btn-accent', disabled: songs.length === 0, onclick: () => player.playContext(songs, 0) },
             icon('play'),
-            'Tocar',
+            t('common.play'),
           ),
         ),
       ),
@@ -839,15 +853,15 @@ async function renderPlaylist(container, params) {
     if ((playlist.songs ?? []).length === 0) {
       content.append(
         emptyState2(
-          'Esta playlist está vazia.',
-          'Crie uma playlist pela página de Configurações e adicione músicas.',
+          t('playlist.empty'),
+          t('playlist.emptyHint'),
         ),
       )
     } else {
       const rows = playlist.songs.map((ps, i) => {
         const removeBtn = el(
           'button',
-          { class: 'remove-track-btn', 'aria-label': 'Remover da playlist', onclick: () => removePlaylistTrack(playlist.id, ps.entryId) },
+          { class: 'remove-track-btn', 'aria-label': t('playlist.removeTrack'), onclick: () => removePlaylistTrack(playlist.id, ps.entryId) },
           icon('trash'),
         )
         return el(
@@ -860,7 +874,7 @@ async function renderPlaylist(container, params) {
       content.append(el('div', { class: 'track-list' }, ...rows))
     }
     content.append(
-      el('button', { class: 'back-link', onclick: () => navigate('/library') }, icon('arrowLeft'), 'Voltar para a biblioteca'),
+      el('button', { class: 'back-link', onclick: () => navigate('/library') }, icon('arrowLeft'), t('playlist.back')),
     )
 
     container.innerHTML = ''
@@ -896,8 +910,8 @@ async function renderLiked(container) {
       el(
         'div',
         { class: 'detail-info' },
-        el('p', { class: 'detail-type' }, 'Playlist'),
-        el('h1', { class: 'detail-title' }, 'Curtidas'),
+        el('p', { class: 'detail-type' }, t('liked.type')),
+        el('h1', { class: 'detail-title' }, t('liked.title')),
         el('p', { class: 'detail-meta' }, musicas(songs.length)),
         el(
           'div',
@@ -906,14 +920,14 @@ async function renderLiked(container) {
             'button',
             { class: 'btn-accent', disabled: songs.length === 0, onclick: () => player.playContext(songs, 0) },
             icon('play'),
-            'Tocar',
+            t('common.play'),
           ),
         ),
       ),
     )
     const content = el('div', { class: 'detail-content' })
     if (songs.length === 0) {
-      content.append(emptyState2('Nenhuma música curtida ainda.', 'Toque no coração de uma música para salvá-la aqui.'))
+      content.append(emptyState2(t('liked.empty'), t('liked.emptyHint')))
     } else {
       const rows = songs.map((s, i) => trackRow(s, i, { onPlay: (_song, idx) => player.playContext(songs, idx) }))
       content.append(el('div', { class: 'track-list' }, ...rows))
@@ -936,11 +950,11 @@ async function renderHistory(container) {
     const page = el(
       'div',
       { class: 'page-padding' },
-      el('h1', { class: 'page-title' }, 'Histórico'),
-      el('p', { class: 'detail-meta' }, 'Músicas que você tocou recentemente'),
+      el('h1', { class: 'page-title' }, t('history.title')),
+      el('p', { class: 'detail-meta' }, t('history.subtitle')),
     )
     if (songs.length === 0) {
-      page.append(emptyState('Nenhuma música tocada ainda.'))
+      page.append(emptyState(t('history.empty')))
     } else {
       const rows = songs.map((s, i) => trackRow(s, i, { onPlay: (_song, idx) => player.playContext(songs, idx) }))
       page.append(el('div', { class: 'track-list' }, ...rows))
@@ -960,11 +974,11 @@ function renderQueue(container) {
   const page = el(
     'div',
     { class: 'page-padding' },
-    el('h1', { class: 'page-title' }, 'Fila'),
-    el('p', { class: 'detail-meta' }, 'Próximas músicas na reprodução'),
+    el('h1', { class: 'page-title' }, t('queue.title')),
+    el('p', { class: 'detail-meta' }, t('queue.subtitle')),
   )
   if (queue.length === 0) {
-    page.append(emptyState('A fila está vazia. Toque uma música para começar.'))
+    page.append(emptyState(t('queue.empty')))
   } else {
     const rows = queue.map((s, i) => {
       const row = trackRow(s, i, { onPlay: (_song, idx) => player.playContext(queue, idx) })
@@ -1001,16 +1015,16 @@ async function renderSettings(container) {
     const phoneCard = el(
       'section',
       { class: 'settings-card' },
-      el('h2', {}, 'Conta'),
+      el('h2', {}, t('settings.account')),
       el('p', { class: 'settings-text' },
-        'Telefone: ',
+        t('settings.phone') + ' ',
         el('strong', {}, phoneMask(auth.user?.phone ?? '')),
       ),
     )
-    const playlistsCard = el('section', { class: 'settings-card' }, el('h2', {}, 'Playlists'))
+    const playlistsCard = el('section', { class: 'settings-card' }, el('h2', {}, t('settings.playlists')))
     const pl = playlistsCache ?? []
     if (pl.length === 0) {
-      playlistsCard.append(el('p', { class: 'settings-text' }, 'Nenhuma playlist ainda.'))
+      playlistsCard.append(el('p', { class: 'settings-text' }, t('settings.noPlaylists')))
     } else {
       const list = el('div', { class: 'settings-playlists' })
       for (const p of pl) {
@@ -1026,20 +1040,28 @@ async function renderSettings(container) {
       }
       playlistsCard.append(list)
     }
+    const langCard = el(
+      'section',
+      { class: 'settings-card' },
+      el('h2', {}, t('settings.language')),
+      el('p', { class: 'settings-text' }, t('settings.languageHint')),
+      languageSelector(),
+    )
     playlistsCard.append(
       el(
         'div',
         { class: 'settings-actions' },
-        el('button', { class: 'btn-accent', onclick: () => createPlaylist() }, icon('plus'), 'Nova playlist'),
-        el('button', { class: 'btn-secondary', onclick: doLogout }, icon('logout'), 'Sair'),
+        el('button', { class: 'btn-accent', onclick: () => createPlaylist() }, icon('plus'), t('settings.newPlaylist')),
+        el('button', { class: 'btn-secondary', onclick: doLogout }, icon('logout'), t('settings.logout')),
       ),
     )
     container.innerHTML = ''
     container.append(
       el('div', { class: 'settings-page' },
-        el('h1', { class: 'page-title' }, 'Minha Conta'),
+        el('h1', { class: 'page-title' }, t('settings.accountTitle')),
         phoneCard,
         playlistsCard,
+        langCard,
       ),
     )
     return
@@ -1048,21 +1070,21 @@ async function renderSettings(container) {
   const accountCard = el(
     'section',
     { class: 'settings-card' },
-    el('h2', {}, 'Conta'),
+    el('h2', {}, t('settings.account')),
     el('p', { class: 'settings-text' },
-      'Conectado como ',
+      t('settings.connected') + ' ',
       el('strong', {}, auth.user?.name ?? ''),
       ` (${auth.user?.username ? '@' + auth.user.username : (auth.user?.phone ? phoneMask(auth.user.phone) : '')})`,
     ),
     el(
       'div',
       { class: 'settings-actions' },
-      el('button', { class: 'btn-accent', onclick: () => createPlaylist() }, icon('plus'), 'Nova playlist'),
-      el('button', { class: 'btn-secondary', onclick: doLogout }, icon('logout'), 'Sair'),
+      el('button', { class: 'btn-accent', onclick: () => createPlaylist() }, icon('plus'), t('settings.newPlaylist')),
+      el('button', { class: 'btn-secondary', onclick: doLogout }, icon('logout'), t('settings.logout')),
     ),
   )
 
-  const serverCard = el('section', { class: 'settings-card' }, el('h2', {}, 'Servidor'))
+  const serverCard = el('section', { class: 'settings-card' }, el('h2', {}, t('settings.server')))
   if (!settings) {
     serverCard.append(spinner())
   } else {
@@ -1070,26 +1092,35 @@ async function renderSettings(container) {
       el(
         'dl',
         { class: 'settings-dl' },
-        el('div', {}, el('dt', { class: 'settings-dt' }, 'Servidor'), el('dd', { class: 'settings-dd' }, settings.appName)),
-        el('div', {}, el('dt', { class: 'settings-dt' }, 'Versão'), el('dd', { class: 'settings-dd' }, settings.version)),
-        el('div', {}, el('dt', { class: 'settings-dt' }, 'Biblioteca'), el('dd', { class: 'settings-dd' }, settings.libraryName)),
-        el('div', {}, el('dt', { class: 'settings-dt' }, 'Pasta de música'), el('dd', { class: 'settings-dd mono' }, settings.musicFolder)),
+        el('div', {}, el('dt', { class: 'settings-dt' }, t('settings.serverName')), el('dd', { class: 'settings-dd' }, settings.appName)),
+        el('div', {}, el('dt', { class: 'settings-dt' }, t('settings.version')), el('dd', { class: 'settings-dd' }, settings.version)),
+        el('div', {}, el('dt', { class: 'settings-dt' }, t('settings.library')), el('dd', { class: 'settings-dd' }, settings.libraryName)),
+        el('div', {}, el('dt', { class: 'settings-dt' }, t('settings.musicFolder')), el('dd', { class: 'settings-dd mono' }, settings.musicFolder)),
       ),
     )
   }
 
+  const langCard = el(
+    'section',
+    { class: 'settings-card' },
+    el('h2', {}, t('settings.language')),
+    el('p', { class: 'settings-text' }, t('settings.languageHint')),
+    languageSelector(),
+  )
+
   container.innerHTML = ''
   container.append(
     el('div', { class: 'settings-page' },
-      el('h1', { class: 'page-title' }, 'Configurações'),
+      el('h1', { class: 'page-title' }, t('settings.title')),
       accountCard,
       serverCard,
+      langCard,
     ),
   )
 }
 
 async function createPlaylist() {
-  const name = window.prompt('Nome da nova playlist:')
+  const name = window.prompt(t('settings.newPlaylist') + ':')
   if (!name?.trim()) return
   try {
     await endpoints.createPlaylist(name.trim(), [])
@@ -1108,22 +1139,22 @@ function renderLogin(container) {
   const toggle = el(
     'div',
     { class: 'login-toggle' },
-    el('button', { class: `login-toggle-btn ${loginMode === 'client' ? 'active' : ''}`, 'aria-pressed': loginMode === 'client' ? 'true' : 'false', onclick: () => { loginMode = 'client'; render() } }, 'Cliente'),
-    el('button', { class: `login-toggle-btn ${loginMode === 'admin' ? 'active' : ''}`, 'aria-pressed': loginMode === 'admin' ? 'true' : 'false', onclick: () => { loginMode = 'admin'; render() } }, 'Administrador'),
+    el('button', { class: `login-toggle-btn ${loginMode === 'client' ? 'active' : ''}`, 'aria-pressed': loginMode === 'client' ? 'true' : 'false', onclick: () => { loginMode = 'client'; render() } }, t('login.client')),
+    el('button', { class: `login-toggle-btn ${loginMode === 'admin' ? 'active' : ''}`, 'aria-pressed': loginMode === 'admin' ? 'true' : 'false', onclick: () => { loginMode = 'admin'; render() } }, t('login.admin')),
   )
 
   const phoneInput = loginMode === 'client'
-    ? el('input', { class: 'form-input', type: 'tel', inputmode: 'numeric', placeholder: 'Telefone (99) 99999-9999', autofocus: true, autocomplete: 'tel' })
+    ? el('input', { class: 'form-input', type: 'tel', inputmode: 'numeric', placeholder: t('login.phonePlaceholder'), autofocus: true, autocomplete: 'tel' })
     : null
   if (phoneInput) phoneInput.addEventListener('input', () => applyPhoneMask(phoneInput))
   const usernameInput = loginMode === 'admin'
-    ? el('input', { class: 'form-input', type: 'text', placeholder: 'Usuário ou e-mail', autofocus: true, autocomplete: 'username' })
+    ? el('input', { class: 'form-input', type: 'text', placeholder: t('login.usernamePlaceholder'), autofocus: true, autocomplete: 'username' })
     : null
   const passwordInput = loginMode === 'admin'
-    ? el('input', { class: 'form-input', type: 'password', placeholder: 'Senha', autocomplete: 'current-password' })
+    ? el('input', { class: 'form-input', type: 'password', placeholder: t('login.passwordPlaceholder'), autocomplete: 'current-password' })
     : null
   const errorEl = el('p', { class: 'login-error' })
-  const submitBtn = el('button', { class: 'login-submit', type: 'submit' }, 'Entrar')
+  const submitBtn = el('button', { class: 'login-submit', type: 'submit' }, t('login.enter'))
 
   const form = el(
     'form',
@@ -1134,15 +1165,15 @@ function renderLogin(container) {
         errorEl.textContent = ''
         if (loginMode === 'client') {
           if (!phoneInput.value.trim()) {
-            errorEl.textContent = 'Informe seu telefone.'
+            errorEl.textContent = t('login.phoneRequired')
             return
           }
         } else if (!usernameInput.value.trim() || !passwordInput.value) {
-          errorEl.textContent = 'Informe usuário e senha.'
+          errorEl.textContent = t('login.credentialsRequired')
           return
         }
         submitBtn.disabled = true
-        submitBtn.textContent = 'Aguarde…'
+        submitBtn.textContent = t('login.waiting')
         try {
           if (loginMode === 'client') await doLogin('client', phoneInput.value.trim())
           else await doLogin('admin', usernameInput.value.trim(), passwordInput.value)
@@ -1151,7 +1182,7 @@ function renderLogin(container) {
           errorEl.textContent = err instanceof Error ? err.message : 'Erro ao entrar'
         } finally {
           submitBtn.disabled = false
-          submitBtn.textContent = 'Entrar'
+          submitBtn.textContent = t('login.enter')
         }
       },
     },
@@ -1170,13 +1201,14 @@ function renderLogin(container) {
       el(
         'div',
         { class: 'login-box' },
+        languageSelector('login-lang'),
         toggle,
         el(
           'div',
           { class: 'login-brand' },
           icon('music'),
-          el('h1', {}, 'Play Music'),
-          el('p', {}, loginMode === 'client' ? 'Entre com seu telefone para ouvir' : 'Acesso administrativo'),
+          el('h1', {}, t('login.title')),
+          el('p', {}, loginMode === 'client' ? t('login.clientMode') : t('login.adminMode')),
         ),
         form,
       ),
@@ -1221,31 +1253,31 @@ function sidebarContent(onNavigate) {
       'div',
       { class: 'sidebar-header' },
       el('span', { class: 'sidebar-brand' }, icon('music'), 'Play Music'),
-      el('button', { class: 'sidebar-close', 'aria-label': 'Fechar', onclick: onNavigate }, icon('x')),
+      el('button', { class: 'sidebar-close', 'aria-label': t('common.close'), onclick: onNavigate }, icon('x')),
     ),
     el(
       'nav',
       { class: 'sidebar-nav' },
-      nav('/', 'Início', 'home'),
-      nav('/search', 'Buscar', 'search'),
-      nav('/library', 'Sua Biblioteca', 'library'),
-      nav('/karaoke', 'Karaokê', 'video'),
-      nav('/liked', 'Curtidas', 'heart'),
-      nav('/history', 'Histórico', 'clock'),
+      nav('/', t('sidebar.home'), 'home'),
+      nav('/search', t('sidebar.search'), 'search'),
+      nav('/library', t('sidebar.library'), 'library'),
+      nav('/karaoke', t('sidebar.karaoke'), 'video'),
+      nav('/liked', t('sidebar.liked'), 'heart'),
+      nav('/history', t('sidebar.history'), 'clock'),
       el(
         'a',
         { class: 'nav-link', href: './loja.html', onclick: () => { onNavigate?.() } },
         icon('cart'),
-        'Loja',
+        t('sidebar.store'),
       ),
-      auth.user?.isAdmin ? nav('/admin', 'Administração', 'settings') : null,
+      auth.user?.isAdmin ? nav('/admin', t('sidebar.admin'), 'settings') : null,
     ),
-    el('div', { class: 'sidebar-playlists-label' }, el('span', {}, 'Playlists'), el('span', { html: icons.list })),
+    el('div', { class: 'sidebar-playlists-label' }, el('span', {}, t('sidebar.playlists')), el('span', { html: icons.list })),
     el(
       'div',
       { class: 'sidebar-playlists' },
       (playlistsCache ?? []).length === 0
-        ? el('p', { class: 'playlists-empty' }, 'Nenhuma playlist ainda')
+        ? el('p', { class: 'playlists-empty' }, t('sidebar.noPlaylists'))
         : playlistsCache.map((pl) =>
             el(
               'button',
@@ -1257,6 +1289,7 @@ function sidebarContent(onNavigate) {
     el(
       'div',
       { class: 'sidebar-footer' },
+      el('div', { style: 'display:flex;justify-content:center;padding:6px 12px' }, languageSelector('sidebar-lang')),
       el(
         'div',
         { class: 'sidebar-user' },
@@ -1265,8 +1298,8 @@ function sidebarContent(onNavigate) {
           el('p', { class: 'sidebar-user-handle' }, auth.user?.username ? `@${auth.user.username}` : (auth.user?.phone ? phoneMask(auth.user.phone) : '')),
         ),
         el('div', { style: 'display:flex;gap:4px' },
-          el('button', { class: 'icon-btn', 'aria-label': 'Configurações', onclick: () => { onNavigate?.(); navigate('/settings') } }, icon('settings')),
-          el('button', { class: 'icon-btn', 'aria-label': 'Sair', onclick: () => { onNavigate?.(); doLogout() } }, icon('logout')),
+          el('button', { class: 'icon-btn', 'aria-label': t('sidebar.settings'), onclick: () => { onNavigate?.(); navigate('/settings') } }, icon('settings')),
+          el('button', { class: 'icon-btn', 'aria-label': t('sidebar.logout'), onclick: () => { onNavigate?.(); doLogout() } }, icon('logout')),
         ),
       ),
     ),
@@ -1301,7 +1334,7 @@ function bottomBar(refs) {
 
   const likeBtn = el(
     'button',
-    { class: `icon-btn ${current.liked ? 'liked' : ''}`, style: current.liked ? 'color:var(--accent)' : '', 'aria-label': current.liked ? 'Descurtir' : 'Curtir', 'aria-pressed': current.liked ? 'true' : 'false', onclick: (e) => { e.stopPropagation(); toggleLikeCurrent() } },
+    { class: `icon-btn ${current.liked ? 'liked' : ''}`, style: current.liked ? 'color:var(--accent)' : '', 'aria-label': current.liked ? t('player.unlike') : t('player.like'), 'aria-pressed': current.liked ? 'true' : 'false', onclick: (e) => { e.stopPropagation(); toggleLikeCurrent() } },
     icon('heart'),
   )
 
@@ -1314,7 +1347,7 @@ function bottomBar(refs) {
     max: 1,
     step: 0.01,
     value: volume,
-    'aria-label': 'Volume',
+    'aria-label': t('player.volume'),
     oninput: (e) => player.setVolume(parseFloat(e.target.value)),
   })
   refs.volInput = volInput
@@ -1340,13 +1373,13 @@ function bottomBar(refs) {
       el(
         'div',
         { class: 'player-buttons' },
-        el('button', { class: `player-btn ${shuffle ? 'active' : ''}`, 'aria-label': 'Aleatório', 'aria-pressed': shuffle ? 'true' : 'false', onclick: player.toggleShuffle }, icon('shuffle')),
-        el('button', { class: 'player-btn', 'aria-label': 'Anterior', onclick: player.prev }, icon('prev')),
-        el('button', { class: 'player-btn', 'aria-label': 'Retroceder 5 segundos', onclick: () => player.seekBy(-5) }, icon('rewind5')),
-        el('button', { class: 'player-btn-main', 'aria-label': playing ? 'Pausar' : 'Tocar', 'aria-pressed': playing ? 'true' : 'false', onclick: player.togglePlay }, playing ? icon('pause') : icon('play')),
-        el('button', { class: 'player-btn', 'aria-label': 'Avançar 5 segundos', onclick: () => player.seekBy(5) }, icon('forward5')),
-        el('button', { class: 'player-btn', 'aria-label': 'Próxima', onclick: player.next }, icon('next')),
-        el('button', { class: `player-btn ${repeat ? 'active' : ''}`, 'aria-label': 'Repetir', 'aria-pressed': repeat ? 'true' : 'false', onclick: player.toggleRepeat }, icon('repeat')),
+        el('button', { class: `player-btn ${shuffle ? 'active' : ''}`, 'aria-label': t('player.shuffle'), 'aria-pressed': shuffle ? 'true' : 'false', onclick: player.toggleShuffle }, icon('shuffle')),
+        el('button', { class: 'player-btn', 'aria-label': t('player.prev'), onclick: player.prev }, icon('prev')),
+        el('button', { class: 'player-btn', 'aria-label': t('player.rewind5'), onclick: () => player.seekBy(-5) }, icon('rewind5')),
+        el('button', { class: 'player-btn-main', 'aria-label': playing ? t('player.pause') : t('player.play'), 'aria-pressed': playing ? 'true' : 'false', onclick: player.togglePlay }, playing ? icon('pause') : icon('play')),
+        el('button', { class: 'player-btn', 'aria-label': t('player.forward5'), onclick: () => player.seekBy(5) }, icon('forward5')),
+        el('button', { class: 'player-btn', 'aria-label': t('player.next'), onclick: player.next }, icon('next')),
+        el('button', { class: `player-btn ${repeat ? 'active' : ''}`, 'aria-label': t('player.repeat'), 'aria-pressed': repeat ? 'true' : 'false', onclick: player.toggleRepeat }, icon('repeat')),
       ),
       el(
         'div',
@@ -1361,8 +1394,8 @@ function bottomBar(refs) {
       { class: 'player-volume' },
       volIcon,
       volInput,
-      el('button', { class: 'icon-btn', 'aria-label': 'Fila', onclick: () => navigate('/queue') }, icon('list')),
-      el('button', { class: 'icon-btn', 'aria-label': 'Tela cheia', onclick: openFullscreen }, icon('max')),
+      el('button', { class: 'icon-btn', 'aria-label': t('player.queue'), onclick: () => navigate('/queue') }, icon('list')),
+      el('button', { class: 'icon-btn', 'aria-label': t('player.fullscreen'), onclick: openFullscreen }, icon('max')),
     ),
   )
 }
@@ -1454,11 +1487,11 @@ function fullscreenPlayer(refs) {
     el(
       'div',
       { class: 'fullscreen-top' },
-        el('button', { class: 'icon-btn', 'aria-label': 'Fechar', onclick: () => player.setFullScreen(false) }, icon('chevronDown')),
+        el('button', { class: 'icon-btn', 'aria-label': t('common.close'), onclick: () => player.setFullScreen(false) }, icon('chevronDown')),
         el(
           'div',
           { style: 'display:flex;gap:8px' },
-          el('button', { class: 'icon-btn', 'aria-label': 'Fila', onclick: () => navigate('/queue') }, icon('list')),
+          el('button', { class: 'icon-btn', 'aria-label': t('player.queue'), onclick: () => navigate('/queue') }, icon('list')),
         ),
     ),
     el(
@@ -1474,7 +1507,7 @@ function fullscreenPlayer(refs) {
         ),
         el(
           'button',
-          { class: `btn-icon-lg ${current.liked ? 'liked' : ''}`, 'aria-label': current.liked ? 'Descurtir' : 'Curtir', 'aria-pressed': current.liked ? 'true' : 'false', onclick: toggleLikeCurrent },
+          { class: `btn-icon-lg ${current.liked ? 'liked' : ''}`, 'aria-label': current.liked ? t('player.unlike') : t('player.like'), 'aria-pressed': current.liked ? 'true' : 'false', onclick: toggleLikeCurrent },
           icon('heart'),
         ),
       ),
@@ -1488,13 +1521,13 @@ function fullscreenPlayer(refs) {
       el(
         'div',
         { class: 'fullscreen-buttons' },
-        el('button', { class: `player-btn ${shuffle ? 'active' : ''}`, 'aria-label': 'Aleatório', 'aria-pressed': shuffle ? 'true' : 'false', onclick: player.toggleShuffle }, icon('shuffle')),
-        el('button', { class: 'player-btn', 'aria-label': 'Anterior', onclick: player.prev }, icon('prev')),
-        el('button', { class: 'player-btn', 'aria-label': 'Retroceder 5 segundos', onclick: () => player.seekBy(-5) }, icon('rewind5')),
-        el('button', { class: 'fullscreen-btn-main', 'aria-label': playing ? 'Pausar' : 'Tocar', 'aria-pressed': playing ? 'true' : 'false', onclick: player.togglePlay }, playing ? icon('pause') : icon('play')),
-        el('button', { class: 'player-btn', 'aria-label': 'Avançar 5 segundos', onclick: () => player.seekBy(5) }, icon('forward5')),
-        el('button', { class: 'player-btn', 'aria-label': 'Próxima', onclick: player.next }, icon('next')),
-        el('button', { class: `player-btn ${repeat ? 'active' : ''}`, 'aria-label': 'Repetir', 'aria-pressed': repeat ? 'true' : 'false', onclick: player.toggleRepeat }, icon('repeat')),
+        el('button', { class: `player-btn ${shuffle ? 'active' : ''}`, 'aria-label': t('player.shuffle'), 'aria-pressed': shuffle ? 'true' : 'false', onclick: player.toggleShuffle }, icon('shuffle')),
+        el('button', { class: 'player-btn', 'aria-label': t('player.prev'), onclick: player.prev }, icon('prev')),
+        el('button', { class: 'player-btn', 'aria-label': t('player.rewind5'), onclick: () => player.seekBy(-5) }, icon('rewind5')),
+        el('button', { class: 'fullscreen-btn-main', 'aria-label': playing ? t('player.pause') : t('player.play'), 'aria-pressed': playing ? 'true' : 'false', onclick: player.togglePlay }, playing ? icon('pause') : icon('play')),
+        el('button', { class: 'player-btn', 'aria-label': t('player.forward5'), onclick: () => player.seekBy(5) }, icon('forward5')),
+        el('button', { class: 'player-btn', 'aria-label': t('player.next'), onclick: player.next }, icon('next')),
+        el('button', { class: `player-btn ${repeat ? 'active' : ''}`, 'aria-label': t('player.repeat'), 'aria-pressed': repeat ? 'true' : 'false', onclick: player.toggleRepeat }, icon('repeat')),
       ),
     ),
   )
@@ -1505,7 +1538,7 @@ function fullscreenPlayer(refs) {
 function render() {
   if (auth.loading) {
     root.innerHTML = ''
-    root.append(el('div', { class: 'loading-screen' }, icon('music'), 'Carregando…'))
+    root.append(el('div', { class: 'loading-screen' }, icon('music'), t('common.loading')))
     return
   }
 
@@ -1532,7 +1565,7 @@ function render() {
         el(
           'div',
           { class: 'mobile-topbar' },
-          el('button', { class: 'icon-btn', 'aria-label': 'Abrir menu', onclick: () => { menuOpen = true; render() } }, icon('menu')),
+          el('button', { class: 'icon-btn', 'aria-label': t('common.openMenu'), onclick: () => { menuOpen = true; render() } }, icon('menu')),
           el('span', {}, icon('music'), 'Play Music'),
         ),
         el('div', { class: 'page', id: 'page-content' }),
@@ -1689,7 +1722,7 @@ function syncPagePlayerState() {
     const likeBtn = row.querySelector('.track-like')
     if (!likeBtn) return
     likeBtn.classList.toggle('liked', isLiked)
-    likeBtn.setAttribute('aria-label', isLiked ? 'Descurtir' : 'Curtir')
+    likeBtn.setAttribute('aria-label', isLiked ? t('player.unlike') : t('player.like'))
     likeBtn.setAttribute('aria-pressed', String(isLiked))
   })
 }
@@ -1744,6 +1777,7 @@ document.addEventListener('keydown', (e) => {
 
 window.addEventListener('hashchange', render)
 window.addEventListener('pm:rerender', render)
+window.addEventListener('pm:lang-changed', render)
 window.addEventListener('pm:playlists-changed', () => {
   if (auth.user) void loadPlaylists()
 })

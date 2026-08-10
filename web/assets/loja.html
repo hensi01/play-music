@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#0B0B0F" />
     <title>Loja — Play Music</title>
     <link rel="stylesheet" href="./style.css" />
+    <script type="module" src="./i18n.js"></script>
   </head>
   <body class="loja">
     <header class="topbar">
@@ -21,23 +22,23 @@
     </header>
 
     <main>
-      <h1>Escolha suas categorias</h1>
-      <p class="subtitle">Compre a categoria e ouça todas as músicas dela no Play Music.</p>
+      <h1 id="storeH1">Escolha suas categorias</h1>
+      <p class="subtitle" id="storeSubtitle">Compre a categoria e ouça todas as músicas dela no Play Music.</p>
 
       <section>
-        <h2>Categorias</h2>
+        <h2 id="storeCatsTitle">Categorias</h2>
         <div class="grid" id="catGrid"></div>
       </section>
 
       <section id="packsSection">
-        <h2>Packs</h2>
+        <h2 id="storePacksTitle">Packs</h2>
         <div class="grid" id="packsGrid"></div>
       </section>
 
-      <a class="back-btn" href="/">← Voltar para o Play Music</a>
+      <a class="back-btn" href="/" id="storeBack">← Voltar para o Play Music</a>
     </main>
 
-    <footer>Play Music &middot; Loja de categorias</footer>
+    <footer id="storeFooter">Play Music &middot; Loja de categorias</footer>
 
     <script>
       // =====================================================================
@@ -67,6 +68,11 @@
       const TOKEN_KEY = 'pm_token'
       const $ = (sel) => document.querySelector(sel)
 
+      // Tradução via window.__i18n (módulo ES carregado no <head>; a UI é
+      // montada no evento load, quando o i18n já está disponível).
+      const tt = (key, vars) => (window.__i18n ? window.__i18n.t(key, vars) : key)
+      const tplural = (key, n) => (window.__i18n ? window.__i18n.plural(key, n) : String(n))
+
       function getToken() { return localStorage.getItem(TOKEN_KEY) }
 
       async function api(path, opts = {}) {
@@ -78,13 +84,13 @@
         if (!res.ok) {
           let msg = 'HTTP ' + res.status
           try { const b = await res.json(); if (b.error) msg = b.error } catch {}
-          throw new Error(msg)
+          throw new Error(window.__i18n ? window.__i18n.translateBackendError(msg, res.status) : msg)
         }
         if (res.status === 204) return undefined
         return res.json()
       }
 
-      const fmt = (n) => (n === 1 ? '1 música' : n + ' músicas')
+      const fmt = (n) => tplural('count.songs', n)
 
       function esc(s) {
         return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -93,9 +99,9 @@
       function renderUser() {
         const box = $('#loginBox')
         const token = getToken()
-        if (!token) { box.innerHTML = '<span class="msg" id="loginMsg"></span><input id="phoneInput" type="tel" inputmode="numeric" placeholder="(99) 99999-9999" /><button id="loginBtn">Entrar</button>'; bindLogin(); return }
+        if (!token) { box.innerHTML = '<span class="msg" id="loginMsg"></span><input id="phoneInput" type="tel" inputmode="numeric" placeholder="(99) 99999-9999" /><button id="loginBtn">' + tt('store.enter') + '</button>'; bindLogin(); return }
         api('/api/me').then((u) => {
-          box.innerHTML = '<span class="user-chip">Conectado: <strong>' + esc(u.name || u.phone || '') + '</strong></span>'
+          box.innerHTML = '<span class="user-chip">' + tt('store.connected') + ' <strong>' + esc(u.name || u.phone || '') + '</strong></span>'
         }).catch(() => {
           localStorage.removeItem(TOKEN_KEY)
           renderUser()
@@ -122,9 +128,9 @@
         btn.addEventListener('click', async () => {
           msg.textContent = ''
           const phone = input.value.trim()
-          if (!phone) { msg.textContent = 'Informe seu telefone.'; return }
+          if (!phone) { msg.textContent = tt('store.phoneRequired'); return }
           btn.disabled = true
-          btn.textContent = 'Entrando…'
+          btn.textContent = tt('store.entering')
           try {
             // Cria a conta pelo telefone (sem liberar categorias aqui; a
             // liberação acontece após o pagamento externo via API).
@@ -134,14 +140,14 @@
               body: JSON.stringify({ phone, categoryIds: [] }),
             })
             localStorage.setItem(TOKEN_KEY, b.token)
-            msg.textContent = 'Conta pronta!'
+            msg.textContent = tt('store.accountReady')
             msg.classList.add('ok')
             renderUser()
           } catch (e) {
             msg.textContent = e.message
           } finally {
             btn.disabled = false
-            btn.textContent = 'Entrar'
+            btn.textContent = tt('store.enter')
           }
         })
       }
@@ -150,7 +156,7 @@
         // Link de checkout: o definido na categoria (admin) tem prioridade;
         // o preço/URL estático da STORE_CONFIG é o fallback.
         const cfg = STORE_CONFIG.categories[c.name] || STORE_CONFIG.categories[c.id]
-        const price = cfg ? cfg.price : 'Consultar'
+        const price = cfg ? cfg.price : tt('store.consult')
         const url = (c.checkoutUrl && c.checkoutUrl.trim()) ? c.checkoutUrl : (cfg ? cfg.url : null)
         // Capa da categoria (rota pública da loja). O ♫ fica de fundo e o
         // <img> cobre o card; se a imagem falhar (sem foto/capa), onerror
@@ -158,14 +164,14 @@
         return (
           '<div class="card">' +
             '<div class="thumb">&#9835;' +
-              '<img class="thumb-img" src="/api/store/categories/' + encodeURIComponent(c.id) + '/photo?size=300" alt="Capa da categoria ' + esc(c.name) + '" loading="lazy" onerror="this.remove()" />' +
+              '<img class="thumb-img" src="/api/store/categories/' + encodeURIComponent(c.id) + '/photo?size=300" alt="' + tt('store.categoryCover') + ' ' + esc(c.name) + '" loading="lazy" onerror="this.remove()" />' +
             '</div>' +
             '<h3>' + esc(c.name) + '</h3>' +
             '<p class="desc">' + fmt(c.songCount || 0) + '</p>' +
             '<span class="price">' + esc(price) + '</span>' +
             (url
-              ? '<a class="buy-btn" href="' + esc(url) + '" target="_blank" rel="noopener">Comprar</a>'
-              : '<span class="desc">Sem link de checkout configurado.</span>') +
+              ? '<a class="buy-btn" href="' + esc(url) + '" target="_blank" rel="noopener">' + tt('store.buy') + '</a>'
+              : '<span class="desc">' + tt('store.noCheckout') + '</span>') +
           '</div>'
         )
       }
@@ -178,18 +184,25 @@
             '<h3>' + esc(p.name) + '</h3>' +
             '<p class="desc">' + esc(p.desc || p.categories.join(', ')) + '</p>' +
             '<span class="price">' + esc(p.price) + '</span>' +
-            '<a class="buy-btn" href="' + esc(p.url) + '" target="_blank" rel="noopener">Comprar pack</a>' +
+            '<a class="buy-btn" href="' + esc(p.url) + '" target="_blank" rel="noopener">' + tt('store.buyPack') + '</a>' +
           '</div>'
         )
       }
 
       async function load() {
+        // Textos estáticos da página (idioma ativo).
+        $('#storeH1').textContent = tt('store.subtitle')
+        $('#storeSubtitle').textContent = tt('store.desc')
+        $('#storeCatsTitle').textContent = tt('store.categories')
+        $('#storePacksTitle').textContent = tt('store.packs')
+        $('#storeBack').innerHTML = '← ' + tt('store.back')
+        $('#storeFooter').textContent = 'Play Music · ' + tt('store.footer')
         renderUser()
         try {
           const cats = await api('/api/store/categories')
           const grid = $('#catGrid')
           grid.innerHTML = ''
-          if (!cats.length) { grid.innerHTML = '<p class="empty">Nenhuma categoria disponível ainda.</p>' }
+          if (!cats.length) { grid.innerHTML = '<p class="empty">' + tt('store.noCategories') + '</p>' }
           for (const c of cats) grid.insertAdjacentHTML('beforeend', categoryCard(c))
 
           const packs = STORE_CONFIG.packs || []
@@ -201,11 +214,11 @@
             $('#packsSection').style.display = 'none'
           }
         } catch (e) {
-          $('#catGrid').innerHTML = '<p class="empty">Erro ao carregar: ' + esc(e.message) + '</p>'
+          $('#catGrid').innerHTML = '<p class="empty">' + tt('store.loadError') + ' ' + esc(e.message) + '</p>'
         }
       }
 
-      load()
+      window.addEventListener('load', load)
     </script>
   </body>
 </html>
