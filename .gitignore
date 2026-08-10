@@ -43,3 +43,7 @@ karaoke-mobile-*.png
 
 # PWA fix validation (worktree)
 k-srv*
+
+# Karaoke mobile fs2 validation (worktree)
+k-srv*
+karaoke-mobile-fs2.png

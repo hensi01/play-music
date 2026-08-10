@@ -211,12 +211,12 @@ function isIOS() {
 // only way to get true fullscreen on iPhones/iPads.
 function enterFullscreen(el) {
   if (isIOS()) {
-    if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
+    enterIOSFullscreen()
     return
   }
   const req = el.requestFullscreen || el.webkitRequestFullscreen
   if (!req) {
-    if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
+    enterIOSFullscreen()
     return
   }
   const p = req.call(el)
@@ -224,9 +224,26 @@ function enterFullscreen(el) {
     p.catch(() => {
       // Rejected (policy/gesture edge cases, unsupported container): fall
       // back to the video's own fullscreen when available.
-      if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
+      enterIOSFullscreen()
     })
   }
+}
+
+// iOS: video.webkitEnterFullscreen() only works once the video has a source
+// loaded — the player calls this before loadKaraoke() assigns the src, so a
+// direct call would fail silently and the video would stay inline (never
+// truly fullscreen). If the media is not ready yet, queue the request and
+// fire it on the first metadata/canplay event.
+let iosFsQueued = false
+
+function enterIOSFullscreen() {
+  if (!video.webkitEnterFullscreen) return
+  if (video.readyState >= 1) {
+    iosFsQueued = false
+    video.webkitEnterFullscreen()
+    return
+  }
+  iosFsQueued = true
 }
 
 export function toggleFullscreen() {
@@ -502,7 +519,20 @@ video.addEventListener('timeupdate', () => {
 video.addEventListener('loadedmetadata', () => {
   state.duration = video.duration
   state.progress = 0
+  // iOS fullscreen was requested before the src was ready: now the media
+  // metadata is loaded, so entering fullscreen will succeed.
+  if (iosFsQueued) {
+    iosFsQueued = false
+    if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
+  }
   sync()
+})
+video.addEventListener('canplay', () => {
+  // Extra safety for iOS builds where metadata fires very early.
+  if (iosFsQueued && video.readyState >= 1) {
+    iosFsQueued = false
+    if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
+  }
 })
 video.addEventListener('play', () => {
   state.playing = true
