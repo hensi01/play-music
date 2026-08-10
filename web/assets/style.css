@@ -2606,6 +2606,20 @@ body.loja .empty {
   color: #fff;
 }
 
+/* Native fullscreen (F11-like): the element becomes the viewport; guarantee
+   the black background and full-bleed layout browsers may override. */
+.karaoke-player:fullscreen {
+  background: #000;
+  width: 100vw;
+  height: 100vh;
+}
+
+.karaoke-player:-webkit-full-screen {
+  background: #000;
+  width: 100vw;
+  height: 100vh;
+}
+
 .karaoke-top {
   display: flex;
   align-items: center;

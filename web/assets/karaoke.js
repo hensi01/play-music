@@ -200,12 +200,36 @@ export function close() {
     overlayEl.remove()
     overlayEl = null
   }
+  // Best-effort: when closing from our own controls while still in native
+  // fullscreen, leave it. (When close() came from fullscreenchange — e.g. the
+  // user pressed Esc — the browser already exited, so nothing to do here.)
+  if (document.fullscreenElement) {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen
+    if (exit) {
+      const p = exit.call(document)
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    }
+  }
 }
 
 // ---------- overlay ----------
 
 let overlayEl = null
 let barRefs = {}
+
+// Enters the native browser fullscreen (F11-like) when available. Called
+// synchronously inside the card click (user gesture), which the browsers
+// require. On platforms without container fullscreen (older iOS) the overlay
+// keeps working as-is.
+function enterFullscreen(el) {
+  const req = el.requestFullscreen || el.webkitRequestFullscreen
+  if (!req) return
+  const p = req.call(el)
+  if (p && typeof p.catch === 'function') {
+    // Rejected (policy/gesture edge cases): keep playing in the overlay.
+    p.catch(() => {})
+  }
+}
 
 function open() {
   if (overlayEl) return
@@ -223,6 +247,7 @@ function open() {
   )
   document.body.append(overlayEl)
   renderControls()
+  enterFullscreen(overlayEl)
 }
 
 // Formats the playback rate label: 1 -> "1x", 1.25 -> "1.25x", 2 -> "2x".
@@ -403,6 +428,15 @@ video.addEventListener('ended', () => {
   else sync()
 })
 
+// Native fullscreen: closes the player when the browser exits fullscreen
+// (Esc key or the browser's own exit control). When we leave fullscreen
+// ourselves (close button -> exitFullscreen) the overlay is already gone, so
+// the guard below is a no-op.
+document.addEventListener('fullscreenchange', () => {
+  if (!overlayEl) return
+  if (document.fullscreenElement !== overlayEl) close()
+})
+
 // ---------- keyboard shortcuts (only while open) ----------
 
 document.addEventListener('keydown', (e) => {
@@ -411,7 +445,9 @@ document.addEventListener('keydown', (e) => {
   const t = e.target
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.tagName === 'BUTTON')) return
   if (e.key === 'Escape') {
-    e.preventDefault()
+    // No preventDefault here: inside native fullscreen the browser handles
+    // Esc first (exiting fullscreen -> fullscreenchange -> close). Here we
+    // only cover the non-fullscreen fallback (overlay) case.
     close()
     return
   }
