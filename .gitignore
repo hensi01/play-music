@@ -40,3 +40,6 @@ karaoke-yt-*.png
 # Karaoke mobile fix validation (worktree)
 k-srv*
 karaoke-mobile-*.png
+
+# PWA fix validation (worktree)
+k-srv*

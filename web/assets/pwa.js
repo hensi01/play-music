@@ -27,6 +27,29 @@
     deferredPrompt = e
   })
 
+  // O aviso de instalação aparece UMA vez por sessão (sessionStorage): ele é
+  // gravado no primeiro show, então recarregar/navegar na mesma aba não
+  // re-exibe o card. Fechar a aba/janela inicia uma nova sessão (o aviso
+  // volta). try/catch: se o storage não estiver disponível, mantém o
+  // comportamento antigo (mostrar em toda visita).
+  const SEEN_KEY = 'pm_pwa_seen'
+
+  function pwaSeen() {
+    try {
+      return sessionStorage.getItem(SEEN_KEY) === '1'
+    } catch {
+      return false
+    }
+  }
+
+  function markPwaSeen() {
+    try {
+      sessionStorage.setItem(SEEN_KEY, '1')
+    } catch {
+      /* storage indisponível */
+    }
+  }
+
   const musicIcon =
     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>'
 
@@ -99,7 +122,8 @@
   }
 
   function show() {
-    if (isInstalled() || document.querySelector('.pwa-overlay')) return
+    if (isInstalled() || document.querySelector('.pwa-overlay') || pwaSeen()) return
+    markPwaSeen()
     const overlay = document.createElement('div')
     overlay.className = 'pwa-overlay'
     overlay.appendChild(buildCard())
@@ -109,7 +133,7 @@
     document.body.appendChild(overlay)
   }
 
-  // App aberto no navegador (não instalado): mostra sempre, em toda visita.
+  // App aberto no navegador (não instalado): mostra uma única vez por sessão.
   window.addEventListener('load', () => {
     setTimeout(show, 1500)
   })
