@@ -1705,6 +1705,10 @@ document.addEventListener('keydown', (e) => {
     render()
     return
   }
+  // O player de karaokê (fullscreen) tem seus próprios atalhos e fica por
+  // cima de tudo: com ele aberto, os atalhos do player de áudio não podem
+  // disparar (senão Space/arrows controlariam os dois players juntos).
+  if (karaoke.isOpen()) return
   const t = e.target
   // Elementos interativos têm atalhos nativos próprios (espaço/arrows ativam
   // botões e links). Sem esta exclusão, Espaço num botão focado dispararia o

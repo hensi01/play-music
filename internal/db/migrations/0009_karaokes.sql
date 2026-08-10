@@ -23,7 +23,6 @@ CREATE TABLE IF NOT EXISTS category_karaokes (
     PRIMARY KEY (category_id, karaoke_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_karaokes_path ON karaokes(path);
 CREATE INDEX IF NOT EXISTS idx_karaokes_created ON karaokes(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_category_karaokes_karaoke ON category_karaokes(karaoke_id);
 CREATE INDEX IF NOT EXISTS idx_category_karaokes_category ON category_karaokes(category_id, position);

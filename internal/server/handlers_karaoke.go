@@ -234,6 +234,12 @@ func (s *Server) handleAdminUploadKaraoke(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	// Re-read the persisted row so the 201 echoes the overridden title/artist
+	// (UpdateKaraokeMeta runs after IndexKaraoke built the in-memory struct).
+	if fresh, err := s.store.GetKaraoke(r.Context(), k.ID); err == nil {
+		k = fresh
+	}
+
 	writeJSON(w, http.StatusCreated, k)
 }
 

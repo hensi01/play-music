@@ -231,13 +231,14 @@ function buildControls() {
   const fill = el('div', { class: 'progress-fill' })
   const cur = el('span', { class: 'progress-time' }, '0:00')
   const dur = el('span', { class: 'progress-time' }, '0:00')
-  barRefs = { fill, cur, dur }
+  barRefs = { fill, cur, dur, track: null, rateBtn: null }
 
   const progressTrack = el(
     'div',
     { class: 'progress-track', role: 'slider', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': 0 },
     fill,
   )
+  barRefs.track = progressTrack
   attachSeek(progressTrack)
 
   const rateBtn = el(
@@ -245,6 +246,7 @@ function buildControls() {
     { class: 'player-btn karaoke-rate', 'aria-label': 'Velocidade', onclick: cycleRate },
     `${state.rate.toFixed(2).replace(/0$/, '')}x`,
   )
+  barRefs.rateBtn = rateBtn
 
   const volIcon = el('span', { class: 'vol-icon' }, state.volume === 0 ? icon('volumeX') : icon('volume'))
   barRefs.volIcon = volIcon
@@ -355,6 +357,10 @@ function sync() {
   }
   if (barRefs.volInput && Math.abs(parseFloat(barRefs.volInput.value) - state.volume) > 0.005) {
     barRefs.volInput.value = String(state.volume)
+  }
+  // Speed label follows the current rate.
+  if (barRefs.rateBtn) {
+    barRefs.rateBtn.textContent = `${state.rate.toFixed(2).replace(/0$/, '')}x`
   }
   // Play/pause button icon.
   const mainBtn = overlayEl.querySelector('.player-btn-main')
