@@ -195,6 +195,9 @@ export function setRate(rate) {
 // ---------- native fullscreen ----------
 
 function isFullscreen() {
+  // iOS: document.webkitFullscreenElement is unreliable while the video is in
+  // its native fullscreen; webkitDisplayingFullscreen is the source of truth.
+  if (isIOS()) return !!video.webkitDisplayingFullscreen
   return !!(document.fullscreenElement || document.webkitFullscreenElement)
 }
 
@@ -204,46 +207,49 @@ function isIOS() {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 }
 
-// Enters the native browser fullscreen (F11-like) when available. Called
-// synchronously inside a user gesture (card click / button click), which the
-// browsers require. iOS Safari has no container fullscreen API for <div>, so
-// the video's own fullscreen (native iOS player) is used there — this is the
-// only way to get true fullscreen on iPhones/iPads.
-function enterFullscreen(el) {
-  if (isIOS()) {
-    enterIOSFullscreen()
-    return
-  }
+// requestFullscreen on Android Chrome can reject when called in the same tick
+// the element is appended to the DOM (no rendered frame yet), failing
+// silently — the video then stays inline. These attempts are staggered, all
+// inside the transient user-activation window (~5s), so the first call that
+// runs against a rendered element succeeds. Failures are logged so real
+// device issues are diagnosable instead of swallowed.
+function requestContainerFullscreen(el, attempt) {
   const req = el.requestFullscreen || el.webkitRequestFullscreen
-  if (!req) {
-    enterIOSFullscreen()
-    return
-  }
+  if (!req) return Promise.reject(new Error('container fullscreen API unavailable'))
   const p = req.call(el)
   if (p && typeof p.catch === 'function') {
-    p.catch(() => {
-      // Rejected (policy/gesture edge cases, unsupported container): fall
-      // back to the video's own fullscreen when available.
-      enterIOSFullscreen()
+    return p.catch((err) => {
+      if (attempt >= 3) throw err
+      return new Promise((resolve, reject) => {
+        const step = attempt === 1 ? requestAnimationFrame : (attempt === 2 ? requestAnimationFrame : setTimeout)
+        const delay = attempt === 3 ? 120 : 0
+        const run = () => {
+          requestContainerFullscreen(el, attempt + 1).then(resolve, reject)
+        }
+        if (delay) setTimeout(run, delay)
+        else step(run)
+      })
     })
   }
+  return Promise.resolve(p)
 }
 
-// iOS: video.webkitEnterFullscreen() only works once the video has a source
-// loaded — the player calls this before loadKaraoke() assigns the src, so a
-// direct call would fail silently and the video would stay inline (never
-// truly fullscreen). If the media is not ready yet, queue the request and
-// fire it on the first metadata/canplay event.
-let iosFsQueued = false
-
-function enterIOSFullscreen() {
-  if (!video.webkitEnterFullscreen) return
-  if (video.readyState >= 1) {
-    iosFsQueued = false
-    video.webkitEnterFullscreen()
+// Enters the native browser fullscreen (F11-like). iOS Safari has no
+// container fullscreen API for <div>; the video's own fullscreen (native iOS
+// player — the same behaviour as YouTube on iPhone) is used, synchronously
+// inside the user gesture so the activation is still valid.
+function enterFullscreen(el) {
+  if (isIOS()) {
+    if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
     return
   }
-  iosFsQueued = true
+  requestContainerFullscreen(el, 1).catch((err) => {
+    // Rejected after all staggered attempts (policy, unsupported container…):
+    // report it so real-device issues are not invisible, then try the video's
+    // own fullscreen as a last resort.
+    console.warn('[karaoke] fullscreen falhou:', err && err.message ? err.message : err)
+    if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
+  })
 }
 
 export function toggleFullscreen() {
@@ -519,20 +525,7 @@ video.addEventListener('timeupdate', () => {
 video.addEventListener('loadedmetadata', () => {
   state.duration = video.duration
   state.progress = 0
-  // iOS fullscreen was requested before the src was ready: now the media
-  // metadata is loaded, so entering fullscreen will succeed.
-  if (iosFsQueued) {
-    iosFsQueued = false
-    if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
-  }
   sync()
-})
-video.addEventListener('canplay', () => {
-  // Extra safety for iOS builds where metadata fires very early.
-  if (iosFsQueued && video.readyState >= 1) {
-    iosFsQueued = false
-    if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
-  }
 })
 video.addEventListener('play', () => {
   state.playing = true
