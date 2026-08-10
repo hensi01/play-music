@@ -2590,7 +2590,7 @@ body.loja .empty {
   }
 }
 
-/* ---------- Karaoke (video cards + fullscreen player) ---------- */
+/* ---------- Karaoke (video cards + YouTube-style player) ---------- */
 
 .card-image-wrap:not(.square) {
   aspect-ratio: 16 / 9;
@@ -2600,8 +2600,6 @@ body.loja .empty {
   position: fixed;
   inset: 0;
   z-index: 60;
-  display: flex;
-  flex-direction: column;
   background: #000;
   color: #fff;
 }
@@ -2620,31 +2618,24 @@ body.loja .empty {
   height: 100vh;
 }
 
-.karaoke-top {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  min-height: 52px;
+/* Auto-hide: with the mouse idle while playing, overlays and cursor vanish. */
+.karaoke-player.controls-hidden .karaoke-overlay {
+  opacity: 0;
+  pointer-events: none;
 }
 
-.karaoke-top-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 15px;
-  font-weight: 600;
+.karaoke-player.controls-hidden {
+  cursor: none;
 }
 
 .karaoke-stage {
-  flex: 1;
+  position: relative;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 0;
-  padding: 0 16px;
+  background: #000;
 }
 
 .karaoke-stage video {
@@ -2656,33 +2647,82 @@ body.loja .empty {
   outline: none;
 }
 
+/* Overlay layer on top of the video: the layer itself never intercepts
+   pointer events, only its children do. */
+.karaoke-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.karaoke-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.75), transparent);
+}
+
+.karaoke-top .icon-btn {
+  pointer-events: auto;
+}
+
+.karaoke-top-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
 .karaoke-controls {
-  padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 28px 14px calc(10px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
+  pointer-events: auto;
 }
 
 .karaoke-controls-inner {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 8px;
+  gap: 6px;
+  max-width: 960px;
+  margin: 0 auto;
 }
 
 .karaoke-controls .player-progress {
   width: 100%;
-  max-width: 640px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.karaoke-controls .player-volume {
+.player-buttons-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.player-side {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  max-width: 640px;
-  justify-content: center;
 }
 
 .karaoke-controls .volume-slider {
-  width: 100px;
+  width: 90px;
 }
 
 .karaoke-rate {
@@ -2692,12 +2732,16 @@ body.loja .empty {
   font-variant-numeric: tabular-nums;
 }
 
+.karaoke-fs {
+  pointer-events: auto;
+}
+
 @media (max-width: 768px) {
-  .karaoke-controls .player-buttons {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
   .karaoke-stage video {
     max-height: 55vh;
   }
+  .player-side .volume-slider {
+    width: 60px;
+  }
 }
+
