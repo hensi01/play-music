@@ -674,6 +674,11 @@ function uploadForm() {
 // Audio extensions accepted by the folder batch (same list as the scanner).
 const FOLDER_AUDIO_EXTS = ['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus', '.wav', '.wma', '.aiff', '.aif', '.wv', '.tak', '.ape']
 
+// Video extensions accepted by the karaoke folder batch (same list as the
+// upload endpoint's videoMimeByExt, plus .m4v which the single upload's
+// accept attribute omits).
+const FOLDER_VIDEO_EXTS = ['.mp4', '.m4v', '.webm', '.mkv']
+
 function folderAudioExt(name) {
   const i = name.lastIndexOf('.')
   if (i < 0) return ''
@@ -804,9 +809,11 @@ function uploadFolderForm() {
     }
     fillEl.style.width = '100%'
     textEl.textContent = `Concluído: ${ok} ${ok === 1 ? 'música enviada' : 'músicas enviadas'}${fails.length ? `, ${fails.length} ${fails.length === 1 ? 'falha' : 'falhas'}` : ''}.`
-    startBtn.disabled = false
-    startBtn.textContent = 'Fechar'
-    startBtn.onclick = () => overlay.remove()
+    // Replace the start button instead of reassigning onclick: el() binds the
+    // original 'click'→start listener via addEventListener, so a plain
+    // `startBtn.onclick = ...` would leave BOTH handlers — clicking "Fechar"
+    // would re-run the whole folder upload.
+    startBtn.replaceWith(el('button', { class: 'btn-accent', onclick: () => overlay.remove() }, 'Fechar'))
     cancelBtn.style.display = 'none'
     refreshApp()
   }
@@ -851,12 +858,13 @@ async function renderKaraokes(wrap, seq) {
   wrap.append(
     el('div', { class: 'admin-toolbar' },
       el('button', { class: 'btn-accent', onclick: uploadKaraokeForm }, 'Enviar vídeo'),
+      el('button', { class: 'btn-secondary', onclick: uploadKaraokeFolderForm }, 'Enviar pasta'),
     ),
   )
 
   const table = el('div', { class: 'admin-table' })
   if (list.length === 0) {
-    table.append(el('p', { class: 'empty-state' }, 'Nenhum karaokê no sistema ainda. Use "Enviar vídeo".'))
+    table.append(el('p', { class: 'empty-state' }, 'Nenhum karaokê no sistema ainda. Use "Enviar vídeo" ou "Enviar pasta".'))
   }
   for (const k of list) {
     const cats = (adminState.karaokeCategoryIds[k.id] ?? []).map((cid) => adminState.categoryNames[cid]).filter(Boolean)
@@ -988,6 +996,156 @@ function uploadKaraokeForm() {
       btn.disabled = false
       btn.textContent = 'Enviar'
     }
+  }
+}
+
+function uploadKaraokeFolderForm() {
+  // Same webkitdirectory pattern as the song folder upload: pick a whole
+  // folder, keep only the video files, upload each one sequentially through
+  // the single-video endpoint (per-file ffprobe validation + thumbnail).
+  const fileInput = el('input', { class: 'upload-file-input', type: 'file', webkitdirectory: true, multiple: true })
+  const dropzone = el(
+    'div',
+    { class: 'upload-dropzone' },
+    el('span', { class: 'upload-dropzone-icon', html: '&#128193;' }),
+    el('p', { class: 'upload-dropzone-title' }, 'Selecione a pasta de vídeos ou arraste aqui'),
+    el('p', { class: 'upload-dropzone-hint' }, 'Todos os vídeos (mp4, webm, mkv…) serão enviados em sequência'),
+  )
+  dropzone.addEventListener('click', () => fileInput.click())
+  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag') })
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'))
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault()
+    dropzone.classList.remove('drag')
+    if (e.dataTransfer.files.length) fileInput.files = e.dataTransfer.files
+    updateFiles()
+  })
+  fileInput.addEventListener('change', updateFiles)
+
+  let selected = []
+  function updateFiles() {
+    selected = Array.from(fileInput.files || []).filter((f) => FOLDER_VIDEO_EXTS.includes(folderAudioExt(f.name)))
+    const total = selected.reduce((acc, f) => acc + f.size, 0)
+    dropzone.classList.toggle('has-file', selected.length > 0)
+    if (selected.length === 0) {
+      dropzone.querySelector('.upload-dropzone-title').textContent = 'Nenhum vídeo encontrado'
+      dropzone.querySelector('.upload-dropzone-hint').textContent = 'Escolha outra pasta'
+    } else {
+      dropzone.querySelector('.upload-dropzone-title').textContent = `${selected.length} ${selected.length === 1 ? 'vídeo' : 'vídeos'} na pasta`
+      dropzone.querySelector('.upload-dropzone-hint').textContent = `Total de ${fmtMB(total)}`
+    }
+    updateStartBtn()
+  }
+
+  // Category is required (every karaoke in the folder gets assigned to it).
+  const catSelect = el('select', { class: 'form-input' },
+    el('option', { value: '' }, 'Selecione a categoria…'),
+    ...adminState.categories.map((c) => el('option', { value: c.id }, c.name)),
+  )
+  catSelect.addEventListener('change', updateStartBtn)
+
+  // Optional overrides applied to every video in the folder: artist applies
+  // as-is; title is used as a PREFIX before the file name (without extension).
+  const artistInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Artista (opcional, vale para todos)', autocomplete: 'off' })
+  const titlePrefixInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Prefixo do título (opcional, ex.: "Harpa - ")', autocomplete: 'off' })
+  const field = (label, control) =>
+    el('label', { class: 'upload-field' }, el('span', { class: 'upload-label' }, label), control)
+
+  const statusEl = el('p', { class: 'login-error' })
+  const progressWrap = el('div', { class: 'upload-progress', style: 'display:none' },
+    el('div', { class: 'upload-progress-bar' }, el('div', { class: 'upload-progress-fill', style: 'width:0%' })),
+    el('p', { class: 'upload-progress-text' }, ''),
+  )
+  const failsEl = el('div', { class: 'upload-fails', style: 'display:none' })
+
+  const overlay = el('div', { class: 'modal-overlay' },
+    el('div', { class: 'modal modal-upload' },
+      el('h3', {}, 'Enviar pasta de karaokês'),
+      dropzone,
+      fileInput,
+      el('div', { class: 'modal-section-label' }, 'Categoria dos vídeos'),
+      catSelect,
+      el('div', { class: 'upload-grid' },
+        field('Artista (opcional)', artistInput),
+        field('Prefixo do título (opcional)', titlePrefixInput),
+      ),
+      el('p', { class: 'upload-info' }, 'Todos os vídeos da pasta entram na categoria escolhida. O título vem do nome do arquivo — com o prefixo digitado, vira "prefixo + nome". O artista se aplica a todos.'),
+      statusEl,
+      progressWrap,
+      failsEl,
+      el('div', { class: 'modal-actions' },
+        el('button', { class: 'btn-accent', id: 'folder-upload-start', onclick: start }, 'Enviar'),
+        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
+      ),
+    ),
+  )
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+  document.body.append(overlay)
+
+  const startBtn = overlay.querySelector('#folder-upload-start')
+  const fillEl = progressWrap.querySelector('.upload-progress-fill')
+  const textEl = progressWrap.querySelector('.upload-progress-text')
+
+  function updateStartBtn() {
+    startBtn.disabled = selected.length === 0 || !catSelect.value
+  }
+
+  async function start() {
+    if (selected.length === 0) {
+      statusEl.textContent = 'Selecione uma pasta com vídeos.'
+      statusEl.classList.add('login-error')
+      return
+    }
+    if (!catSelect.value) {
+      statusEl.textContent = 'Escolha uma categoria para os vídeos.'
+      statusEl.classList.add('login-error')
+      return
+    }
+    const artist = artistInput.value.trim()
+    const prefix = titlePrefixInput.value.trim()
+    statusEl.textContent = ''
+    statusEl.classList.remove('login-error', 'upload-info')
+    progressWrap.style.display = ''
+    failsEl.style.display = 'none'
+    failsEl.innerHTML = ''
+    startBtn.disabled = true
+    const cancelBtn = overlay.querySelector('.btn-secondary')
+    cancelBtn.disabled = true
+    cancelBtn.textContent = 'Aguarde…'
+
+    let ok = 0
+    const fails = []
+    for (let i = 0; i < selected.length; i++) {
+      const f = selected[i]
+      textEl.textContent = `Enviando ${i + 1} de ${selected.length}: ${f.name} (${fmtMB(f.size)})`
+      fillEl.style.width = `${Math.round((i / selected.length) * 100)}%`
+      const fd = new FormData()
+      fd.append('video', f)
+      fd.append('categoryId', catSelect.value)
+      if (prefix) {
+        const base = f.name.slice(0, f.name.lastIndexOf('.')) || f.name
+        fd.append('title', prefix + base)
+      }
+      if (artist) fd.append('artist', artist)
+      try {
+        await endpoints.admin.uploadKaraoke(fd)
+        ok++
+      } catch (err) {
+        fails.push({ name: f.name, msg: err.message })
+        failsEl.style.display = ''
+        const row = el('p', { class: 'upload-fail' }, '✕ ', el('strong', {}, f.name), ` — ${err.message}`)
+        failsEl.append(row)
+      }
+    }
+    fillEl.style.width = '100%'
+    textEl.textContent = `Concluído: ${ok} ${ok === 1 ? 'vídeo enviado' : 'vídeos enviados'}${fails.length ? `, ${fails.length} ${fails.length === 1 ? 'falha' : 'falhas'}` : ''}.`
+    // Replace the start button instead of reassigning onclick: el() binds the
+    // original 'click'→start listener via addEventListener, so a plain
+    // `startBtn.onclick = ...` would leave BOTH handlers — clicking "Fechar"
+    // would re-run the whole folder upload.
+    startBtn.replaceWith(el('button', { class: 'btn-accent', onclick: () => overlay.remove() }, 'Fechar'))
+    cancelBtn.style.display = 'none'
+    refreshApp()
   }
 }
 

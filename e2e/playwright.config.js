@@ -5,6 +5,10 @@
 
 const { defineConfig } = require('playwright/test')
 
+// E2E_BASE_URL overrides the target server (validation runs on a separate
+// port); the default matches the always-on local instance on :4533.
+const baseURL = process.env.E2E_BASE_URL || 'http://localhost:4533'
+
 module.exports = defineConfig({
   testDir: './tests',
   timeout: 45_000,
@@ -14,7 +18,7 @@ module.exports = defineConfig({
   retries: 0,
   reporter: [['list']],
   use: {
-    baseURL: 'http://localhost:4533',
+    baseURL,
     headless: true,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
@@ -41,7 +45,7 @@ module.exports = defineConfig({
   ],
   webServer: {
     command: 'powershell -NoProfile -ExecutionPolicy Bypass -File e2e\\start-server.ps1',
-    url: 'http://localhost:4533/',
+    url: baseURL + '/',
     reuseExistingServer: true,
     timeout: 60_000,
   },

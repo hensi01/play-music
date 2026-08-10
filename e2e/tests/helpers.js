@@ -5,8 +5,11 @@
 
 const fs = require('fs')
 const path = require('path')
+const { execFileSync } = require('child_process')
 
-const BASE = 'http://localhost:4533'
+// E2E_BASE_URL points the API helpers at a validation server when set
+// (see playwright.config.js); the default is the always-on :4533 instance.
+const BASE = process.env.E2E_BASE_URL || 'http://localhost:4533'
 
 // ---------- .env (runtime, never committed) ----------
 
@@ -210,6 +213,13 @@ async function apiAdminSongs(request) {
   return res.json()
 }
 
+async function apiAdminKaraokes(request) {
+  const headers = await apiAuthHeaders(request)
+  const res = await request.get(`${BASE}/api/admin/karaokes`, { headers })
+  if (!res.ok()) throw new Error(`admin karaokes failed ${res.status()}`)
+  return res.json()
+}
+
 // Uploads a category cover via API. Uses the app's own PNG (icon-512.png,
 // served at the root) so no binary fixture has to live in the repo. With
 // `invalid: true` it uploads the WAV fixture instead (validation must 400).
@@ -280,6 +290,28 @@ function ensureSilenceWav(seconds = 30) {
   return file
 }
 
+// ---------- video fixture (karaoke folder upload) ----------
+
+// A tiny decodable MP4 (ffmpeg testsrc) so karaoke uploads pass the server's
+// ffprobe validation and get a real thumbnail extracted. Cached per file in
+// e2e/fixtures. Uses the same ffmpeg binary the server relies on
+// (ND_FFMPEGPATH from .env, else ffmpeg on PATH). Falls back to the mpeg4
+// codec when the build lacks libx264.
+function ensureTestMp4(name, seconds = 3) {
+  const dir = path.join(__dirname, '..', 'fixtures')
+  const file = path.join(dir, name)
+  if (fs.existsSync(file)) return file
+  fs.mkdirSync(dir, { recursive: true })
+  const ffmpeg = envFromFile('ND_FFMPEGPATH') || 'ffmpeg'
+  const src = `testsrc=duration=${seconds}:size=160x120:rate=15`
+  try {
+    execFileSync(ffmpeg, ['-y', '-f', 'lavfi', '-i', src, '-pix_fmt', 'yuv420p', '-t', String(seconds), '-c:v', 'libx264', '-preset', 'ultrafast', file], { stdio: 'pipe' })
+  } catch {
+    execFileSync(ffmpeg, ['-y', '-f', 'lavfi', '-i', src, '-t', String(seconds), '-c:v', 'mpeg4', '-q:v', '5', file], { stdio: 'pipe' })
+  }
+  return file
+}
+
 module.exports = {
   BASE,
   ADMIN_USER,
@@ -305,8 +337,10 @@ module.exports = {
   apiListCategories,
   apiStoreRegister,
   apiAdminSongs,
+  apiAdminKaraokes,
   apiUploadCategoryPhoto,
   apiDeleteCategoryPhoto,
   apiArtworkBytes,
   ensureSilenceWav,
+  ensureTestMp4,
 }
