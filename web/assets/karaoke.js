@@ -1,7 +1,6 @@
-// Karaoke video player — dedicated fullscreen <video> player, fully
-// independent from the audio player (player.js). Plays MP4 karaoke videos
-// from the library with play/pause, seek, volume, playback speed, previous /
-// next within its own queue, and keyboard shortcuts.
+// Karaoke video player — YouTube-style: controls overlaid ON the video
+// (progress bar + buttons with gradient, auto-hide while playing), native
+// fullscreen on open, fully independent from the audio player (player.js).
 
 import { karaokeStreamUrl, endpoints } from './api.js'
 
@@ -49,12 +48,16 @@ const icons = {
   volume: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>',
   volumeX: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" x2="16" y1="9" y2="15"/><line x1="16" x2="22" y1="9" y2="15"/></svg>',
   chevronDown: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+  max: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
+  minimize: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>',
 }
 
 function icon(name) {
   const wrap = document.createElement('span')
   wrap.innerHTML = icons[name] || ''
-  return wrap.firstChild
+  const node = wrap.firstChild
+  if (node) node.dataset.icon = name
+  return node
 }
 
 function fmtDuration(seconds) {
@@ -90,10 +93,11 @@ function loadKaraoke(k, index) {
   // Report the play (play counter).
   endpoints.registerKaraokePlay(k.id).catch(() => undefined)
   updateTopTitle()
+  showControls()
   sync()
 }
 
-// Shows the current karaoke title in the player's top bar.
+// Shows the current karaoke title in the player's top overlay.
 function updateTopTitle() {
   if (!overlayEl) return
   const titleEl = overlayEl.querySelector('#karaoke-top-title')
@@ -188,6 +192,39 @@ export function setRate(rate) {
   sync()
 }
 
+// ---------- native fullscreen ----------
+
+function isFullscreen() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement)
+}
+
+// Enters the native browser fullscreen (F11-like) when available. Called
+// synchronously inside a user gesture (card click / button click), which the
+// browsers require. On platforms without container fullscreen (older iOS) it
+// falls back to the video's own fullscreen (native iOS player).
+function enterFullscreen(el) {
+  const req = el.requestFullscreen || el.webkitRequestFullscreen
+  if (req) {
+    const p = req.call(el)
+    if (p && typeof p.catch === 'function') p.catch(() => {})
+    return
+  }
+  if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
+}
+
+export function toggleFullscreen() {
+  if (isFullscreen()) {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen
+    if (exit) {
+      const p = exit.call(document)
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    }
+    return
+  }
+  if (!overlayEl) return
+  enterFullscreen(overlayEl)
+}
+
 export function close() {
   video.pause()
   video.removeAttribute('src')
@@ -201,8 +238,7 @@ export function close() {
     overlayEl = null
   }
   // Best-effort: when closing from our own controls while still in native
-  // fullscreen, leave it. (When close() came from fullscreenchange — e.g. the
-  // user pressed Esc — the browser already exited, so nothing to do here.)
+  // fullscreen, leave it.
   if (document.fullscreenElement) {
     const exit = document.exitFullscreen || document.webkitExitFullscreen
     if (exit) {
@@ -212,23 +248,24 @@ export function close() {
   }
 }
 
-// ---------- overlay ----------
+// ---------- player DOM (YouTube-style overlays) ----------
 
 let overlayEl = null
 let barRefs = {}
+let hideTimer = null
+let seekDragging = false
 
-// Enters the native browser fullscreen (F11-like) when available. Called
-// synchronously inside the card click (user gesture), which the browsers
-// require. On platforms without container fullscreen (older iOS) the overlay
-// keeps working as-is.
-function enterFullscreen(el) {
-  const req = el.requestFullscreen || el.webkitRequestFullscreen
-  if (!req) return
-  const p = req.call(el)
-  if (p && typeof p.catch === 'function') {
-    // Rejected (policy/gesture edge cases): keep playing in the overlay.
-    p.catch(() => {})
-  }
+// Shows the overlays and schedules auto-hide (only while playing and not
+// dragging the seek bar).
+function showControls() {
+  if (!overlayEl) return
+  overlayEl.classList.remove('controls-hidden')
+  clearTimeout(hideTimer)
+  hideTimer = setTimeout(() => {
+    if (overlayEl && state.playing && !seekDragging) {
+      overlayEl.classList.add('controls-hidden')
+    }
+  }, 2500)
 }
 
 function open() {
@@ -238,16 +275,40 @@ function open() {
     { class: 'karaoke-player' },
     el(
       'div',
-      { class: 'karaoke-top' },
-      el('button', { class: 'icon-btn', 'aria-label': 'Fechar', onclick: () => close() }, icon('chevronDown')),
-      el('div', { class: 'karaoke-top-title', id: 'karaoke-top-title' }, ''),
+      { class: 'karaoke-stage' },
+      video,
+      el(
+        'div',
+        { class: 'karaoke-overlay' },
+        el(
+          'div',
+          { class: 'karaoke-top' },
+          el('button', { class: 'icon-btn', 'aria-label': 'Fechar', onclick: close }, icon('chevronDown')),
+          el('div', { class: 'karaoke-top-title', id: 'karaoke-top-title' }, ''),
+        ),
+        el('div', { class: 'karaoke-controls' }, buildControls()),
+      ),
     ),
-    el('div', { class: 'karaoke-stage' }, video),
-    el('div', { class: 'karaoke-controls' }, buildControls()),
   )
   document.body.append(overlayEl)
-  renderControls()
+  updateTopTitle()
+  attachStageEvents()
+  showControls()
   enterFullscreen(overlayEl)
+}
+
+// Click on the video (outside the control overlays) toggles play/pause;
+// any pointer activity shows the overlays and restarts the auto-hide timer.
+function attachStageEvents() {
+  if (!overlayEl) return
+  overlayEl.addEventListener('click', (e) => {
+    if (e.target.closest('.karaoke-overlay')) return
+    togglePlay()
+  })
+  const poke = () => showControls()
+  overlayEl.addEventListener('pointermove', poke)
+  overlayEl.addEventListener('pointerdown', poke)
+  overlayEl.addEventListener('touchstart', poke)
 }
 
 // Formats the playback rate label: 1 -> "1x", 1.25 -> "1.25x", 2 -> "2x".
@@ -255,13 +316,11 @@ function rateLabel(rate) {
   return `${Number(rate.toFixed(2))}x`
 }
 
-// Rebuilds the control bar on structural changes; progress ticks update in
-// place via sync().
 function buildControls() {
   const fill = el('div', { class: 'progress-fill' })
   const cur = el('span', { class: 'progress-time' }, '0:00')
   const dur = el('span', { class: 'progress-time' }, '0:00')
-  barRefs = { fill, cur, dur, track: null, rateBtn: null }
+  barRefs = { fill, cur, dur, track: null, rateBtn: null, fsBtn: null, volIcon: null, volInput: null }
 
   const progressTrack = el(
     'div',
@@ -292,19 +351,16 @@ function buildControls() {
   })
   barRefs.volInput = volInput
 
+  const fsBtn = el(
+    'button',
+    { class: 'icon-btn karaoke-fs', 'aria-label': isFullscreen() ? 'Sair da tela cheia' : 'Tela cheia', onclick: toggleFullscreen },
+    icon(isFullscreen() ? 'minimize' : 'max'),
+  )
+  barRefs.fsBtn = fsBtn
+
   return el(
     'div',
     { class: 'karaoke-controls-inner' },
-    el(
-      'div',
-      { class: 'player-buttons' },
-      el('button', { class: 'player-btn', 'aria-label': 'Anterior', onclick: prev }, icon('prev')),
-      el('button', { class: 'player-btn', 'aria-label': 'Retroceder 5 segundos', onclick: () => seekBy(-5) }, icon('rewind5')),
-      el('button', { class: 'player-btn-main', 'aria-label': 'Tocar', 'aria-pressed': 'false', onclick: togglePlay }, icon('play')),
-      el('button', { class: 'player-btn', 'aria-label': 'Avançar 5 segundos', onclick: () => seekBy(5) }, icon('forward5')),
-      el('button', { class: 'player-btn', 'aria-label': 'Próxima', onclick: next }, icon('next')),
-      rateBtn,
-    ),
     el(
       'div',
       { class: 'player-progress' },
@@ -314,9 +370,24 @@ function buildControls() {
     ),
     el(
       'div',
-      { class: 'player-volume' },
-      el('button', { class: 'icon-btn', 'aria-label': 'Mudo', onclick: toggleMute }, volIcon),
-      volInput,
+      { class: 'player-buttons-row' },
+      el(
+        'div',
+        { class: 'player-buttons' },
+        el('button', { class: 'player-btn', 'aria-label': 'Anterior', onclick: prev }, icon('prev')),
+        el('button', { class: 'player-btn', 'aria-label': 'Retroceder 5 segundos', onclick: () => seekBy(-5) }, icon('rewind5')),
+        el('button', { class: 'player-btn-main', 'aria-label': 'Tocar', 'aria-pressed': 'false', onclick: togglePlay }, icon('play')),
+        el('button', { class: 'player-btn', 'aria-label': 'Avançar 5 segundos', onclick: () => seekBy(5) }, icon('forward5')),
+        el('button', { class: 'player-btn', 'aria-label': 'Próxima', onclick: next }, icon('next')),
+      ),
+      el(
+        'div',
+        { class: 'player-side' },
+        rateBtn,
+        el('button', { class: 'icon-btn', 'aria-label': 'Mudo', onclick: toggleMute }, volIcon),
+        volInput,
+        fsBtn,
+      ),
     ),
   )
 }
@@ -329,7 +400,6 @@ function cycleRate() {
 }
 
 function attachSeek(track) {
-  let dragging = false
   const clientXToSeek = (clientX) => {
     const rect = track.getBoundingClientRect()
     if (rect.width === 0) return
@@ -340,30 +410,24 @@ function attachSeek(track) {
   }
   track.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return
-    dragging = true
+    seekDragging = true
     track.classList.add('dragging')
     clientXToSeek(e.clientX)
     e.preventDefault()
+    e.stopPropagation()
   })
   window.addEventListener('pointermove', (e) => {
-    if (dragging) clientXToSeek(e.clientX)
+    if (seekDragging) clientXToSeek(e.clientX)
   })
   window.addEventListener('pointerup', () => {
-    dragging = false
+    if (!seekDragging) return
+    seekDragging = false
     track.classList.remove('dragging')
+    showControls()
   })
 }
 
-// Rebuilds the control bar (structural changes: play state, volume icon).
-function renderControls() {
-  if (!overlayEl) return
-  const controls = overlayEl.querySelector('.karaoke-controls')
-  controls.innerHTML = ''
-  controls.append(buildControls())
-  updateTopTitle()
-}
-
-// In-place updates for progress/volume while playing (no rebuild).
+// In-place updates for progress/volume/icons while playing (no rebuild).
 function sync() {
   if (!overlayEl) return
   const total = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : state.duration
@@ -391,6 +455,14 @@ function sync() {
   // Speed label follows the current rate.
   if (barRefs.rateBtn) {
     barRefs.rateBtn.textContent = rateLabel(state.rate)
+  }
+  // Fullscreen button icon follows the actual fullscreen state.
+  if (barRefs.fsBtn) {
+    const inFs = isFullscreen()
+    barRefs.fsBtn.innerHTML = icons[inFs ? 'minimize' : 'max']
+    const svg = barRefs.fsBtn.firstElementChild
+    if (svg) svg.dataset.icon = inFs ? 'minimize' : 'max'
+    barRefs.fsBtn.setAttribute('aria-label', inFs ? 'Sair da tela cheia' : 'Tela cheia')
   }
   // Play/pause button icon.
   const mainBtn = overlayEl.querySelector('.player-btn-main')
@@ -428,14 +500,15 @@ video.addEventListener('ended', () => {
   else sync()
 })
 
-// Native fullscreen: closes the player when the browser exits fullscreen
-// (Esc key or the browser's own exit control). When we leave fullscreen
-// ourselves (close button -> exitFullscreen) the overlay is already gone, so
-// the guard below is a no-op.
-document.addEventListener('fullscreenchange', () => {
-  if (!overlayEl) return
-  if (document.fullscreenElement !== overlayEl) close()
-})
+// Native fullscreen state changes: leaving fullscreen NEVER closes the player
+// (only the close button does); we just resync the button icon. iOS Safari
+// fires webkitfullscreenchange on the video element instead of the document.
+function onFullscreenChange() {
+  sync()
+}
+document.addEventListener('fullscreenchange', onFullscreenChange)
+document.addEventListener('webkitfullscreenchange', onFullscreenChange)
+video.addEventListener('webkitfullscreenchange', onFullscreenChange)
 
 // ---------- keyboard shortcuts (only while open) ----------
 
@@ -445,10 +518,8 @@ document.addEventListener('keydown', (e) => {
   const t = e.target
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.tagName === 'BUTTON')) return
   if (e.key === 'Escape') {
-    // No preventDefault here: inside native fullscreen the browser handles
-    // Esc first (exiting fullscreen -> fullscreenchange -> close). Here we
-    // only cover the non-fullscreen fallback (overlay) case.
-    close()
+    // Esc only exits native fullscreen (handled by the browser); the player
+    // stays open — only the close button (or close()) closes it.
     return
   }
   if (!state.current) return
@@ -477,4 +548,4 @@ document.addEventListener('keydown', (e) => {
 })
 
 // Debug/test hook.
-window.__karaoke = { getState: () => state, isOpen, close }
+window.__karaoke = { getState: () => state, isOpen, close, toggleFullscreen }
