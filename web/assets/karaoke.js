@@ -224,6 +224,19 @@ export function toggleOrientation() {
   showControls()
 }
 
+// Auto-orientação: quando o vídeo é horizontal (w > h), a tela gira para
+// paisagem no Android (onde screen.orientation.lock existe); vídeo vertical
+// gira para portrait. iOS/desktop: no-op silencioso (a API não existe). O
+// botão manual continua prevalecendo até a próxima carga/mudança de
+// resolução do vídeo.
+function autoOrientFromVideo() {
+  if (!video.videoWidth || !video.videoHeight) return
+  const want = video.videoWidth > video.videoHeight ? 'landscape' : 'portrait'
+  state.orientation = want
+  lockOrientation(want)
+  sync()
+}
+
 // ---------- native fullscreen ----------
 
 function isFullscreen() {
@@ -577,8 +590,12 @@ video.addEventListener('timeupdate', () => {
 video.addEventListener('loadedmetadata', () => {
   state.duration = video.duration
   state.progress = 0
+  autoOrientFromVideo()
   sync()
 })
+// Alguns streams (adaptativos/HLS) mudam de resolução durante a reprodução:
+// re-aplica a auto-orientação quando as dimensões intrínsecas mudam.
+video.addEventListener('resize', autoOrientFromVideo)
 video.addEventListener('play', () => {
   state.playing = true
   sync()
