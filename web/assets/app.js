@@ -98,6 +98,10 @@ const icons = {
   volumeX: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" x2="16" y1="9" y2="15"/><line x1="16" x2="22" y1="9" y2="15"/></svg>',
   max: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
   chevronDown: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+  // Ícone = a AÇÃO: smartphone deitado (rotateLandscape) indica "ir para
+  // paisagem"; smartphone em pé (rotatePortrait) indica "ir para vertical".
+  rotateLandscape: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 12h.01"/></svg>',
+  rotatePortrait: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M12 18h.01"/></svg>',
   arrowLeft: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>',
   trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
   plus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>',
@@ -1433,6 +1437,26 @@ async function toggleLikeCurrent() {
 
 // ---------- Fullscreen player ----------
 
+// Modo de exibição atual do fullscreen player: 'landscape' ou 'portrait'.
+// O botão de alternância troca o estado visual sempre e tenta travar a
+// orientação real quando a API existe (Android Chrome); iOS/desktop fazem
+// no-op silencioso (mesma filosofia do karaokê).
+let playerOrientation = 'landscape'
+
+function togglePlayerOrientation() {
+  playerOrientation = playerOrientation === 'landscape' ? 'portrait' : 'landscape'
+  const so = screen.orientation
+  if (so && typeof so.lock === 'function') {
+    const p = so.lock(playerOrientation)
+    if (p && typeof p.catch === 'function') {
+      p.catch(() => {
+        if (so.unlock) so.unlock()
+      })
+    }
+  }
+  refreshPlayerBar()
+}
+
 function fullscreenPlayer(refs) {
   const { current, playing, progress, duration, shuffle, repeat } = player.getPlayerState()
   if (!current) return null
@@ -1458,6 +1482,7 @@ function fullscreenPlayer(refs) {
         el(
           'div',
           { style: 'display:flex;gap:8px' },
+          el('button', { class: 'icon-btn', 'aria-label': playerOrientation === 'landscape' ? 'Alternar para modo vertical' : 'Alternar para modo paisagem', onclick: togglePlayerOrientation }, icon(playerOrientation === 'landscape' ? 'rotatePortrait' : 'rotateLandscape')),
           el('button', { class: 'icon-btn', 'aria-label': 'Fila', onclick: () => navigate('/queue') }, icon('list')),
         ),
     ),
@@ -1467,34 +1492,38 @@ function fullscreenPlayer(refs) {
       el('img', { class: 'fullscreen-art', src: artworkUrl(current.id, 640), alt: 'Capa da música' }),
       el(
         'div',
-        { class: 'fullscreen-track-info' },
-        el('div', { style: 'min-width:0' },
-          el('h2', { class: 'fullscreen-title' }, current.title),
-          el('p', { class: 'fullscreen-artist' }, current.artist || 'Desconhecido'),
+        { class: 'fullscreen-info-col' },
+        el(
+          'div',
+          { class: 'fullscreen-track-info' },
+          el('div', { style: 'min-width:0' },
+            el('h2', { class: 'fullscreen-title' }, current.title),
+            el('p', { class: 'fullscreen-artist' }, current.artist || 'Desconhecido'),
+          ),
+          el(
+            'button',
+            { class: `btn-icon-lg ${current.liked ? 'liked' : ''}`, 'aria-label': current.liked ? 'Descurtir' : 'Curtir', 'aria-pressed': current.liked ? 'true' : 'false', onclick: toggleLikeCurrent },
+            icon('heart'),
+          ),
         ),
         el(
-          'button',
-          { class: `btn-icon-lg ${current.liked ? 'liked' : ''}`, 'aria-label': current.liked ? 'Descurtir' : 'Curtir', 'aria-pressed': current.liked ? 'true' : 'false', onclick: toggleLikeCurrent },
-          icon('heart'),
+          'div',
+          { class: 'player-progress', style: 'max-width:384px' },
+          curTime,
+          el('div', { class: 'progress-track', role: 'slider', 'aria-valuemin': 0, 'aria-valuemax': totalDuration, 'aria-valuenow': safeProgress }, progressFill),
+          durTime,
         ),
-      ),
-      el(
-        'div',
-        { class: 'player-progress', style: 'max-width:384px' },
-        curTime,
-        el('div', { class: 'progress-track', role: 'slider', 'aria-valuemin': 0, 'aria-valuemax': totalDuration, 'aria-valuenow': safeProgress }, progressFill),
-        durTime,
-      ),
-      el(
-        'div',
-        { class: 'fullscreen-buttons' },
-        el('button', { class: `player-btn ${shuffle ? 'active' : ''}`, 'aria-label': 'Aleatório', 'aria-pressed': shuffle ? 'true' : 'false', onclick: player.toggleShuffle }, icon('shuffle')),
-        el('button', { class: 'player-btn', 'aria-label': 'Anterior', onclick: player.prev }, icon('prev')),
-        el('button', { class: 'player-btn', 'aria-label': 'Retroceder 5 segundos', onclick: () => player.seekBy(-5) }, icon('rewind5')),
-        el('button', { class: 'fullscreen-btn-main', 'aria-label': playing ? 'Pausar' : 'Tocar', 'aria-pressed': playing ? 'true' : 'false', onclick: player.togglePlay }, playing ? icon('pause') : icon('play')),
-        el('button', { class: 'player-btn', 'aria-label': 'Avançar 5 segundos', onclick: () => player.seekBy(5) }, icon('forward5')),
-        el('button', { class: 'player-btn', 'aria-label': 'Próxima', onclick: player.next }, icon('next')),
-        el('button', { class: `player-btn ${repeat ? 'active' : ''}`, 'aria-label': 'Repetir', 'aria-pressed': repeat ? 'true' : 'false', onclick: player.toggleRepeat }, icon('repeat')),
+        el(
+          'div',
+          { class: 'fullscreen-buttons' },
+          el('button', { class: `player-btn ${shuffle ? 'active' : ''}`, 'aria-label': 'Aleatório', 'aria-pressed': shuffle ? 'true' : 'false', onclick: player.toggleShuffle }, icon('shuffle')),
+          el('button', { class: 'player-btn', 'aria-label': 'Anterior', onclick: player.prev }, icon('prev')),
+          el('button', { class: 'player-btn', 'aria-label': 'Retroceder 5 segundos', onclick: () => player.seekBy(-5) }, icon('rewind5')),
+          el('button', { class: 'fullscreen-btn-main', 'aria-label': playing ? 'Pausar' : 'Tocar', 'aria-pressed': playing ? 'true' : 'false', onclick: player.togglePlay }, playing ? icon('pause') : icon('play')),
+          el('button', { class: 'player-btn', 'aria-label': 'Avançar 5 segundos', onclick: () => player.seekBy(5) }, icon('forward5')),
+          el('button', { class: 'player-btn', 'aria-label': 'Próxima', onclick: player.next }, icon('next')),
+          el('button', { class: `player-btn ${repeat ? 'active' : ''}`, 'aria-label': 'Repetir', 'aria-pressed': repeat ? 'true' : 'false', onclick: player.toggleRepeat }, icon('repeat')),
+        ),
       ),
     ),
   )
@@ -1575,7 +1604,7 @@ let barRefs = null
 
 function structuralKey() {
   const s = player.getPlayerState()
-  return [s.fullScreen, s.current?.id ?? '', s.playing, s.shuffle, s.repeat, s.current?.liked ?? false].join('|')
+  return [s.fullScreen, s.current?.id ?? '', s.playing, s.shuffle, s.repeat, s.current?.liked ?? false, playerOrientation].join('|')
 }
 
 function renderPlayerBar() {

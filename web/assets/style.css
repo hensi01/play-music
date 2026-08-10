@@ -1403,6 +1403,19 @@ img {
   min-height: 0;
 }
 
+/* Coluna com as informações e os controles do fullscreen player. Em modo
+   retrato (ou desktop) fica empilhada abaixo da capa; em paisagem mobile o
+   .fullscreen-content vira linha (capa à esquerda, controles à direita). */
+.fullscreen-info-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+  max-width: 384px;
+  min-width: 0;
+}
+
 .fullscreen-art {
   width: min(72vw, 384px, 40vh);
   height: auto;
@@ -1464,6 +1477,26 @@ img {
 
 .fullscreen-btn-main:hover {
   transform: scale(1.05);
+}
+
+/* Fullscreen player em paisagem no celular (tela deitada): capa à esquerda
+   e controles à direita — aproveita a largura sem espremer a coluna. No
+   desktop (wide) o layout em coluna é mantido. */
+@media (orientation: landscape) and (max-width: 900px) {
+  .fullscreen-content {
+    flex-direction: row;
+    gap: 28px;
+  }
+  .fullscreen-art {
+    width: min(34vh, 240px);
+  }
+  .fullscreen-info-col {
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .fullscreen-buttons {
+    gap: 10px;
+  }
 }
 
 /* ---------- Settings ---------- */
@@ -2697,10 +2730,10 @@ body.loja .empty {
   bottom: 0;
   left: 0;
   right: 0;
-  /* Bottom spacing so the controls never touch the screen edge: 20px +
+  /* Bottom spacing so the controls never touch the screen edge: 50px +
      safe-area (notch/home indicator). On phones without a safe area this
      still leaves a clear gap from the bottom of the screen. */
-  padding: 28px 14px calc(20px + env(safe-area-inset-bottom));
+  padding: 28px 14px calc(50px + env(safe-area-inset-bottom));
   background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
   pointer-events: auto;
 }
@@ -2748,16 +2781,20 @@ body.loja .empty {
   pointer-events: auto;
 }
 
+.karaoke-rotate {
+  pointer-events: auto;
+}
+
 /* ---------- Mobile: controls must never overflow the screen ---------- */
 
 @media (max-width: 768px) {
   /* The video covers the full stage (object-fit: cover) — no height limit,
      it fills the screen like the YouTube player. */
-  /* Mobile: zero bottom spacing — the control bar sits flush with the
-     screen edge. Only the device safe-area (notch/home indicator) is kept,
-     so controls are never hidden behind the system bar on iPhones. */
+  /* Mobile: 50px of bottom spacing above the screen edge, plus the device
+     safe-area (notch/home indicator) so controls are never hidden behind
+     the system bar on iPhones. */
   .karaoke-controls {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: calc(50px + env(safe-area-inset-bottom));
   }
   /* Let the button rows wrap onto a second line instead of overflowing
      horizontally (the fullscreen button used to fall off-screen). */
