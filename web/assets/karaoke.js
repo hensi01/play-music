@@ -18,6 +18,8 @@ const state = {
   duration: 0,
   volume: 0.8,
   rate: 1,
+  // Modo de exibição atual: 'landscape' (paisagem) ou 'portrait' (vertical).
+  orientation: 'landscape',
 }
 
 // ---------- mini helpers (self-contained: no import cycle with app.js) ----------
@@ -50,6 +52,10 @@ const icons = {
   chevronDown: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
   max: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
   minimize: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>',
+  // Ícone = a AÇÃO: smartphone deitado (rotateLandscape) indica "ir para
+  // paisagem"; smartphone em pé (rotatePortrait) indica "ir para vertical".
+  rotateLandscape: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 12h.01"/></svg>',
+  rotatePortrait: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M12 18h.01"/></svg>',
 }
 
 function icon(name) {
@@ -190,6 +196,32 @@ export function setRate(rate) {
   video.playbackRate = rate
   state.rate = rate
   sync()
+}
+
+// ---------- orientation (modo paisagem / vertical) ----------
+
+// Trava a orientação da tela quando a API existe (Android Chrome). iOS e
+// desktop não têm screen.orientation.lock: o botão alterna o estado visual
+// normalmente, mas a rotação real fica a cargo do usuário/navegador — o
+// mesmo comportamento silencioso do fullscreen nessas plataformas.
+function lockOrientation(orientation) {
+  const so = screen.orientation
+  if (!so || typeof so.lock !== 'function') return
+  const p = so.lock(orientation)
+  if (p && typeof p.catch === 'function') {
+    p.catch(() => {
+      // Alguns navegadores recusam o lock (ex.: 'portrait' em tablets):
+      // libera a trava para a UI nunca ficar presa num estado impossível.
+      if (so.unlock) so.unlock()
+    })
+  }
+}
+
+export function toggleOrientation() {
+  state.orientation = state.orientation === 'landscape' ? 'portrait' : 'landscape'
+  lockOrientation(state.orientation)
+  sync()
+  showControls()
 }
 
 // ---------- native fullscreen ----------
@@ -360,7 +392,7 @@ function buildControls() {
   const fill = el('div', { class: 'progress-fill' })
   const cur = el('span', { class: 'progress-time' }, '0:00')
   const dur = el('span', { class: 'progress-time' }, '0:00')
-  barRefs = { fill, cur, dur, track: null, rateBtn: null, fsBtn: null, volIcon: null, volInput: null }
+  barRefs = { fill, cur, dur, track: null, rateBtn: null, fsBtn: null, rotateBtn: null, volIcon: null, volInput: null }
 
   const progressTrack = el(
     'div',
@@ -398,6 +430,13 @@ function buildControls() {
   )
   barRefs.fsBtn = fsBtn
 
+  const rotateBtn = el(
+    'button',
+    { class: 'icon-btn karaoke-rotate', 'aria-label': state.orientation === 'landscape' ? 'Alternar para modo vertical' : 'Alternar para modo paisagem', onclick: toggleOrientation },
+    icon(state.orientation === 'landscape' ? 'rotatePortrait' : 'rotateLandscape'),
+  )
+  barRefs.rotateBtn = rotateBtn
+
   return el(
     'div',
     { class: 'karaoke-controls-inner' },
@@ -426,6 +465,7 @@ function buildControls() {
         rateBtn,
         el('button', { class: 'icon-btn', 'aria-label': 'Mudo', onclick: toggleMute }, volIcon),
         volInput,
+        rotateBtn,
         fsBtn,
       ),
     ),
@@ -503,6 +543,18 @@ function sync() {
     const svg = barRefs.fsBtn.firstElementChild
     if (svg) svg.dataset.icon = inFs ? 'minimize' : 'max'
     barRefs.fsBtn.setAttribute('aria-label', inFs ? 'Sair da tela cheia' : 'Tela cheia')
+  }
+  // Orientation button icon follows the current orientation (icon = action).
+  if (barRefs.rotateBtn) {
+    const inLandscape = state.orientation === 'landscape'
+    const want = inLandscape ? 'rotatePortrait' : 'rotateLandscape'
+    const cur = barRefs.rotateBtn.firstElementChild?.dataset?.icon ?? ''
+    if (cur !== want) {
+      barRefs.rotateBtn.innerHTML = icons[want]
+      const svg = barRefs.rotateBtn.firstElementChild
+      if (svg) svg.dataset.icon = want
+    }
+    barRefs.rotateBtn.setAttribute('aria-label', inLandscape ? 'Alternar para modo vertical' : 'Alternar para modo paisagem')
   }
   // Play/pause button icon.
   const mainBtn = overlayEl.querySelector('.player-btn-main')
@@ -588,4 +640,4 @@ document.addEventListener('keydown', (e) => {
 })
 
 // Debug/test hook.
-window.__karaoke = { getState: () => state, isOpen, close, toggleFullscreen }
+window.__karaoke = { getState: () => state, isOpen, close, toggleFullscreen, toggleOrientation }
