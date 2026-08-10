@@ -3,6 +3,8 @@ package metadata
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -110,6 +112,40 @@ func clean(s string) string {
 	return strings.ReplaceAll(s, "\x00", "")
 }
 
+// ffmpegPath resolves the ffmpeg binary: the configured ND_FFMPEGPATH or PATH.
+func ffmpegPath() string {
+	if ffmpegConfigured != "" {
+		if fi, err := os.Stat(ffmpegConfigured); err == nil && !fi.IsDir() {
+			return ffmpegConfigured
+		}
+	}
+	if p, err := exec.LookPath("ffmpeg"); err == nil {
+		return p
+	}
+	return ""
+}
+
+// ExtractThumb grabs a representative frame of a video file and writes it as
+// a JPEG thumbnail (max 640px wide). Returns an error when ffmpeg is missing
+// or the frame cannot be extracted — callers should treat it as best-effort
+// (a missing thumbnail falls back to the placeholder artwork).
+func ExtractThumb(path, outPath string) error {
+	ff := ffmpegPath()
+	if ff == "" {
+		return errors.New("ffmpeg não encontrado")
+	}
+	cmd := exec.Command(ff,
+		"-nostdin", "-hide_banner", "-loglevel", "error",
+		"-i", path,
+		"-vf", "thumbnail=100,scale=640:-1",
+		"-frames:v", "1", "-q:v", "4",
+		"-y", outPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("ffmpeg thumbnail falhou: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 // ---------- WAV header probing ----------
 
 // probeWAV reads the RIFF/WAVE header and returns (duration seconds, sample
@@ -154,6 +190,10 @@ var ffmpegConfigured string
 
 // SetFFmpegPath registers the configured ND_FFMPEGPATH (if any).
 func SetFFmpegPath(path string) { ffmpegConfigured = path }
+
+// ConfiguredFFmpegPath returns the configured ffmpeg path (empty if unset),
+// so callers can locate ffprobe/ffmpeg next to it.
+func ConfiguredFFmpegPath() string { return ffmpegConfigured }
 
 // ProbePath resolves the ffprobe binary: next to the configured ffmpeg path,
 // else on PATH.

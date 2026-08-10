@@ -28,6 +28,21 @@ type Song struct {
 	UpdatedAt   time.Time `json:"updatedAt,omitempty"`
 }
 
+// Karaoke is the JSON shape for a karaoke video (MP4), served and played
+// separately from audio songs.
+type Karaoke struct {
+	ID        string    `json:"id"`
+	Path      string    `json:"path,omitempty"`
+	Title     string    `json:"title"`
+	Artist    string    `json:"artist,omitempty"`
+	Duration  float64   `json:"duration"`
+	Format    string    `json:"format"`
+	Size      int64     `json:"size,omitempty"`
+	PlayCount int64     `json:"playCount"`
+	CreatedAt time.Time `json:"createdAt,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt,omitempty"`
+}
+
 type Album struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
@@ -77,6 +92,8 @@ type HomeSection struct {
 	Title string `json:"title"`
 	// Songs is the category/collection content (category -> songs model).
 	Songs []Song `json:"songs,omitempty"`
+	// Karaokes is the karaoke content of the section (home "Karaokês").
+	Karaokes []Karaoke `json:"karaokes,omitempty"`
 	// Albums kept for API compatibility with legacy album-based sections.
 	Albums []Album `json:"albums,omitempty"`
 }
@@ -108,6 +125,10 @@ type Category struct {
 	SongCount   int    `json:"songCount,omitempty"`
 	CheckoutURL string `json:"checkoutUrl,omitempty"`
 	Songs       []Song `json:"songs,omitempty"`
+	// Karaokes assigned to the category (detail view).
+	Karaokes []Karaoke `json:"karaokes,omitempty"`
+	// KaraokeCount is the number of karaokes in the category (listing).
+	KaraokeCount int `json:"karaokeCount,omitempty"`
 }
 
 type Settings struct {

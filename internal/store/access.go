@@ -16,6 +16,26 @@ func visibleSongSet(p string) string {
 		JOIN user_categories uc ON uc.category_id = cs.category_id AND uc.user_id = ` + p + `)`
 }
 
+// visibleKaraokeSet returns a SQL subquery of karaoke ids a user can access:
+// karaokes assigned directly to their granted categories. p is the pgx
+// placeholder for the user id. Callers omit the predicate for admins.
+func visibleKaraokeSet(p string) string {
+	return `(SELECT ck.karaoke_id FROM category_karaokes ck
+		JOIN user_categories uc ON uc.category_id = ck.category_id AND uc.user_id = ` + p + `)`
+}
+
+// CanAccessKaraoke checks whether the user may see/stream a karaoke video.
+func (s *Store) CanAccessKaraoke(ctx context.Context, userID, karaokeID string) (bool, error) {
+	if userID == "" {
+		return true, nil
+	}
+	var ok bool
+	err := s.pool.QueryRow(ctx,
+		"SELECT EXISTS(SELECT 1 FROM karaokes k WHERE k.id=$2 AND k.id IN "+visibleKaraokeSet("$1")+")",
+		userID, karaokeID).Scan(&ok)
+	return ok, err
+}
+
 // visibleAlbumSet returns a SQL subquery of album ids that contain at least
 // one accessible song (legacy album/artist endpoints). p is the pgx
 // placeholder for the user id.
@@ -94,6 +114,11 @@ func (s *Store) CanAccessEntity(ctx context.Context, userID, entityID string) (b
 	}
 	if artistOK {
 		return true, nil
+	}
+	// Karaoke? (video entity)
+	ok, err = s.CanAccessKaraoke(ctx, userID, entityID)
+	if err != nil || ok {
+		return ok, err
 	}
 	// Playlist? (first song accessible) — access to its songs is enforced
 	// elsewhere; artwork here uses the song photo/album.

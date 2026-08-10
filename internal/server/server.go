@@ -78,6 +78,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/categories", s.requireAuth(http.HandlerFunc(s.handleCategories)))
 	mux.Handle("GET /api/categories/{id}", s.requireAuth(http.HandlerFunc(s.handleCategory)))
 
+	// Karaoke videos (separate from songs; access by granted category).
+	mux.Handle("GET /api/karaokes", s.requireAuth(http.HandlerFunc(s.handleKaraokes)))
+	mux.Handle("GET /api/karaokes/{id}", s.requireAuth(http.HandlerFunc(s.handleKaraoke)))
+	mux.Handle("POST /api/me/karaoke/{id}", s.requireAuth(http.HandlerFunc(s.handleKaraokeRegisterPlay)))
+
 	mux.Handle("GET /api/albums", s.requireAuth(http.HandlerFunc(s.handleAlbums)))
 	mux.Handle("GET /api/albums/{id}", s.requireAuth(http.HandlerFunc(s.handleAlbum)))
 	mux.Handle("GET /api/artists", s.requireAuth(http.HandlerFunc(s.handleArtists)))
@@ -106,6 +111,7 @@ func (s *Server) Handler() http.Handler {
 	// Media (JWT via header or ?jwt= query) — access-guarded.
 	mux.Handle("GET /api/artwork/{id}", s.requireAuth(http.HandlerFunc(s.handleArtwork)))
 	mux.Handle("GET /api/stream/{id}", s.requireAuth(http.HandlerFunc(s.handleStream)))
+	mux.Handle("GET /api/karaoke/stream/{id}", s.requireAuth(http.HandlerFunc(s.handleKaraokeStream)))
 
 	// Admin (JWT + is_admin).
 	mux.Handle("GET /api/admin/users", s.requireAdmin(http.HandlerFunc(s.handleAdminListUsers)))
@@ -127,6 +133,13 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("DELETE /api/admin/songs/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminDeleteSongPhoto)))
 	mux.Handle("POST /api/admin/categories/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminUploadCategoryPhoto)))
 	mux.Handle("DELETE /api/admin/categories/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminDeleteCategoryPhoto)))
+
+	// Admin karaoke management.
+	mux.Handle("GET /api/admin/karaokes", s.requireAdmin(http.HandlerFunc(s.handleAdminKaraokes)))
+	mux.Handle("POST /api/admin/karaokes", s.requireAdmin(http.HandlerFunc(s.handleAdminUploadKaraoke)))
+	mux.Handle("POST /api/admin/karaokes/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminUploadKaraokePhoto)))
+	mux.Handle("DELETE /api/admin/karaokes/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminDeleteKaraokePhoto)))
+
 	mux.Handle("POST /api/scan", s.requireAdmin(http.HandlerFunc(s.handleScan)))
 
 	// Static UI.

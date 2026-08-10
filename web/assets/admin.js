@@ -3,7 +3,7 @@
 import { endpoints, artworkUrl, applyPhoneMask } from './api.js'
 
 let adminTab = 'users'
-let adminState = { users: [], categories: [], songs: [], songCategoryIds: {}, categoryNames: {} }
+let adminState = { users: [], categories: [], songs: [], karaokes: [], songCategoryIds: {}, categoryNames: {} }
 // Race guard do refresh: cada chamada incrementa o seq; respostas de
 // requisições antigas (troca rápida de abas) são descartadas.
 let adminRefreshSeq = 0
@@ -22,6 +22,7 @@ export function renderAdmin() {
     el('button', { class: `tab-btn ${adminTab === 'users' ? 'active' : ''}`, onclick: () => { adminTab = 'users'; refresh() } }, 'Usuários'),
     el('button', { class: `tab-btn ${adminTab === 'categories' ? 'active' : ''}`, onclick: () => { adminTab = 'categories'; refresh() } }, 'Categorias'),
     el('button', { class: `tab-btn ${adminTab === 'songs' ? 'active' : ''}`, onclick: () => { adminTab = 'songs'; refresh() } }, 'Músicas'),
+    el('button', { class: `tab-btn ${adminTab === 'karaokes' ? 'active' : ''}`, onclick: () => { adminTab = 'karaokes'; refresh() } }, 'Karaokês'),
   )
   page.append(el('h1', { class: 'page-title' }, 'Administração'), tabs)
 
@@ -33,7 +34,8 @@ export function renderAdmin() {
     wrap.innerHTML = ''
     if (adminTab === 'users') await renderUsers(wrap, seq)
     else if (adminTab === 'categories') await renderCategories(wrap, seq)
-    else await renderSongs(wrap, seq)
+    else if (adminTab === 'songs') await renderSongs(wrap, seq)
+    else await renderKaraokes(wrap, seq)
   }
 
   refresh()
@@ -286,7 +288,10 @@ async function renderCategories(wrap, seq) {
       el('div', { class: 'admin-row' },
         el('div', { class: 'admin-row-main', style: 'cursor:pointer' },
           el('p', { class: 'admin-row-title', onclick: () => categoryForm(c) }, c.name),
-          el('p', { class: 'admin-row-sub' }, plural(c.songCount ?? 0, 'música', 'músicas')),
+          el('p', { class: 'admin-row-sub' }, [
+            plural(c.songCount ?? 0, 'música', 'músicas'),
+            (c.karaokeCount ?? 0) > 0 ? plural(c.karaokeCount, 'karaokê', 'karaokês') : null,
+          ].filter(Boolean).join(' • ')),
         ),
         el('div', { class: 'admin-row-actions' },
           el('button', { class: 'btn-secondary', onclick: () => categoryForm(c) }, 'Gerenciar'),
@@ -315,6 +320,9 @@ function categoryForm(cat) {
       el('div', { class: 'modal-section-label' }, 'Músicas'),
       el('input', { class: 'form-input', id: 'cat-song-filter', type: 'text', placeholder: 'Filtrar músicas…' }),
       el('div', { class: 'modal-scroll', id: 'cat-songs' }),
+      el('div', { class: 'modal-section-label' }, 'Karaokês'),
+      el('input', { class: 'form-input', id: 'cat-karaoke-filter', type: 'text', placeholder: 'Filtrar karaokês…' }),
+      el('div', { class: 'modal-scroll', id: 'cat-karaokes' }),
       el('p', { class: 'login-error', id: 'cat-error' }),
       el('div', { class: 'modal-actions' },
         el('button', { class: 'btn-accent', onclick: save }, 'Salvar'),
@@ -326,12 +334,14 @@ function categoryForm(cat) {
   document.body.append(overlay)
 
   const songsBox = overlay.querySelector('#cat-songs')
-  let assigned = { songIds: [] }
+  const karaokesBox = overlay.querySelector('#cat-karaokes')
+  let assigned = { songIds: [], karaokeIds: [] }
 
   endpoints.admin.category(cat.id).then((d) => {
-    assigned = { songIds: d.songIds ?? [] }
+    assigned = { songIds: d.songIds ?? [], karaokeIds: d.karaokeIds ?? [] }
     buildList('')
-  }).catch(() => buildList(''))
+    buildKaraokeList('')
+  }).catch(() => { buildList(''); buildKaraokeList('') })
 
   function buildList(filter) {
     songsBox.innerHTML = ''
@@ -368,7 +378,50 @@ function categoryForm(cat) {
       })
   }
 
+  function buildKaraokeList(filter) {
+    karaokesBox.innerHTML = ''
+    // Filtra em memória quando a lista já foi carregada; busca no servidor
+    // apenas na primeira vez (evita N requisições por tecla digitada).
+    if (adminState.karaokes.length === 0) {
+      endpoints.admin.karaokes()
+        .then((data) => {
+          adminState.karaokes = data.karaokes ?? []
+          renderKaraokeRows(filter)
+        })
+        .catch(() => {
+          karaokesBox.append(el('p', { class: 'modal-empty' }, 'Nenhum karaokê disponível.'))
+        })
+      return
+    }
+    renderKaraokeRows(filter)
+  }
+
+  function renderKaraokeRows(filter) {
+    const list = adminState.karaokes
+    const f = filter.toLowerCase()
+    for (const k of list) {
+      if (f && !k.title.toLowerCase().includes(f) && !(k.artist || '').toLowerCase().includes(f)) continue
+      const box = el('input', { type: 'checkbox', id: `karaoke-${k.id}` })
+      box.checked = assigned.karaokeIds.includes(k.id)
+      box.addEventListener('change', () => {
+        if (box.checked) assigned.karaokeIds.push(k.id)
+        else assigned.karaokeIds = assigned.karaokeIds.filter((x) => x !== k.id)
+      })
+      karaokesBox.append(
+        el('div', { class: 'admin-row' },
+          el('div', { class: 'admin-row-main', style: 'display:flex;align-items:center;gap:8px' },
+            el('img', { class: 'track-art', src: artworkUrl(k.id, 48), alt: '' }),
+            box,
+            el('span', {}, `${k.title}${k.artist ? ` — ${k.artist}` : ''}`),
+          ),
+        ),
+      )
+    }
+    if (karaokesBox.children.length === 0) karaokesBox.append(el('p', { class: 'modal-empty' }, 'Nenhum karaokê. Envie vídeos na aba "Karaokês".'))
+  }
+
   overlay.querySelector('#cat-song-filter').addEventListener('input', (e) => buildList(e.target.value))
+  overlay.querySelector('#cat-karaoke-filter').addEventListener('input', (e) => buildKaraokeList(e.target.value))
 
   function uploadSongPhoto(s) {
     const input = el('input', { type: 'file', accept: 'image/*', style: 'display:none' })
@@ -435,7 +488,7 @@ function categoryForm(cat) {
     // Desabilita durante o save: evita duplo submit (cliques repetidos).
     saveBtn.disabled = true
     try {
-      await endpoints.admin.updateCategory(cat.id, { name, checkoutUrl, songIds: assigned.songIds })
+      await endpoints.admin.updateCategory(cat.id, { name, checkoutUrl, songIds: assigned.songIds, karaokeIds: assigned.karaokeIds })
       overlay.remove()
       refreshApp()
     } catch (err) {
@@ -779,6 +832,185 @@ async function removeSongPhoto(s) {
   try {
     await endpoints.admin.deleteSongPhoto(s.id)
     alert('Foto removida.')
+  } catch (err) {
+    alert(err.message)
+  }
+}
+
+// ---------- Karaokes (upload + list) ----------
+
+async function renderKaraokes(wrap, seq) {
+  const data = await endpoints.admin.karaokes().catch(() => ({ karaokes: [], categoryIds: {}, categoryList: [] }))
+  if (!isAdminRefreshCurrent(seq)) return
+  const list = data.karaokes ?? []
+  adminState.karaokes = list
+  adminState.karaokeCategoryIds = data.categoryIds ?? {}
+  adminState.categoryNames = Object.fromEntries((data.categoryList ?? []).map((c) => [c.id, c.name]))
+  adminState.categories = data.categoryList ?? []
+
+  wrap.append(
+    el('div', { class: 'admin-toolbar' },
+      el('button', { class: 'btn-accent', onclick: uploadKaraokeForm }, 'Enviar vídeo'),
+    ),
+  )
+
+  const table = el('div', { class: 'admin-table' })
+  if (list.length === 0) {
+    table.append(el('p', { class: 'empty-state' }, 'Nenhum karaokê no sistema ainda. Use "Enviar vídeo".'))
+  }
+  for (const k of list) {
+    const cats = (adminState.karaokeCategoryIds[k.id] ?? []).map((cid) => adminState.categoryNames[cid]).filter(Boolean)
+    const chips = cats.map((n) => el('span', { class: 'chip' }, n))
+    table.append(
+      el('div', { class: 'admin-row' },
+        el('div', { class: 'admin-row-main', style: 'display:flex;align-items:center;gap:8px' },
+          el('img', { class: 'track-art', src: artworkUrl(k.id, 48), alt: '', style: 'border-radius:6px;object-fit:cover' }),
+          el('div', { style: 'min-width:0' },
+            el('p', { class: 'admin-row-title' }, k.title),
+            el('p', { class: 'admin-row-sub' }, [k.artist || 'Desconhecido', k.format, fmtDur(k.duration)].filter(Boolean).join(' • ')),
+            el('div', { class: 'admin-chips' }, ...chips),
+          ),
+        ),
+        el('div', { class: 'admin-row-actions' },
+          el('button', { class: 'btn-secondary', onclick: () => uploadKaraokePhoto(k) }, 'Enviar foto'),
+          el('button', { class: 'btn-secondary', onclick: () => removeKaraokePhoto(k) }, 'Remover foto'),
+        ),
+      ),
+    )
+  }
+  wrap.append(table)
+}
+
+function uploadKaraokeForm() {
+  const fileInput = el('input', { class: 'upload-file-input', type: 'file', accept: 'video/mp4,video/webm,video/x-matroska,.mp4,.webm,.mkv' })
+  const dropzone = el(
+    'div',
+    { class: 'upload-dropzone' },
+    el('span', { class: 'upload-dropzone-icon', html: '&#127909;' }),
+    el('p', { class: 'upload-dropzone-title' }, 'Arraste o vídeo ou clique para escolher'),
+    el('p', { class: 'upload-dropzone-hint' }, 'mp4, webm, mkv…'),
+  )
+  dropzone.addEventListener('click', () => fileInput.click())
+  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag') })
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'))
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault()
+    dropzone.classList.remove('drag')
+    if (e.dataTransfer.files.length) fileInput.files = e.dataTransfer.files
+    updateFile()
+  })
+  fileInput.addEventListener('change', updateFile)
+  function updateFile() {
+    const f = fileInput.files[0]
+    if (!f) return
+    dropzone.classList.add('has-file')
+    dropzone.querySelector('.upload-dropzone-title').textContent = f.name
+    dropzone.querySelector('.upload-dropzone-hint').textContent = `${(f.size / 1024 / 1024).toFixed(2)} MB`
+  }
+
+  const titleInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Título (opcional)', autocomplete: 'off' })
+  const artistInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Artista (opcional)', autocomplete: 'off' })
+  const catSelect = el('select', { class: 'form-input' },
+    el('option', { value: '' }, 'Sem categoria'),
+    ...adminState.categories.map((c) => el('option', { value: c.id }, c.name)),
+  )
+  const photoInput = el('input', { class: 'upload-file-input', type: 'file', accept: 'image/*' })
+  const photoDrop = el(
+    'div',
+    { class: 'upload-photo-drop' },
+    el('span', { html: '&#128247;' }),
+    el('span', {}, 'Adicionar foto do vídeo (opcional)'),
+  )
+  photoDrop.addEventListener('click', () => photoInput.click())
+  photoInput.addEventListener('change', () => {
+    const f = photoInput.files[0]
+    if (f) photoDrop.querySelector('span:last-child').textContent = f.name
+  })
+  const statusEl = el('p', { class: 'login-error' })
+
+  const field = (label, control) =>
+    el('label', { class: 'upload-field' }, el('span', { class: 'upload-label' }, label), control)
+
+  const overlay = el('div', { class: 'modal-overlay' },
+    el('div', { class: 'modal modal-upload' },
+      el('h3', {}, 'Enviar vídeo de karaokê'),
+      el('div', { class: 'modal-section-label' }, 'Arquivo de vídeo'),
+      dropzone,
+      fileInput,
+      el('div', { class: 'upload-grid' },
+        field('Título (opcional)', titleInput),
+        field('Artista (opcional)', artistInput),
+      ),
+      field('Categoria', catSelect),
+      el('div', { class: 'modal-section-label' }, 'Foto do vídeo (opcional)'),
+      photoDrop,
+      photoInput,
+      el('p', { class: 'upload-info' }, 'Uma miniatura é gerada automaticamente do vídeo. Uma foto enviada aqui substitui a miniatura.'),
+      statusEl,
+      el('div', { class: 'modal-actions' },
+        el('button', { class: 'btn-accent', onclick: submit }, 'Enviar'),
+        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
+      ),
+    ),
+  )
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+  document.body.append(overlay)
+
+  async function submit() {
+    const file = fileInput.files[0]
+    if (!file) {
+      statusEl.textContent = 'Selecione um arquivo de vídeo.'
+      dropzone.classList.add('error')
+      return
+    }
+    const fd = new FormData()
+    fd.append('video', file)
+    if (titleInput.value.trim()) fd.append('title', titleInput.value.trim())
+    if (artistInput.value.trim()) fd.append('artist', artistInput.value.trim())
+    if (catSelect.value) fd.append('categoryId', catSelect.value)
+    if (photoInput.files[0]) fd.append('photo', photoInput.files[0])
+
+    const btn = overlay.querySelector('.btn-accent')
+    btn.disabled = true
+    btn.textContent = 'Enviando…'
+    statusEl.textContent = 'Enviando e indexando…'
+    statusEl.classList.remove('login-error')
+    statusEl.classList.add('upload-info')
+    try {
+      await endpoints.admin.uploadKaraoke(fd)
+      overlay.remove()
+      alert('Vídeo enviado com sucesso.')
+      refreshApp()
+    } catch (err) {
+      statusEl.textContent = err.message
+      statusEl.classList.remove('upload-info')
+      statusEl.classList.add('login-error')
+      btn.disabled = false
+      btn.textContent = 'Enviar'
+    }
+  }
+}
+
+function uploadKaraokePhoto(k) {
+  const input = el('input', { type: 'file', accept: 'image/*', style: 'display:none' })
+  input.addEventListener('change', async () => {
+    const file = input.files[0]
+    if (!file) return
+    try {
+      await endpoints.admin.uploadKaraokePhoto(k.id, file)
+      alert('Foto atualizada.')
+    } catch (err) {
+      alert(err.message)
+    }
+  })
+  document.body.append(input)
+  input.click()
+}
+
+async function removeKaraokePhoto(k) {
+  try {
+    await endpoints.admin.deleteKaraokePhoto(k.id)
+    alert('Foto removida (volta à miniatura automática).')
   } catch (err) {
     alert(err.message)
   }
