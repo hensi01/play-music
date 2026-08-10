@@ -2754,10 +2754,11 @@ body.loja .empty {
     max-height: 55vh;
     max-height: 55dvh;
   }
-  /* Extra bottom spacing on phones: the bar must never touch the screen
-     edge, even without a safe-area inset. */
+  /* Mobile: zero bottom spacing — the control bar sits flush with the
+     screen edge. Only the device safe-area (notch/home indicator) is kept,
+     so controls are never hidden behind the system bar on iPhones. */
   .karaoke-controls {
-    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
   }
   /* Let the button rows wrap onto a second line instead of overflowing
      horizontally (the fullscreen button used to fall off-screen). */
