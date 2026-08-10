@@ -252,20 +252,21 @@ function enterFullscreen(el) {
   })
 }
 
-// ---------- landscape orientation ----------
+// ---------- orientation (auto-giro conforme o vídeo) ----------
 //
 // Android Chrome supports screen.orientation.lock() while the document is in
-// fullscreen (or an installed standalone PWA): locking "landscape" makes the
-// karaoke player rotate the screen to landscape automatically, like YouTube
-// does for videos. iOS Safari has no such API — its native video fullscreen
-// already rotates to landscape on its own, so everything here is a guarded
-// no-op there. Desktop browsers also reject the lock: the try/catch swallows
-// the failure and nothing breaks.
+// fullscreen (or an installed standalone PWA): when the karaoke video is
+// horizontal (w > h) the player rotates the screen to landscape
+// automatically, like YouTube does for videos; a vertical video rotates to
+// portrait. iOS Safari has no such API — its native video fullscreen already
+// rotates on its own, so everything here is a guarded no-op there. Desktop
+// browsers also reject the lock: the try/catch swallows the failure and
+// nothing breaks.
 
-function lockLandscape() {
+function lockOrientation(orientation) {
   try {
     if (screen.orientation && typeof screen.orientation.lock === 'function') {
-      const p = screen.orientation.lock('landscape')
+      const p = screen.orientation.lock(orientation)
       if (p && typeof p.catch === 'function') p.catch(() => undefined)
     }
   } catch {
@@ -279,6 +280,18 @@ function unlockOrientation() {
     if (screen.orientation && typeof screen.orientation.unlock === 'function') {
       screen.orientation.unlock()
     }
+  } catch {
+    // no-op
+  }
+}
+
+// Auto-orientação: aplica o lock conforme o aspect ratio do vídeo assim que
+// as dimensões ficam conhecidas (loadedmetadata) ou mudam (resize — streams
+// adaptativos). Sem dimensões ainda, não faz nada.
+function autoOrientFromVideo() {
+  try {
+    if (!video.videoWidth || !video.videoHeight) return
+    lockOrientation(video.videoWidth > video.videoHeight ? 'landscape' : 'portrait')
   } catch {
     // no-op
   }
@@ -370,14 +383,14 @@ function open() {
   attachStageEvents()
   showControls()
   enterFullscreen(overlayEl)
-  // Force landscape (Android Chrome): screen.orientation.lock requires the
+  // Auto-orientação (Android Chrome): screen.orientation.lock requires the
   // document to be in fullscreen, so if the fullscreen transition is still
-  // pending we wait for it to activate before locking.
+  // pending we wait for it to activate before applying the video's aspect.
   const lockWhenFullscreen = () => {
-    if (isFullscreen() && !isIOS()) lockLandscape()
+    if (isFullscreen() && !isIOS()) autoOrientFromVideo()
   }
   if (isFullscreen() && !isIOS()) {
-    lockLandscape()
+    autoOrientFromVideo()
   } else if (!isIOS()) {
     document.addEventListener('fullscreenchange', lockWhenFullscreen, { once: true })
   }
@@ -571,8 +584,12 @@ video.addEventListener('timeupdate', () => {
 video.addEventListener('loadedmetadata', () => {
   state.duration = video.duration
   state.progress = 0
+  autoOrientFromVideo()
   sync()
 })
+// Some streams (adaptive/HLS) change resolution during playback: re-apply
+// the auto-orientation when the intrinsic dimensions change.
+video.addEventListener('resize', autoOrientFromVideo)
 video.addEventListener('play', () => {
   state.playing = true
   sync()
@@ -591,8 +608,8 @@ video.addEventListener('ended', () => {
 // fires webkitfullscreenchange on the video element instead of the document.
 function onFullscreenChange() {
   sync()
-  // Leaving fullscreen while the player stays open: release the landscape
-  // lock so the orientation is not stuck while the user is out of fullscreen.
+  // Leaving fullscreen while the player stays open: release the orientation
+  // lock so it is not stuck while the user is out of fullscreen.
   if (!isFullscreen()) unlockOrientation()
 }
 document.addEventListener('fullscreenchange', onFullscreenChange)
