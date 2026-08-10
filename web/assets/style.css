@@ -2602,6 +2602,12 @@ body.loja .empty {
   z-index: 60;
   background: #000;
   color: #fff;
+  /* Dynamic viewport height: on mobile browsers 100vh includes the area
+     behind the URL bar, overflowing the visible screen. 100dvh (with a vh
+     fallback for older engines) makes the player exactly fill the visible
+     area, so controls are never pushed off-screen. */
+  height: 100vh;
+  height: 100dvh;
 }
 
 /* Native fullscreen (F11-like): the element becomes the viewport; guarantee
@@ -2610,12 +2616,14 @@ body.loja .empty {
   background: #000;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
 }
 
 .karaoke-player:-webkit-full-screen {
   background: #000;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
 }
 
 /* Auto-hide: with the mouse idle while playing, overlays and cursor vanish. */
@@ -2736,12 +2744,69 @@ body.loja .empty {
   pointer-events: auto;
 }
 
+/* ---------- Mobile: controls must never overflow the screen ---------- */
+
 @media (max-width: 768px) {
   .karaoke-stage video {
     max-height: 55vh;
+    max-height: 55dvh;
+  }
+  /* Let the button rows wrap onto a second line instead of overflowing
+     horizontally (the fullscreen button used to fall off-screen). */
+  .player-buttons-row {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+  }
+  .player-buttons {
+    gap: 4px;
+  }
+  .player-side {
+    gap: 6px;
   }
   .player-side .volume-slider {
     width: 60px;
   }
+  /* Smaller tap targets so the whole bar fits narrow phones. */
+  .karaoke-controls .player-btn {
+    width: 32px;
+    height: 32px;
+  }
+  .karaoke-controls .player-btn-main {
+    width: 38px;
+    height: 38px;
+  }
+  .karaoke-controls .player-btn svg,
+  .karaoke-controls .player-btn-main svg {
+    width: 16px;
+    height: 16px;
+  }
+  .karaoke-controls .player-btn .rewind-icon,
+  .karaoke-controls .player-btn .forward-icon {
+    width: 14px;
+    height: 14px;
+  }
+  .karaoke-controls .icon-btn svg {
+    width: 16px;
+    height: 16px;
+  }
 }
+
+/* Very narrow phones: drop the volume slider (mute button keeps volume
+   control) so the row always fits — the fullscreen button must stay
+   reachable. */
+@media (max-width: 420px) {
+  .player-side .volume-slider {
+    display: none;
+  }
+  .karaoke-rate {
+    min-width: 40px;
+  }
+  .karaoke-controls .player-btn svg,
+  .karaoke-controls .player-btn-main svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
 

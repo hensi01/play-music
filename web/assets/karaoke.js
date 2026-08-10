@@ -198,18 +198,35 @@ function isFullscreen() {
   return !!(document.fullscreenElement || document.webkitFullscreenElement)
 }
 
+// Detects iOS Safari / iPadOS (which report as MacIntel with touch support).
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+}
+
 // Enters the native browser fullscreen (F11-like) when available. Called
 // synchronously inside a user gesture (card click / button click), which the
-// browsers require. On platforms without container fullscreen (older iOS) it
-// falls back to the video's own fullscreen (native iOS player).
+// browsers require. iOS Safari has no container fullscreen API for <div>, so
+// the video's own fullscreen (native iOS player) is used there — this is the
+// only way to get true fullscreen on iPhones/iPads.
 function enterFullscreen(el) {
-  const req = el.requestFullscreen || el.webkitRequestFullscreen
-  if (req) {
-    const p = req.call(el)
-    if (p && typeof p.catch === 'function') p.catch(() => {})
+  if (isIOS()) {
+    if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
     return
   }
-  if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
+  const req = el.requestFullscreen || el.webkitRequestFullscreen
+  if (!req) {
+    if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
+    return
+  }
+  const p = req.call(el)
+  if (p && typeof p.catch === 'function') {
+    p.catch(() => {
+      // Rejected (policy/gesture edge cases, unsupported container): fall
+      // back to the video's own fullscreen when available.
+      if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
+    })
+  }
 }
 
 export function toggleFullscreen() {
