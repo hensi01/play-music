@@ -110,32 +110,23 @@ test.describe('Player', () => {
     expectClean(testInfo, clean)
   })
 
-  test('CDN fora do ar → fallback local (?nocdn=1) mantém playback', async ({ page }) => {
+  test('CDN fora do ar → playback para (sem retry/fallback, CDN-only)', async ({ page }) => {
     const testInfo = test.info()
-    // The aborted first attempt (dead CDN) logs a browser network error —
-    // expected noise, ignored; any other console error fails the test.
+    // The failed stream (dead CDN) logs a browser network error — expected
+    // noise, ignored; any other console error fails the test.
     const clean = trackConsole(page, { ignore: (text) => text.includes('ERR_FAILED') })
     await loginAdmin(page)
-    let nocdnRequests = 0
+    let streamRequests = 0
     await page.route('**/api/stream/**', (route) => {
-      const url = route.request().url()
-      if (url.includes('nocdn')) {
-        // Client-side fallback: server proxies the native bytes locally.
-        nocdnRequests += 1
-        return route.fulfill({
-          path: ensureSilenceWav(30),
-          contentType: 'audio/wav',
-          headers: { 'Accept-Ranges': 'bytes' },
-        })
-      }
-      // First attempt would 302 to the Bunny CDN; simulate a dead CDN by
-      // failing the request so the media element errors out.
+      streamRequests += 1
+      // CDN-only: a failing stream must NOT be retried through any fallback
+      // (?nocdn=1 / format=mp3). Every attempt fails; the player gives up.
       return route.abort('failed')
     })
     await playFirstCard(page)
-    // The ladder (CDN → local) must have retried and kept playing.
-    await expect(page.locator('.player-btn-main')).toHaveAttribute('aria-label', 'Pausar', { timeout: 10000 })
-    expect(nocdnRequests).toBeGreaterThanOrEqual(1)
+    // The player must stop (paused), not retry forever.
+    await expect(page.locator('.player-btn-main')).toHaveAttribute('aria-label', 'Tocar', { timeout: 10000 })
+    expect(streamRequests, 'exatamente 1 request de stream (sem ladder de retry)').toBe(1)
     expectClean(testInfo, clean)
   })
 })

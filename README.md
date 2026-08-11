@@ -14,9 +14,10 @@ Playlists são pessoais e só aceitam músicas liberadas.
 Este repositório contém:
 
 - **Backend em Go** (`main.go` + `internal/`) — API REST, varredura da biblioteca
-  (S3/MinIO), stream (CDN Bunny ou URLs presignadas do MinIO), transcodificação
-  com ffmpeg, artwork (inclui upload de foto por álbum), letras, autenticação
-  JWT, usuários e controle de acesso por categoria.
+  (S3/MinIO), stream **somente via CDN Bunny** (302 para URL assinada; sem
+  fallback local), transcodificação de formatos não-nativos com ffmpeg,
+  artwork (inclui upload de foto por álbum), letras, autenticação JWT,
+  usuários e controle de acesso por categoria.
 - **UI vanilla JS** (`web/assets/`) — embutida no binário via `go:embed` e
   servida na raiz do mesmo domínio. Inclui página de administração (`#/admin`).
 
@@ -37,7 +38,7 @@ documentadas no arquivo `.env`:
 | `ND_ADMINUSERNAME` / `ND_ADMINPASSWORD` | Credenciais do administrador (fonte única) |
 | `DATABASE_URL` | Conexão PostgreSQL (`postgres://...`) |
 | `ND_MUSICFOLDER` | URL da biblioteca: `s3://bucket?endpoint=...&accessKey=...&secretKey=...&secure=...` (fallback: `ND_S3_*` / `MINIO_*`) |
-| `ND_CDN_ENABLED`, `ND_CDN_BASEURL`, `ND_CDN_TOKENAUTHKEY`, `ND_CDN_TOKENTTL`, `ND_CDN_ADVANCEDAUTH`, `ND_CDN_PATH_PREFIX` | Pull Zone Bunny CDN (token Basic MD5 ou Advanced HS256). Áudio e karaokê usam o CDN quando a zona responde Range (probe); com o CDN fora do ar, o cliente cai automaticamente para o proxy local (`?nocdn=1`) e, em áudio, ainda há o fallback de transcode |
+| `ND_CDN_ENABLED`, `ND_CDN_BASEURL`, `ND_CDN_TOKENAUTHKEY`, `ND_CDN_TOKENTTL`, `ND_CDN_ADVANCEDAUTH`, `ND_CDN_PATH_PREFIX` | Pull Zone Bunny CDN (token Basic MD5 ou Advanced HS256). **Única via de entrega** de áudio e karaokê: o servidor 302 para a URL assinada. Sem CDN configurado → erro 500 nos streams (não há fallback local/presigned) |
 | `ND_REDIS_ENABLED`, `ND_REDIS_URL` | Cache opcional de artwork (fallback: disco) |
 | `ND_SCANNER_SCHEDULE` | Agendamento da varredura (ex.: `@every 1h`) |
 | `ND_FFMPEGPATH` | Caminho do ffmpeg (opcional se estiver no PATH) |
@@ -82,9 +83,10 @@ Rotas principais (todas exigem JWT, exceto `/auth/login`):
 - `GET /api/me/liked`, `PUT|DELETE /api/me/liked/{id}` (por usuário)
 - `GET /api/me/history`, `POST /api/me/history/{id}` (por usuário)
 - `GET|PUT /api/queue` (por usuário)
-- `GET /api/lyrics/{id}`, `GET /api/artwork/{id}?size=N`, `GET /api/stream/{id}?format=mp3&nocdn=1`
-  (`?nocdn=1` força o proxy local, sem redirect para o CDN — fallback usado
-  pelo player quando a URL do CDN falha), `GET /api/karaoke/stream/{id}?nocdn=1`
+- `GET /api/lyrics/{id}`, `GET /api/artwork/{id}?size=N`, `GET /api/stream/{id}?format=mp3`
+  (formatos nativos → 302 para a URL assinada do CDN Bunny; `format=mp3` ou
+  formato não-nativo → transcode via ffmpeg; sem CDN configurado → 500),
+  `GET /api/karaoke/stream/{id}` (sempre 302 para a URL assinada do CDN)
 
 Admin (JWT + `is_admin`):
 
@@ -108,7 +110,7 @@ internal/store/         (repositórios PostgreSQL + controle de acesso)
 internal/storage/       (cliente MinIO/S3)
 internal/scanner/       (varredura do bucket: áudio, capas, .m3u)
 internal/metadata/      (tags via dhowden/tag + ffprobe)
-internal/stream/        (URLs assinadas Bunny CDN / presigned MinIO + transcode)
+internal/stream/        (URLs assinadas Bunny CDN + transcode de formato)
 internal/artwork/       (capas: resize + cache disco/Redis + upload de foto)
 internal/lyrics/        (letras embutidas + .lrc sincronizadas)
 internal/phone/         (normalização/máscara de telefone BR)
