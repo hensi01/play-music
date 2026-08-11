@@ -6,7 +6,9 @@
 const fs = require('fs')
 const path = require('path')
 
-const BASE = 'http://localhost:4533'
+// API base for direct request-fixture calls (UI calls use the page origin).
+// PM_E2E_BASEURL overrides the target (validation servers on other ports).
+const BASE = process.env.PM_E2E_BASEURL || 'http://localhost:4533'
 
 // ---------- .env (runtime, never committed) ----------
 

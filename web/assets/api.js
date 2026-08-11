@@ -153,7 +153,7 @@ export function artworkUrl(id, size = 300) {
 }
 
 // Formats browsers can usually play natively; anything else is transcoded to mp3.
-const nativeFormats = new Set(['mp3', 'm4a', 'aac', 'ogg', 'opus', 'wav', 'flac'])
+export const nativeFormats = new Set(['mp3', 'm4a', 'aac', 'ogg', 'opus', 'wav', 'flac'])
 
 export function streamUrl(song, fallback = false) {
   // <audio> cannot send the Authorization header, so the JWT travels as a query
@@ -166,9 +166,22 @@ export function streamUrl(song, fallback = false) {
   return resolve(`/api/stream/${song.id}${qs ? `?${qs}` : ''}`)
 }
 
+// streamUrlLocal forces the server-side local proxy (?nocdn=1): skips the
+// Bunny CDN redirect and streams natively with HTTP Range from this server.
+// Used by the player as the fallback when a CDN URL fails to play.
+export function streamUrlLocal(song) {
+  const q = new URLSearchParams({ nocdn: '1' })
+  const token = getToken()
+  if (token) q.set('jwt', token)
+  return resolve(`/api/stream/${song.id}?${q.toString()}`)
+}
+
 // karaokeStreamUrl builds the <video> src for a karaoke (JWT as ?jwt=).
-export function karaokeStreamUrl(karaoke) {
+// With nocdn=true the URL carries ?nocdn=1, forcing the local proxy instead
+// of the CDN redirect (client-side fallback when the CDN fails to play).
+export function karaokeStreamUrl(karaoke, nocdn = false) {
   const q = new URLSearchParams()
+  if (nocdn) q.set('nocdn', '1')
   const token = getToken()
   if (token) q.set('jwt', token)
   const qs = q.toString()
