@@ -7,10 +7,14 @@ import (
 	"time"
 
 	"play-music/internal/config"
+	"play-music/internal/model"
 )
 
-// Fixed vectors validated against the live Bunny CDN pull zone
-// (music.centralcursoss.com.br returned HTTP 200 for these).
+// Signing vectors: the HS256/MD5 math is validated offline against fixed
+// vectors. NOTE: these vectors use a LEGACY token key — the live pull zone
+// now uses the key from .env (ND_CDN_TOKENAUTHKEY), so a live request with
+// these vectors returns 403. The signing algorithm itself is unchanged
+// (validated live on 2026-08-11 with the production key).
 const (
 	testKey      = "50df94e8-7424-4a4f-99e9-1c136831052d"
 	testPath     = "/Test Artist/Test Album/test.mp3"
@@ -66,5 +70,46 @@ func TestCDNURLPathPrefix(t *testing.T) {
 	u := s.CDNURL("album/song.mp3")
 	if !strings.Contains(u, "https://music.example.com/library/album/song.mp3?") {
 		t.Fatalf("prefix not applied: %q", u)
+	}
+}
+
+// CDN-only policy: with the CDN disabled or misconfigured, StreamURL and
+// SignedURL must error — there is no presigned/local fallback anymore.
+func TestStreamURLErrorsWithoutCDN(t *testing.T) {
+	cfg := &config.Config{}
+	s := &Service{cfg: cfg, log: slog.Default()}
+	song := &model.Song{Path: "uploads/a.mp3"}
+
+	if _, err := s.StreamURL(t.Context(), song); err == nil {
+		t.Fatal("StreamURL must error when CDN is disabled")
+	}
+	if _, err := s.SignedURL("uploads/a.mp3"); err == nil {
+		t.Fatal("SignedURL must error when CDN is disabled")
+	}
+}
+
+// With the CDN fully configured, StreamURL/SignedURL return a signed URL that
+// starts with the base URL (no fallback to presigned MinIO URLs).
+func TestStreamURLUsesCDNWhenConfigured(t *testing.T) {
+	s := testService(true)
+	s.cfg.CDNEnabled = true
+	s.cfg.CDNBaseURL = "https://music.example.com"
+	s.cfg.CDNTokenTTL = 24 * time.Hour
+	song := &model.Song{Path: "uploads/a.mp3"}
+
+	u, err := s.StreamURL(t.Context(), song)
+	if err != nil {
+		t.Fatalf("StreamURL: %v", err)
+	}
+	if !strings.HasPrefix(u, "https://music.example.com/uploads/a.mp3?") {
+		t.Fatalf("StreamURL not a CDN URL: %q", u)
+	}
+
+	ku, err := s.SignedURL("uploads/k.mp4")
+	if err != nil {
+		t.Fatalf("SignedURL: %v", err)
+	}
+	if !strings.HasPrefix(ku, "https://music.example.com/uploads/k.mp4?") {
+		t.Fatalf("SignedURL not a CDN URL: %q", ku)
 	}
 }

@@ -1,18 +1,14 @@
-// Player singleton: queue, playback, seek, shuffle/repeat, transcoding
-// fallback and the Media Session API integration.
+// Player singleton: queue, playback, seek, shuffle/repeat and the Media
+// Session API integration. Audio streams come exclusively from the Bunny CDN
+// (the server 302s /api/stream to a signed CDN URL) — no retry ladder, no
+// local/transcode fallback: a failed stream simply stops playback.
 
-import { endpoints, streamUrl, streamUrlLocal, artworkUrl, nativeFormats } from './api.js'
+import { endpoints, streamUrl, artworkUrl } from './api.js'
 
 const audio = new Audio()
 audio.preload = 'auto'
 audio.volume = 0.8
 
-// Playback attempt ladder when a track fails to load/play:
-//   attempt 0 = normal src (native format; server may 302 to the Bunny CDN)
-//   attempt 1 = ?nocdn=1 (local native proxy, same format, no transcode)
-//   attempt 2 = ?format=mp3 (transcode; the historical fallback)
-// attempt is reset on every track load (loadAndPlay).
-let attempt = 0
 // True while the audio element is being handed a new track (src swap). The
 // browser fires a `pause` event during the media load algorithm, so those
 // events must not overwrite the real play state.
@@ -103,30 +99,8 @@ audio.addEventListener('ended', () => {
 audio.addEventListener('error', () => {
   switching = false
   if (!state.current) return
-  const song = state.current
-  // Non-native formats transcode server-side on every attempt (same URL),
-  // so a retry would replay the exact failing request: stop immediately.
-  if (!nativeFormats.has(song.format.toLowerCase())) {
-    attempt = 0
-    set({ playing: false })
-    setMediaSessionPlaybackState(false)
-    return
-  }
-  // Ladder for native formats: CDN/first attempt → local native proxy
-  // (?nocdn=1) → transcode (format=mp3).
-  if (attempt === 0) {
-    attempt = 1
-    audio.src = streamUrlLocal(song)
-    playAudio()
-    return
-  }
-  if (attempt === 1) {
-    attempt = 2
-    audio.src = streamUrl(song, true)
-    playAudio()
-    return
-  }
-  attempt = 0
+  // CDN-only: there is no fallback ladder. A failed stream stops playback;
+  // the UI stays honest (paused) and the next track/user action retries.
   set({ playing: false })
   setMediaSessionPlaybackState(false)
 })
@@ -205,7 +179,6 @@ function updateMediaSessionPosition() {
 }
 
 function loadAndPlay(song) {
-  attempt = 0
   switching = true
   state.pendingSeek = null
   set({ progress: 0, duration: resolveDuration(song.duration), playing: true })

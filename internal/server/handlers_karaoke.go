@@ -49,12 +49,11 @@ func (s *Server) handleKaraoke(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, k)
 }
 
-// handleKaraokeStream serves GET /api/karaoke/stream/{id}?nocdn=1. Non-admin
-// users can only stream karaokes from granted categories. Videos are served
-// locally with HTTP Range support (same cache pipeline as audio) unless the
-// Bunny CDN pull zone answers Range requests (probed like songs): then the
-// client is 302-redirected to the signed CDN URL. ?nocdn=1 skips the CDN and
-// proxies the bytes locally (client-side fallback when the CDN fails).
+// handleKaraokeStream serves GET /api/karaoke/stream/{id}. Non-admin users
+// can only stream karaokes from granted categories. The Bunny CDN is the ONLY
+// delivery path: every request is 302-redirected to a signed CDN URL. There
+// is no local proxy fallback — if the CDN is not configured the endpoint
+// answers 500.
 func (s *Server) handleKaraokeStream(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := parseID(r)
@@ -74,13 +73,12 @@ func (s *Server) handleKaraokeStream(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
-	if r.URL.Query().Get("nocdn") != "1" && s.stream.CDNRangeOK(ctx, k.Path) {
-		http.Redirect(w, r, s.stream.CDNURL(k.Path), http.StatusFound)
+	url, err := s.stream.SignedURL(k.Path)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := s.stream.ServeVideo(ctx, w, r, k); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-	}
+	http.Redirect(w, r, url, http.StatusFound)
 }
 
 // handleKaraokeRegisterPlay records a karaoke play (play counter).

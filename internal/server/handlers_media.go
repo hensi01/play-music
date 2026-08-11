@@ -25,17 +25,12 @@ func (s *Server) handleArtwork(w http.ResponseWriter, r *http.Request) {
 	s.artwork.Serve(w, r, id, size)
 }
 
-// handleStream serves GET /api/stream/{id}?format=mp3&nocdn=1. Non-admin
-// users can only stream songs from granted categories. Native formats are
-// served directly through this server with HTTP Range support (so seeking
-// works even though the Bunny CDN ignores Range requests for uncached
-// content); other formats (or an explicit format=mp3) are transcoded with
-// ffmpeg.
-//
-// Native formats prefer the Bunny CDN when its pull zone answers Range
-// requests (probed with a fresh signed URL): the client is 302-redirected to
-// the signed CDN URL. ?nocdn=1 skips the CDN entirely and proxies the bytes
-// locally (client-side fallback when the CDN URL fails to play).
+// handleStream serves GET /api/stream/{id}?format=mp3. Non-admin users can
+// only stream songs from granted categories. The Bunny CDN is the ONLY
+// delivery path: native formats are 302-redirected to a signed CDN URL and
+// non-native formats (or an explicit format=mp3) are transcoded with ffmpeg.
+// There is no local proxy fallback — if the CDN is not configured the
+// endpoint answers 500.
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	songID := parseID(r)
@@ -75,20 +70,13 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Native format: prefer the CDN when its pull zone handles Range
-	// requests on cache misses; otherwise proxy the bytes locally so
-	// seeking always works. ?nocdn=1 (client fallback after a CDN
-	// failure) forces the local proxy.
-	if r.URL.Query().Get("nocdn") != "1" && s.stream.CDNRangeOK(ctx, song.Path) {
-		url, err := s.stream.StreamURL(ctx, song)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "Falha ao gerar URL de reprodução")
-			return
-		}
-		http.Redirect(w, r, url, http.StatusFound)
+	// Native format: CDN-only — always redirect to the signed Bunny CDN URL.
+	// No probe, no ?nocdn=1, no local proxy. A missing/disabled CDN is a
+	// server error, not a silent fallback.
+	url, err := s.stream.StreamURL(ctx, song)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := s.stream.ServeNative(ctx, w, r, song); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-	}
+	http.Redirect(w, r, url, http.StatusFound)
 }
