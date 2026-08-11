@@ -156,6 +156,9 @@ func (s *Service) CDNRangeOK(ctx context.Context, path string) bool {
 // a zone that ignores Range (streaming the whole file) is never downloaded.
 // Failures are logged: a down/unhealthy CDN makes CDNRangeOK return false,
 // so the app keeps serving from the local proxy for cdnProbeTTL.
+// The client timeout is short (3s): the probe runs synchronously on the
+// stream hot path, so a CDN that is slow/black-holed must fail fast and let
+// the request through the local proxy instead of stalling the client.
 func (s *Service) probeCDNRange(path string) bool {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, s.CDNURL(path), nil)
 	if err != nil {
@@ -163,7 +166,7 @@ func (s *Service) probeCDNRange(path string) bool {
 		return false
 	}
 	req.Header.Set("Range", "bytes=1-2")
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		s.log.Warn("cdn probe failed", "path", path, "err", err)
