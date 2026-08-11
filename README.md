@@ -37,7 +37,7 @@ documentadas no arquivo `.env`:
 | `ND_ADMINUSERNAME` / `ND_ADMINPASSWORD` | Credenciais do administrador (fonte única) |
 | `DATABASE_URL` | Conexão PostgreSQL (`postgres://...`) |
 | `ND_MUSICFOLDER` | URL da biblioteca: `s3://bucket?endpoint=...&accessKey=...&secretKey=...&secure=...` (fallback: `ND_S3_*` / `MINIO_*`) |
-| `ND_CDN_ENABLED`, `ND_CDN_BASEURL`, `ND_CDN_TOKENAUTHKEY`, `ND_CDN_TOKENTTL`, `ND_CDN_ADVANCEDAUTH`, `ND_CDN_PATH_PREFIX` | Pull Zone Bunny CDN (token Basic MD5 ou Advanced HS256) |
+| `ND_CDN_ENABLED`, `ND_CDN_BASEURL`, `ND_CDN_TOKENAUTHKEY`, `ND_CDN_TOKENTTL`, `ND_CDN_ADVANCEDAUTH`, `ND_CDN_PATH_PREFIX` | Pull Zone Bunny CDN (token Basic MD5 ou Advanced HS256). Áudio e karaokê usam o CDN quando a zona responde Range (probe); com o CDN fora do ar, o cliente cai automaticamente para o proxy local (`?nocdn=1`) e, em áudio, ainda há o fallback de transcode |
 | `ND_REDIS_ENABLED`, `ND_REDIS_URL` | Cache opcional de artwork (fallback: disco) |
 | `ND_SCANNER_SCHEDULE` | Agendamento da varredura (ex.: `@every 1h`) |
 | `ND_FFMPEGPATH` | Caminho do ffmpeg (opcional se estiver no PATH) |
@@ -82,7 +82,9 @@ Rotas principais (todas exigem JWT, exceto `/auth/login`):
 - `GET /api/me/liked`, `PUT|DELETE /api/me/liked/{id}` (por usuário)
 - `GET /api/me/history`, `POST /api/me/history/{id}` (por usuário)
 - `GET|PUT /api/queue` (por usuário)
-- `GET /api/lyrics/{id}`, `GET /api/artwork/{id}?size=N`, `GET /api/stream/{id}?format=mp3`
+- `GET /api/lyrics/{id}`, `GET /api/artwork/{id}?size=N`, `GET /api/stream/{id}?format=mp3&nocdn=1`
+  (`?nocdn=1` força o proxy local, sem redirect para o CDN — fallback usado
+  pelo player quando a URL do CDN falha), `GET /api/karaoke/stream/{id}?nocdn=1`
 
 Admin (JWT + `is_admin`):
 

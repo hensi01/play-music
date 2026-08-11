@@ -1,9 +1,12 @@
 // Playwright config — e2e suite for Play Music.
-// The Go server already runs on :4533 (started by m1-start.ps1). We never
+// The Go server usually runs on :4533 (started by m1-start.ps1). We never
 // spawn `go run`; we reuse the running server (reuseExistingServer: true).
+// PM_E2E_BASEURL overrides the target (validation servers on other ports).
 // If the server is down, start-server.ps1 boots it via m1-start.ps1.
 
 const { defineConfig } = require('playwright/test')
+
+const BASE = process.env.PM_E2E_BASEURL || 'http://localhost:4533'
 
 module.exports = defineConfig({
   testDir: './tests',
@@ -14,7 +17,7 @@ module.exports = defineConfig({
   retries: 0,
   reporter: [['list']],
   use: {
-    baseURL: 'http://localhost:4533',
+    baseURL: BASE,
     headless: true,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
@@ -41,7 +44,7 @@ module.exports = defineConfig({
   ],
   webServer: {
     command: 'powershell -NoProfile -ExecutionPolicy Bypass -File e2e\\start-server.ps1',
-    url: 'http://localhost:4533/',
+    url: BASE,
     reuseExistingServer: true,
     timeout: 60_000,
   },

@@ -9,6 +9,11 @@ video.playsInline = true
 video.preload = 'auto'
 video.volume = 0.8
 
+// Playback retry ladder: attempt 0 = normal src (server may 302 to the Bunny
+// CDN), attempt 1 = ?nocdn=1 (local proxy). Videos have no transcode stage.
+// Reset on every karaoke load.
+let videoAttempt = 0
+
 const state = {
   list: [],
   currentIndex: -1,
@@ -83,6 +88,7 @@ function playVideo() {
 }
 
 function loadKaraoke(k, index) {
+  videoAttempt = 0
   state.currentIndex = index
   state.current = k
   state.progress = 0
@@ -538,6 +544,20 @@ video.addEventListener('pause', () => {
 video.addEventListener('ended', () => {
   if (state.currentIndex + 1 < state.list.length) next()
   else sync()
+})
+video.addEventListener('error', () => {
+  if (!state.current) return
+  // CDN (or first attempt) failed: retry once through the local proxy
+  // (?nocdn=1), then give up (videos have no transcode fallback).
+  if (videoAttempt === 0) {
+    videoAttempt = 1
+    video.src = karaokeStreamUrl(state.current, true)
+    playVideo()
+    return
+  }
+  videoAttempt = 0
+  state.playing = false
+  sync()
 })
 
 // Native fullscreen state changes: leaving fullscreen NEVER closes the player
