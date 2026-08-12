@@ -14,7 +14,7 @@ Playlists são pessoais e só aceitam músicas liberadas.
 Este repositório contém:
 
 - **Backend em Go** (`main.go` + `internal/`) — API REST, varredura da biblioteca
-  (S3/MinIO), stream **somente via CDN Bunny** (302 para URL assinada; sem
+  (S3-compatible — Bunny Storage Zone), stream **somente via CDN Bunny** (302 para URL assinada; sem
   fallback local), transcodificação de formatos não-nativos com ffmpeg,
   artwork (inclui upload de foto por álbum), letras, autenticação JWT,
   usuários e controle de acesso por categoria.
@@ -25,7 +25,7 @@ Este repositório contém:
 
 - Go 1.26+ (build) — ou Docker para rodar o container.
 - PostgreSQL (único banco suportado — **sem SQLite**).
-- Bucket S3/MinIO com a biblioteca de músicas.
+- Bucket S3-compatible (produção: **Bunny Storage Zone**) com a biblioteca de músicas.
 - ffmpeg (para transcodificação de formatos não-nativos).
 
 ## Configuração
@@ -37,7 +37,7 @@ documentadas no arquivo `.env`:
 | --- | --- |
 | `ND_ADMINUSERNAME` / `ND_ADMINPASSWORD` | Credenciais do administrador (fonte única) |
 | `DATABASE_URL` | Conexão PostgreSQL (`postgres://...`) |
-| `ND_MUSICFOLDER` | URL da biblioteca: `s3://bucket?endpoint=...&accessKey=...&secretKey=...&secure=...` (fallback: `ND_S3_*` / `MINIO_*`) |
+| `ND_MUSICFOLDER` | URL da biblioteca: `s3://bucket?endpoint=...&accessKey=...&secretKey=...&secure=...` (fallback: `ND_S3_*` / `MINIO_*`). Produção usa **Bunny Storage Zone** (S3-compatible): `s3://files3?endpoint=jh-s3.storage.bunnycdn.com&accessKey=files3&secretKey=...&region=us-east-1&secure=true` |
 | `ND_CDN_ENABLED`, `ND_CDN_BASEURL`, `ND_CDN_TOKENAUTHKEY`, `ND_CDN_TOKENTTL`, `ND_CDN_ADVANCEDAUTH`, `ND_CDN_PATH_PREFIX` | Pull Zone Bunny CDN (token Basic MD5 ou Advanced HS256). **Única via de entrega** de áudio e karaokê: o servidor 302 para a URL assinada. Sem CDN configurado → erro 500 nos streams (não há fallback local/presigned) |
 | `ND_REDIS_ENABLED`, `ND_REDIS_URL` | Cache opcional de artwork (fallback: disco) |
 | `ND_SCANNER_SCHEDULE` | Agendamento da varredura (ex.: `@every 1h`) |
@@ -107,7 +107,7 @@ main.go                 (inicialização, migrations, cron, HTTP server)
 internal/config/        (leitura do .env)
 internal/db/            (pgxpool + migrations SQL embutidas)
 internal/store/         (repositórios PostgreSQL + controle de acesso)
-internal/storage/       (cliente MinIO/S3)
+internal/storage/       (cliente S3-compatible — Bunny Storage Zone)
 internal/scanner/       (varredura do bucket: áudio, capas, .m3u)
 internal/metadata/      (tags via dhowden/tag + ffprobe)
 internal/stream/        (URLs assinadas Bunny CDN + transcode de formato)
