@@ -17,9 +17,10 @@
       window.__APP_CONFIG__ = {
         version: '__ASSET_VERSION__',
         firstTime: false,
-        // URL base da API do backend (Play Music). Deixe vazio para usar o mesmo
-        // domínio do front end. Ex.: 'https://music.centralcursoss.com.br'
-        baseURL: ''
+        // URL base da API do backend (Play Music), injetada do ambiente
+        // (ND_FRONTEND_BASEURL no .env) pelo backend em tempo de boot.
+        // Vazio = mesmo domínio do front end. Ex.: 'https://music.centralcursoss.com.br'
+        baseURL: __FRONTEND_BASEURL__
       }
     </script>
   </head>

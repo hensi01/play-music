@@ -4,6 +4,7 @@
 
 const { test, expect } = require('playwright/test')
 const {
+  BASE,
   trackConsole,
   expectClean,
   randomPhone,
@@ -72,7 +73,7 @@ test.describe('Loja', () => {
     expect(found.isAdmin).toBe(false)
 
     // The account logs in via phone.
-    const res = await request.post('http://localhost:4533/auth/login', { data: { phone } })
+    const res = await request.post(`${BASE}/auth/login`, { data: { phone } })
     expect(res.ok()).toBe(true)
     const login = await res.json()
     expect(login.name).toBe(found.name)

@@ -30,8 +30,9 @@ Este repositório contém:
 
 ## Configuração
 
-Toda a configuração vem do ambiente (variáveis com prefixo `ND_` + `DATABASE_URL`),
-documentadas no arquivo `.env`:
+Toda a configuração vem do ambiente (variáveis com prefixo `ND_` + `DATABASE_URL`).
+O `.env` **não é versionado** — use o modelo `.env.example` (copie para `.env` e
+preencha os valores reais):
 
 | Variável | Descrição |
 | --- | --- |
@@ -40,6 +41,8 @@ documentadas no arquivo `.env`:
 | `ND_MUSICFOLDER` | URL da biblioteca: `s3://bucket?endpoint=...&accessKey=...&secretKey=...&secure=...` (fallback: `ND_S3_*` / `MINIO_*`). Produção usa **Bunny Storage Zone** (S3-compatible): `s3://files3?endpoint=jh-s3.storage.bunnycdn.com&accessKey=files3&secretKey=...&region=us-east-1&secure=true` |
 | `ND_CDN_ENABLED`, `ND_CDN_BASEURL`, `ND_CDN_TOKENAUTHKEY`, `ND_CDN_TOKENTTL`, `ND_CDN_ADVANCEDAUTH`, `ND_CDN_PATH_PREFIX` | Pull Zone Bunny CDN (token Basic MD5 ou Advanced HS256). **Única via de entrega** de áudio e karaokê: o servidor 302 para a URL assinada. Sem CDN configurado → erro 500 nos streams (não há fallback local/presigned) |
 | `ND_REDIS_ENABLED`, `ND_REDIS_URL` | Cache opcional de artwork (fallback: disco) |
+| `ND_FRONTEND_BASEURL` | URL base da API vista pelo navegador (injetada em `index.html` → `window.__APP_CONFIG__.baseURL`). Vazia = mesmo domínio do frontend |
+| `ND_STORE_CONFIG_JSON` | Configuração da loja (`/loja.html`): JSON `{ categories: { '<nome>' : { price, url } }, packs: [...] }`. Injetada pelo backend no HTML. Vazia = sem preços/links de checkout |
 | `ND_SCANNER_SCHEDULE` | Agendamento da varredura (ex.: `@every 1h`) |
 | `ND_FFMPEGPATH` | Caminho do ffmpeg (opcional se estiver no PATH) |
 | `ND_PORT`, `ND_ADDRESS`, `ND_LOGLEVEL` | HTTP server |
