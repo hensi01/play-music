@@ -31,3 +31,4 @@ CLEAN (auditoria final transcrita para AUDIT.md): inspeção de código completa
 reviewer: re-revisando M5 [G3] retry 1/3 — verificando fixes do BLOCK do critic (scanner ErrInvalidAudio, upload 400/createdAt, testes, e2e) (2026-08-09T02:00)
 ## Blocked Reason
 (none)
+reviewer: revisando feature Karaoke-Videos - admin.js, style.css, confirmacao 3 itens, build/vet/node-check (2026-08-10)
