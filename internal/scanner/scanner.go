@@ -103,7 +103,11 @@ func (s *Scanner) Run(ctx context.Context) Result {
 		switch {
 		case audioExts[ext]:
 			audios = append(audios, audioObj{key, obj.Size, obj.LastModified})
-		case strings.HasSuffix(lower, ".m3u") || strings.HasSuffix(lower, ".m3u8"):
+		// Apenas .m3u são playlists do app. .m3u8 são playlists HLS (segmentos
+		// de vídeo) — o bucket/Storage Zone pode conter conteúdo de outros
+		// projetos (ex.: videos/*/hls/*/playlist.m3u8) e importá-las polui o
+		// catálogo com playlists vazias ("master"/"playlist").
+		case strings.HasSuffix(lower, ".m3u"):
 			m3uFiles = append(m3uFiles, key)
 		case coverNames[filepath.Base(lower)]:
 			folder := folderOf(key)
