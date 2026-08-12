@@ -42,26 +42,13 @@
     <script>
       // =====================================================================
       // ===================== CONFIGURAÇÃO DA LOJA =========================
-      // Edite aqui os preços e os links de checkout (externos).
-      // A chave é o NOME da categoria (como aparece no app). Preços e links
-      // só aparecem NESTA página.
+      // Preços e links de checkout vêm do AMBIENTE (ND_STORE_CONFIG_JSON no
+      // .env) e são injetados pelo backend em tempo de boot no lugar de
+      // __STORE_CONFIG__. A chave de cada categoria é o NOME da categoria
+      // (como aparece no app) ou o ID dela. Preços e links só aparecem
+      // NESTA página. Vazio ({}) = sem preços/links de checkout.
       // =====================================================================
-      const STORE_CONFIG = {
-        // preço/link por categoria: { 'Nome da Categoria': { price: 'R$ 9,90', url: 'https://...' } }
-        categories: {
-          'Cristão': { price: 'R$ 9,90', url: 'https://checkout.exemplo.com/cristao' },
-        },
-        // packs: { name, price, url, categories: ['Nome1', 'Nome2'], desc }
-        packs: [
-          {
-            name: 'Pacote Completo',
-            price: 'R$ 19,90',
-            url: 'https://checkout.exemplo.com/pacote-completo',
-            categories: ['Cristão'],
-            desc: 'Todas as categorias por um preço especial.',
-          },
-        ],
-      }
+      const STORE_CONFIG = __STORE_CONFIG__
       // =====================================================================
 
       const TOKEN_KEY = 'pm_token'

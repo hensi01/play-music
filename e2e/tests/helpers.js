@@ -28,8 +28,15 @@ function envFromFile(key) {
   return undefined
 }
 
-const ADMIN_USER = process.env.ND_ADMINUSERNAME || envFromFile('ND_ADMINUSERNAME') || 'admin'
-const ADMIN_PASS = process.env.ND_ADMINPASSWORD || envFromFile('ND_ADMINPASSWORD') || '123456'
+// Credenciais vêm SOMENTE do ambiente ou do .env (nunca hardcoded no código).
+function requireEnv(key) {
+  const v = process.env[key] || envFromFile(key)
+  if (!v) throw new Error(`${key} não configurada — defina no .env (raiz do projeto) ou no ambiente`)
+  return v
+}
+
+const ADMIN_USER = requireEnv('ND_ADMINUSERNAME')
+const ADMIN_PASS = requireEnv('ND_ADMINPASSWORD')
 
 const CLIENT_PHONE = '(99) 99999-9999' // seeded "Cliente Teste"
 

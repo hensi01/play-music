@@ -15,12 +15,11 @@
 const { test, expect } = require('playwright/test')
 const fs = require('fs')
 const {
+  BASE,
   apiAuthHeaders,
   apiAdminSongs,
   ensureSilenceWav,
 } = require('./helpers')
-
-const BASE = 'http://localhost:4533'
 
 test.describe('Upload admin', () => {
   test('lixo .mp3 → 400 e não entra no catálogo', async ({ request }) => {
