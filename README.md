@@ -128,3 +128,13 @@ web/assets/             (front end vanilla JS + página de administração)
 Para servir a UI junto com a API no mesmo domínio (sem `baseURL`), basta hospedar
 os arquivos de `web/assets/` na raiz de um domínio/rota que faça proxy para o
 backend (`/api`, `/auth`, `/rest`, etc.).
+
+## Remoção de karaokê em instalações existentes
+
+Antes de iniciar esta versão, pare todas as instâncias da aplicação e carregue
+as variáveis normais do ambiente. Execute `go run ./cmd/remove-karaoke` para
+listar os objetos cadastrados e, após conferir a lista, execute
+`go run ./cmd/remove-karaoke --apply`. O comando impede a exclusão de caminhos
+usados por músicas, verifica cada objeto removido e só então exclui os registros.
+Se falhar, mantenha a aplicação parada e execute novamente; objetos já ausentes
+são aceitos. A migração 0010 só avança quando não restam registros de karaokê.

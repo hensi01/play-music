@@ -2,7 +2,6 @@
 
 import { api, endpoints, artworkUrl, getToken, setToken, readAppConfig, applyPhoneMask, phoneMask } from './api.js'
 import * as player from './player.js'
-import * as karaoke from './karaoke.js'
 // admin.js is imported with the build version so the service worker (which
 // caches by URL) never serves a stale copy after a redeploy.
 const { renderAdmin } = await import(`./admin.js?v=${readAppConfig().version}`)
@@ -388,25 +387,12 @@ function categoryCard(c) {
   })
 }
 
-// karaokeCard: a playable card for a karaoke video (16:9 thumbnail).
-function karaokeCard(k, onPlay) {
-  return card({
-    image: artworkUrl(k.id, 300),
-    title: k.title,
-    subtitle: [k.artist, fmtDuration(k.duration)].filter(Boolean).join(' • '),
-    onClick: onPlay,
-    onPlay,
-    square: false,
-  })
-}
-
 // ---------- Pages ----------
 
 const pages = {
   '/': renderHome,
   '/search': renderSearch,
   '/library': renderLibrary,
-  '/karaoke': renderKaraoke,
   '/liked': renderLiked,
   '/history': renderHistory,
   '/queue': renderQueue,
@@ -455,14 +441,6 @@ async function renderHome(container) {
     const sectionsEl = []
     for (const s of home.sections ?? []) {
       const songs = s.songs ?? []
-      const karaokes = s.karaokes ?? []
-      if (songs.length === 0 && karaokes.length === 0) continue
-      if (karaokes.length > 0) {
-        const cards = karaokes.map((k) =>
-          karaokeCard(k, () => karaoke.playKaraokeContext(karaokes, karaokes.indexOf(k))),
-        )
-        sectionsEl.push(section(s.title, cards))
-      }
       if (songs.length > 0) {
         const cards = songs.map((song) =>
           songCard(song, () => player.playContext(songs, songs.indexOf(song))),
@@ -491,35 +469,6 @@ async function renderHome(container) {
       )
     }
   } catch (err) {
-    container.append(emptyState(err.message))
-  }
-}
-
-// ---------- Karaoke ----------
-
-async function renderKaraoke(container) {
-  container.innerHTML = ''
-  container.append(spinner())
-  try {
-    const list = await endpoints.karaokes()
-    const page = el(
-      'div',
-      { class: 'page-padding' },
-      el('h1', { class: 'page-title' }, 'Karaokê – Vídeos'),
-      el('p', { class: 'detail-meta' }, 'Assista e cante junto com os vídeos'),
-    )
-    if (list.length === 0) {
-      page.append(emptyState('Nenhum karaokê disponível ainda.'))
-    } else {
-      const cards = list.map((k) =>
-        karaokeCard(k, () => karaoke.playKaraokeContext(list, list.indexOf(k))),
-      )
-      page.append(el('div', { class: 'card-row' }, ...cards))
-    }
-    container.innerHTML = ''
-    container.append(el('div', { class: 'page' }, page))
-  } catch (err) {
-    container.innerHTML = ''
     container.append(emptyState(err.message))
   }
 }
@@ -740,7 +689,6 @@ async function renderCategory(container, params) {
   try {
     const cat = await endpoints.category(params.id)
     const songs = cat.songs ?? []
-    const karaokes = cat.karaokes ?? []
 
     const header = el(
       'div',
@@ -774,16 +722,6 @@ async function renderCategory(container, params) {
         trackRow(s, i, { onPlay: (_song, idx) => player.playContext(songs, idx) }),
       )
       content.append(el('div', { class: 'track-list' }, ...rows))
-    }
-    if (karaokes.length > 0) {
-      content.append(
-        section(
-          'Karaokês',
-          karaokes.map((k) =>
-            karaokeCard(k, () => karaoke.playKaraokeContext(karaokes, karaokes.indexOf(k))),
-          ),
-        ),
-      )
     }
     content.append(
       el('button', { class: 'back-link', onclick: () => navigate('/library') }, icon('arrowLeft'), 'Voltar para a biblioteca'),
@@ -1229,7 +1167,6 @@ function sidebarContent(onNavigate) {
       nav('/', 'Início', 'home'),
       nav('/search', 'Buscar', 'search'),
       nav('/library', 'Sua Biblioteca', 'library'),
-      nav('/karaoke', 'Karaokê', 'video'),
       nav('/liked', 'Curtidas', 'heart'),
       nav('/history', 'Histórico', 'clock'),
       el(
@@ -1705,10 +1642,6 @@ document.addEventListener('keydown', (e) => {
     render()
     return
   }
-  // O player de karaokê (fullscreen) tem seus próprios atalhos e fica por
-  // cima de tudo: com ele aberto, os atalhos do player de áudio não podem
-  // disparar (senão Space/arrows controlariam os dois players juntos).
-  if (karaoke.isOpen()) return
   const t = e.target
   // Elementos interativos têm atalhos nativos próprios (espaço/arrows ativam
   // botões e links). Sem esta exclusão, Espaço num botão focado dispararia o

@@ -69,15 +69,6 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 				sections = append(sections, model.HomeSection{Title: cat.Name, Songs: songs})
 			}
 		}
-		// Karaoke section: all karaokes from the granted categories.
-		karaokes, err := s.store.AllKaraokes(ctx, userID)
-		if err != nil {
-			handleStoreError(w, err)
-			return
-		}
-		if len(karaokes) > 0 {
-			sections = append(sections, model.HomeSection{Title: "Karaokês", Karaokes: karaokes})
-		}
 	} else {
 		// Admin: recently added and most played songs.
 		recent, err := s.store.RecentlyAddedSongs(ctx, filter, 24)
@@ -96,14 +87,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		if len(top) > 0 {
 			sections = append(sections, model.HomeSection{Title: "Mais ouvidas", Songs: top})
 		}
-		karaokes, err := s.store.RecentlyAddedKaraokes(ctx, filter, 24)
-		if err != nil {
-			handleStoreError(w, err)
-			return
-		}
-		if len(karaokes) > 0 {
-			sections = append(sections, model.HomeSection{Title: "Karaokês", Karaokes: karaokes})
-		}
+
 	}
 	writeJSON(w, http.StatusOK, model.Home{Sections: sections, Genres: []model.Genre{}})
 }
@@ -206,12 +190,6 @@ func (s *Server) handleCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cat.Songs = songs
-	karaokes, err := s.store.CategoryKaraokes(ctx, id)
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	cat.Karaokes = karaokes
 	writeJSON(w, http.StatusOK, cat)
 }
 
@@ -777,15 +755,9 @@ func (s *Server) handleAdminCategoryDetail(w http.ResponseWriter, r *http.Reques
 		handleStoreError(w, err)
 		return
 	}
-	karaokeIDs, err := s.store.CategoryKaraokeIDs(r.Context(), id)
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id":          id,
-		"songIds":     songIDs,
-		"karaokeIds":  karaokeIDs,
+		"id":      id,
+		"songIds": songIDs,
 	})
 }
 
@@ -794,14 +766,13 @@ func (s *Server) handleAdminUpdateCategory(w http.ResponseWriter, r *http.Reques
 		Name        string   `json:"name"`
 		CheckoutURL *string  `json:"checkoutUrl"`
 		SongIDs     []string `json:"songIds"`
-		KaraokeIDs  []string `json:"karaokeIds"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Requisição inválida")
 		return
 	}
 	if err := s.store.UpdateCategory(r.Context(), r.PathValue("id"),
-		strings.TrimSpace(req.Name), req.CheckoutURL, req.SongIDs, req.KaraokeIDs); err != nil {
+		strings.TrimSpace(req.Name), req.CheckoutURL, req.SongIDs); err != nil {
 		handleStoreError(w, err)
 		return
 	}

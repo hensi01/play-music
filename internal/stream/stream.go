@@ -138,8 +138,8 @@ func (s *Service) StreamURL(ctx context.Context, song *model.Song) (string, erro
 	return s.CDNURL(song.Path), nil
 }
 
-// SignedURL returns the signed Bunny CDN URL for any object key (used by the
-// karaoke stream handler). It errors when the CDN is not configured.
+// SignedURL returns the signed Bunny CDN URL for an object key.
+// It errors when the CDN is not configured.
 func (s *Service) SignedURL(key string) (string, error) {
 	if err := s.requireCDN(); err != nil {
 		return "", err
