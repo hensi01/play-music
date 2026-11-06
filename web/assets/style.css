@@ -1859,6 +1859,7 @@ img {
   border-radius: 8px;
   transition: color var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1)), background var(--dur-fast, 0.15s) var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
 }
+.track-share { display: inline-flex; }
 .track-row:hover .track-add,
 .track-add:focus-visible { display: inline-flex; }
 .track-add:hover { color: var(--accent-2, #1db954); background: var(--wash-soft, rgba(255, 255, 255, 0.06)); }

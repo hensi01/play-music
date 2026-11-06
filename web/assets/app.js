@@ -78,6 +78,7 @@ const icons = {
   library: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg>',
   heart: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>',
   video: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>',
+  link: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.1 0l3-3a5 5 0 0 0-7.1-7.1l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.1 0l-3 3a5 5 0 0 0 7.1 7.1l1.7-1.7"/></svg>',
   clock: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
   music: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
   settings: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -233,6 +234,12 @@ function trackRow(song, index, opts = {}) {
     icon('heart'),
   )
 
+  const shareBtn = el(
+    'button',
+    { class: 'track-add track-share', 'aria-label': 'Copiar link da música', onclick: (e) => { e.stopPropagation(); copySongLink(song.id) } },
+    icon('link'),
+  )
+
   const addBtn = el(
     'button',
     { class: 'track-add', 'aria-label': 'Adicionar à playlist', onclick: (e) => { e.stopPropagation(); openPlaylistPicker(song) } },
@@ -254,8 +261,19 @@ function trackRow(song, index, opts = {}) {
         el('p', { class: 'track-artist' }, song.artist || 'Desconhecido'),
       ),
     ),
-    el('div', { class: 'track-actions' }, likeBtn, addBtn, el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
+    el('div', { class: 'track-actions' }, likeBtn, addBtn, shareBtn, el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
   )
+}
+
+// The public-facing path stays stable; authentication is checked on opening.
+async function copySongLink(songId) {
+  const link = `${window.location.origin}${window.location.pathname}#/song/${encodeURIComponent(songId)}`
+  try {
+    await navigator.clipboard.writeText(link)
+    alert('Link copiado.')
+  } catch {
+    window.prompt('Copie o link da música:', link)
+  }
 }
 
 // ---------- Add to playlist ----------
@@ -400,6 +418,7 @@ const pages = {
   '/admin': renderAdminPage,
   '/category/:id': renderCategory,
   '/playlist/:id': renderPlaylist,
+  '/song/:id': renderSong,
 }
 
 async function renderAdminPage(container) {
@@ -678,6 +697,32 @@ async function renderLibrary(container) {
     for (const p of libData.playlists) {
       wrap.append(card({ image: artworkUrl(p.id, 300), title: p.name, subtitle: musicas(p.songCount), onClick: () => navigate(`/playlist/${p.id}`) }))
     }
+  }
+}
+
+// Permanent, access-controlled share link for a song.
+async function renderSong(container, params) {
+  container.innerHTML = ''
+  container.append(spinner())
+  try {
+    const song = await endpoints.song(params.id)
+    const header = el('div', { class: 'detail-header horizontal' },
+      el('img', { class: 'detail-art', src: artworkUrl(song.id, 480), alt: '', loading: 'lazy' }),
+      el('div', { class: 'detail-info' },
+        el('p', { class: 'detail-type' }, 'Música'),
+        el('h1', { class: 'detail-title' }, song.title),
+        el('p', { class: 'detail-meta' }, song.artist || 'Desconhecido'),
+        el('div', { class: 'detail-actions' },
+          el('button', { class: 'btn-accent', onclick: () => player.playContext([song], 0) }, icon('play'), 'Tocar'),
+          el('button', { class: 'btn-secondary', onclick: () => copySongLink(song.id) }, 'Copiar link'),
+        ),
+      ),
+    )
+    container.innerHTML = ''
+    container.append(el('div', { class: 'page' }, header))
+  } catch (err) {
+    container.innerHTML = ''
+    container.append(emptyState(err.message))
   }
 }
 
@@ -1084,7 +1129,7 @@ function renderLogin(container) {
         try {
           if (loginMode === 'client') await doLogin('client', phoneInput.value.trim())
           else await doLogin('admin', usernameInput.value.trim(), passwordInput.value)
-          navigate('/')
+          if (!parseHash().path.startsWith('/song/')) navigate('/')
         } catch (err) {
           errorEl.textContent = err instanceof Error ? err.message : 'Erro ao entrar'
         } finally {
