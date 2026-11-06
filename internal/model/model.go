@@ -103,16 +103,14 @@ type User struct {
 }
 
 type Category struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	SongCount   int    `json:"songCount,omitempty"`
-	CheckoutURL string `json:"checkoutUrl,omitempty"`
-	Songs       []Song `json:"songs,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	SongCount int    `json:"songCount,omitempty"`
+	Songs     []Song `json:"songs,omitempty"`
 }
 
 type Settings struct {
 	AppName     string `json:"appName"`
 	Version     string `json:"version"`
 	LibraryName string `json:"libraryName"`
-	MusicFolder string `json:"musicFolder"`
 }

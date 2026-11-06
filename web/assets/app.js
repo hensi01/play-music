@@ -117,9 +117,23 @@ function icon(name) {
 
 let auth = { user: null, loading: true }
 
+let sessionEpoch = 0
 function setAuth(patch) {
+  const previousId = auth.user?.id || null
+  const nextId = Object.hasOwn(patch, 'user') ? (patch.user?.id || null) : previousId
+  if (previousId !== nextId) {
+    sessionEpoch++
+    playlistsCache = []
+    libData = null
+    libLoading = false
+    searchSeq++
+    searchResults = null
+    searchQuery = ''
+    player.clearSession()
+  }
   auth = { ...auth, ...patch }
   render()
+  if (previousId !== nextId && nextId) void loadPlaylists()
 }
 
 // Lê a claim `exp` de um JWT (header.payload.signature, base64url) sem
@@ -411,6 +425,8 @@ const pages = {
   '/': renderHome,
   '/search': renderSearch,
   '/library': renderLibrary,
+  '/recommendations': renderRecommendations,
+  '/recommended-artist/:name': renderArtist,
   '/liked': renderLiked,
   '/history': renderHistory,
   '/queue': renderQueue,
@@ -456,8 +472,10 @@ async function renderHome(container) {
   container.innerHTML = ''
   container.append(el('div', { class: 'page-padding' }, el('h1', { class: 'page-title' }, greeting())))
   try {
-    const home = await endpoints.home()
+    const [home, rec] = await Promise.all([endpoints.home(), endpoints.recommendations().catch(() => ({ songs: [], artists: [], tastes: [] }))])
     const sectionsEl = []
+    if (rec.songs?.length) sectionsEl.push(section('Para você', rec.songs.slice(0, 10).map((song) => songCard(song, () => player.playContext(rec.songs, rec.songs.indexOf(song))))))
+    if (rec.artists?.length) sectionsEl.push(section('Artistas para você', rec.artists.slice(0, 10).map((a) => card({ image: artworkUrl(a.songId, 300), title: a.name, subtitle: 'Artista', onClick: () => navigate(`/recommended-artist/${encodeURIComponent(a.name)}`) }))))
     for (const s of home.sections ?? []) {
       const songs = s.songs ?? []
       if (songs.length > 0) {
@@ -483,13 +501,43 @@ async function renderHome(container) {
       container.append(
         emptyState2(
           'Sua biblioteca está vazia.',
-          'O administrador precisa fazer upload de músicas e atribuí-las a uma categoria.',
+          'O administrador precisa adicionar músicas ao catálogo.',
         ),
       )
     }
   } catch (err) {
     container.append(emptyState(err.message))
   }
+}
+
+// ---------- Personalized recommendations ----------
+async function renderRecommendations(container) {
+  container.innerHTML = ''
+  container.append(spinner())
+  try {
+    const rec = await endpoints.recommendations()
+    const page = el('div', { class: 'page-padding' }, el('h1', { class: 'page-title' }, 'Para você'))
+    if (rec.tastes?.length) page.append(el('p', { class: 'detail-meta' }, `Seus gostos: ${rec.tastes.join(' • ')}`))
+    if (rec.songs?.length) page.append(section(rec.personalized ? 'Músicas para você' : 'Comece a ouvir', rec.songs.map((song) => songCard(song, () => player.playContext(rec.songs, rec.songs.indexOf(song))))))
+    if (rec.artists?.length) page.append(section('Artistas para você', rec.artists.map((artist) => card({ image: artworkUrl(artist.songId, 300), title: artist.name, subtitle: 'Artista', onClick: () => navigate(`/recommended-artist/${encodeURIComponent(artist.name)}`) }))))
+    if (!rec.songs?.length) page.append(emptyState('Ainda não há músicas no catálogo.'))
+    container.innerHTML = ''
+    container.append(page)
+  } catch (err) { container.innerHTML = ''; container.append(emptyState(err.message)) }
+}
+
+async function renderArtist(container, params) {
+  container.innerHTML = ''
+  container.append(spinner())
+  try {
+    const allSongs = await endpoints.songs()
+    const songs = allSongs.filter((song) => (song.artist || '').trim().toLocaleLowerCase() === params.name.trim().toLocaleLowerCase())
+    const page = el('div', { class: 'page-padding' }, el('h1', { class: 'page-title' }, params.name))
+    if (songs.length) page.append(el('div', { class: 'track-list' }, ...songs.map((song, i) => trackRow(song, i, { onPlay: (_song, index) => player.playContext(songs, index) }))))
+    else page.append(emptyState('Nenhuma música disponível.'))
+    container.innerHTML = ''
+    container.append(page)
+  } catch (err) { container.innerHTML = ''; container.append(emptyState(err.message)) }
 }
 
 // ---------- Search ----------
@@ -638,7 +686,9 @@ let libLoading = false
 async function loadLibrary() {
   if (libLoading) return
   libLoading = true
+  const epoch = sessionEpoch
   const [s, p, c] = await Promise.allSettled([endpoints.songs(), endpoints.playlists(), endpoints.categories()])
+  if (epoch !== sessionEpoch) return
   libData = {
     songs: s.status === 'fulfilled' ? s.value : [],
     playlists: p.status === 'fulfilled' ? p.value : [],
@@ -1056,7 +1106,6 @@ async function renderSettings(container) {
         el('div', {}, el('dt', { class: 'settings-dt' }, 'Servidor'), el('dd', { class: 'settings-dd' }, settings.appName)),
         el('div', {}, el('dt', { class: 'settings-dt' }, 'Versão'), el('dd', { class: 'settings-dd' }, settings.version)),
         el('div', {}, el('dt', { class: 'settings-dt' }, 'Biblioteca'), el('dd', { class: 'settings-dd' }, settings.libraryName)),
-        el('div', {}, el('dt', { class: 'settings-dt' }, 'Pasta de música'), el('dd', { class: 'settings-dd mono' }, settings.musicFolder)),
       ),
     )
   }
@@ -1085,17 +1134,18 @@ async function createPlaylist() {
 
 // ---------- Login ----------
 
-let loginMode = 'client' // 'client' | 'admin'
+let loginMode = 'client' // client, register, admin
 
 function renderLogin(container) {
   const toggle = el(
     'div',
     { class: 'login-toggle' },
     el('button', { class: `login-toggle-btn ${loginMode === 'client' ? 'active' : ''}`, 'aria-pressed': loginMode === 'client' ? 'true' : 'false', onclick: () => { loginMode = 'client'; render() } }, 'Cliente'),
+    el('button', { class: `login-toggle-btn ${loginMode === 'register' ? 'active' : ''}`, 'aria-pressed': loginMode === 'register' ? 'true' : 'false', onclick: () => { loginMode = 'register'; render() } }, 'Criar conta'),
     el('button', { class: `login-toggle-btn ${loginMode === 'admin' ? 'active' : ''}`, 'aria-pressed': loginMode === 'admin' ? 'true' : 'false', onclick: () => { loginMode = 'admin'; render() } }, 'Administrador'),
   )
 
-  const phoneInput = loginMode === 'client'
+  const phoneInput = loginMode !== 'admin'
     ? el('input', { class: 'form-input', type: 'tel', inputmode: 'numeric', placeholder: 'Telefone (99) 99999-9999', autofocus: true, autocomplete: 'tel' })
     : null
   if (phoneInput) phoneInput.addEventListener('input', () => applyPhoneMask(phoneInput))
@@ -1106,7 +1156,7 @@ function renderLogin(container) {
     ? el('input', { class: 'form-input', type: 'password', placeholder: 'Senha', autocomplete: 'current-password' })
     : null
   const errorEl = el('p', { class: 'login-error' })
-  const submitBtn = el('button', { class: 'login-submit', type: 'submit' }, 'Entrar')
+  const submitBtn = el('button', { class: 'login-submit', type: 'submit' }, loginMode === 'register' ? 'Criar conta' : 'Entrar')
 
   const form = el(
     'form',
@@ -1115,7 +1165,7 @@ function renderLogin(container) {
       onsubmit: async (e) => {
         e.preventDefault()
         errorEl.textContent = ''
-        if (loginMode === 'client') {
+        if (loginMode !== 'admin') {
           if (!phoneInput.value.trim()) {
             errorEl.textContent = 'Informe seu telefone.'
             return
@@ -1128,7 +1178,11 @@ function renderLogin(container) {
         submitBtn.textContent = 'Aguarde…'
         try {
           if (loginMode === 'client') await doLogin('client', phoneInput.value.trim())
-          else await doLogin('admin', usernameInput.value.trim(), passwordInput.value)
+          else if (loginMode === 'register') {
+            const user = await endpoints.register(phoneInput.value.trim())
+            setToken(user.token)
+            setAuth({ user, loading: false })
+          } else await doLogin('admin', usernameInput.value.trim(), passwordInput.value)
           if (!parseHash().path.startsWith('/song/')) navigate('/')
         } catch (err) {
           errorEl.textContent = err instanceof Error ? err.message : 'Erro ao entrar'
@@ -1159,7 +1213,7 @@ function renderLogin(container) {
           { class: 'login-brand' },
           icon('music'),
           el('h1', {}, 'Play Music'),
-          el('p', {}, loginMode === 'client' ? 'Entre com seu telefone para ouvir' : 'Acesso administrativo'),
+          el('p', {}, loginMode === 'admin' ? 'Acesso administrativo' : (loginMode === 'register' ? 'Crie sua conta gratuita' : 'Entre com seu telefone para ouvir')),
         ),
         form,
       ),
@@ -1173,15 +1227,12 @@ let playlistsCache = []
 let menuOpen = false
 
 async function loadPlaylists() {
-  if (!getToken()) {
-    playlistsCache = []
-    return
-  }
-  try {
-    playlistsCache = (await endpoints.playlists()) ?? []
-  } catch {
-    playlistsCache = []
-  }
+  if (!getToken() || !auth.user) return
+  const epoch = sessionEpoch
+  let result = []
+  try { result = (await endpoints.playlists()) ?? [] } catch { /* show an empty list */ }
+  if (epoch !== sessionEpoch) return
+  playlistsCache = result
   if (auth.user) render()
 }
 
@@ -1212,14 +1263,9 @@ function sidebarContent(onNavigate) {
       nav('/', 'Início', 'home'),
       nav('/search', 'Buscar', 'search'),
       nav('/library', 'Sua Biblioteca', 'library'),
+      nav('/recommendations', 'Para você', 'heart'),
       nav('/liked', 'Curtidas', 'heart'),
       nav('/history', 'Histórico', 'clock'),
-      el(
-        'a',
-        { class: 'nav-link', href: './loja.html', onclick: () => { onNavigate?.() } },
-        icon('cart'),
-        'Loja',
-      ),
       auth.user?.isAdmin ? nav('/admin', 'Administração', 'settings') : null,
     ),
     el('div', { class: 'sidebar-playlists-label' }, el('span', {}, 'Playlists'), el('span', { html: icons.list })),
@@ -1726,6 +1772,4 @@ window.addEventListener('pm:playlists-changed', () => {
   if (auth.user) void loadPlaylists()
 })
 
-void refreshAuth().then(() => {
-  if (auth.user) void loadPlaylists()
-})
+void refreshAuth()

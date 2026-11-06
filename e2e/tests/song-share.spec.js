@@ -13,7 +13,7 @@ async function prepare(page, allowed) {
     if (path === '/api/songs/song-123') {
       return allowed
         ? route.fulfill({ json: { id: 'song-123', title: 'Faixa de teste', artist: 'Artista', format: 'mp3', duration: 30 } })
-        : route.fulfill({ status: 403, json: { error: 'Sem permissão' } })
+        : route.fulfill({ status: 404, json: { error: 'Música não encontrada' } })
     }
     if (path === '/api/songs') return route.fulfill({ json: [{ id: 'song-123', title: 'Faixa de teste', artist: 'Artista', format: 'mp3', duration: 30 }] })
     return route.fulfill({ json: path === '/api/home' ? { sections: [] } : [] })
@@ -37,9 +37,9 @@ test('o link fixo continua na música após login e pode ser copiado', async ({ 
   expect(link).not.toContain('test-token')
 })
 
-test('o link não mostra uma música sem permissão', async ({ page }) => {
+test('o link informa quando a música não existe mais', async ({ page }) => {
   await prepare(page, false)
-  await expect(page.locator('.empty-state')).toContainText('Sem permissão')
+  await expect(page.locator('.empty-state')).toContainText('Música não encontrada')
   await expect(page.getByRole('button', { name: 'Tocar' })).toHaveCount(0)
 })
 

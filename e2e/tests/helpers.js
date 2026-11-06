@@ -179,11 +179,11 @@ async function apiListUsers(request) {
   return res.json()
 }
 
-async function apiCreateCategory(request, name, checkoutUrl = '') {
+async function apiCreateCategory(request, name) {
   const headers = await apiAuthHeaders(request)
   const res = await request.post(`${BASE}/api/admin/categories`, {
     headers,
-    data: { name, checkoutUrl },
+    data: { name },
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok()) throw new Error(`create category failed ${res.status()}: ${JSON.stringify(body)}`)
@@ -201,15 +201,6 @@ async function apiListCategories(request) {
   const res = await request.get(`${BASE}/api/admin/categories`, { headers })
   if (!res.ok()) throw new Error(`list categories failed ${res.status()}`)
   return res.json()
-}
-
-async function apiStoreRegister(request, phone) {
-  const res = await request.post(`${BASE}/api/store/register`, {
-    data: { phone, categoryIds: [] },
-  })
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok()) throw new Error(`store register failed ${res.status()}: ${JSON.stringify(body)}`)
-  return body
 }
 
 async function apiAdminSongs(request) {
@@ -312,7 +303,6 @@ module.exports = {
   apiCreateCategory,
   apiDeleteCategory,
   apiListCategories,
-  apiStoreRegister,
   apiAdminSongs,
   apiUploadCategoryPhoto,
   apiDeleteCategoryPhoto,

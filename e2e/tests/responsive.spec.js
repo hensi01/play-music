@@ -40,8 +40,8 @@ test.describe('Responsivo 375px', () => {
     await expect(page.locator('.page-title', { hasText: 'Administração' })).toBeVisible()
     await assertNoOverflow(page)
 
-    await page.goto('/loja.html')
-    await expect(page.locator('#catGrid .card')).toHaveCount(1)
+    await page.goto('/#/recommendations')
+    await expect(page.locator('.page-title', { hasText: 'Para você' })).toBeVisible()
     await assertNoOverflow(page)
 
     expectClean(testInfo, clean)

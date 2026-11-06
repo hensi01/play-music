@@ -14,7 +14,7 @@ const albumCols = `
 	a.id, a.name, a.artist, COALESCE(a.artist_id, ''), a.year,
 	COUNT(DISTINCT s.id)::int AS song_count,
 	COALESCE(SUM(s.duration), 0)::float8 AS duration,
-	EXISTS(SELECT 1 FROM user_likes ul WHERE ul.entity_type='album' AND ul.entity_id=a.id) AS liked,
+	FALSE AS liked,
 	a.created_at`
 
 const albumJoin = ` FROM albums a LEFT JOIN songs s ON s.album_id=a.id`

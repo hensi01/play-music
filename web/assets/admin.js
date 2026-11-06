@@ -89,7 +89,6 @@ async function renderUsers(wrap, seq) {
   const table = el('div', { class: 'admin-table' })
   if (users.length === 0) table.append(el('p', { class: 'empty-state' }, 'Nenhum usuário ainda.'))
   for (const u of users) {
-    const chips = (u.categories ?? []).map((c) => el('span', { class: 'chip' }, c.name))
     table.append(
       el(
         'div',
@@ -97,7 +96,6 @@ async function renderUsers(wrap, seq) {
         el('div', { class: 'admin-row-main' },
           el('p', { class: 'admin-row-title' }, u.name, u.isAdmin ? el('span', { class: 'badge' }, 'Admin') : null),
           el('p', { class: 'admin-row-sub' }, u.isAdmin ? `@${u.username}` : (u.phone || '')),
-          el('div', { class: 'admin-chips' }, ...chips),
         ),
         el('div', { class: 'admin-row-actions' },
           el('button', { class: 'icon-btn', 'aria-label': 'Editar', onclick: () => userForm(u) }, '✎'),
@@ -123,15 +121,6 @@ function userForm(existing) {
   const adminFields = el('div', {}, usernameInput, emailInput, passInput)
   const clientFields = el('div', {}, phoneInput)
 
-  const catLabel = el('div', { class: 'modal-section-label' }, 'Categorias liberadas')
-  const catsWrap = el('div', {},
-    adminState.categories.map((c) => {
-      const box = el('input', { type: 'checkbox', id: `cat-${c.id}` })
-      if ((existing?.categories ?? []).some((cc) => cc.id === c.id)) box.checked = true
-      return el('label', { class: 'modal-check', style: 'display:block' }, box, el('span', {}, c.name))
-    }),
-  )
-
   const adminBtn = el('button', { class: 'login-toggle-btn', 'aria-pressed': isAdmin ? 'true' : 'false', onclick: () => { isAdmin = true; sync() } }, 'Administrador')
   const clientBtn = el('button', { class: 'login-toggle-btn', 'aria-pressed': !isAdmin ? 'true' : 'false', onclick: () => { isAdmin = false; sync() } }, 'Cliente')
 
@@ -143,8 +132,6 @@ function userForm(existing) {
     clientBtn.setAttribute('aria-pressed', !isAdmin ? 'true' : 'false')
     adminFields.style.display = isAdmin ? '' : 'none'
     clientFields.style.display = isAdmin ? 'none' : ''
-    catLabel.style.display = isAdmin ? 'none' : ''
-    catsWrap.style.display = isAdmin ? 'none' : ''
   }
 
   const overlay = el('div', { class: 'modal-overlay' },
@@ -154,8 +141,6 @@ function userForm(existing) {
       nameInput,
       clientFields,
       adminFields,
-      catLabel,
-      catsWrap,
       errorEl,
       el('div', { class: 'modal-actions' },
         el('button', { class: 'btn-accent', onclick: save }, 'Salvar'),
@@ -180,7 +165,6 @@ function userForm(existing) {
       if (passInput.value) payload.password = passInput.value
     } else {
       payload.phone = phoneInput.value.trim()
-      payload.categoryIds = [...overlay.querySelectorAll('input[type=checkbox]:checked')].map((b) => b.id.slice(4))
     }
     try {
       if (isEdit) await endpoints.admin.updateUser(existing.id, payload)
@@ -205,10 +189,9 @@ async function deleteUser(u) {
 
 // ---------- Categories ----------
 
-// newCategoryForm: modal with name + checkout link + photo (used for creation).
+// newCategoryForm: modal with name + photo (used for creation).
 function newCategoryForm() {
   const nameInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Nome da categoria', autofocus: true })
-  const urlInput = el('input', { class: 'form-input', type: 'url', placeholder: 'https://checkout.exemplo.com/...', autocomplete: 'off' })
   const errorEl = el('p', { class: 'login-error' })
 
   const photoInput = el('input', { class: 'upload-file-input', type: 'file', accept: 'image/*' })
@@ -228,10 +211,6 @@ function newCategoryForm() {
     el('div', { class: 'modal' },
       el('h3', {}, 'Nova categoria'),
       nameInput,
-      el('label', { class: 'upload-field' },
-        el('span', { class: 'upload-label' }, 'Link do checkout (loja)'),
-        urlInput,
-      ),
       el('div', { class: 'modal-section-label' }, 'Foto da categoria (opcional)'),
       photoDrop,
       photoInput,
@@ -253,7 +232,7 @@ function newCategoryForm() {
     btn.disabled = true
     btn.textContent = 'Salvando…'
     try {
-      const cat = await endpoints.admin.createCategory(name, urlInput.value.trim())
+      const cat = await endpoints.admin.createCategory(name)
       // A categoria precisa existir antes do upload da foto (id gerado no create).
       if (photoInput.files[0]) {
         await endpoints.admin.uploadCategoryPhoto(cat.id, photoInput.files[0])
@@ -305,7 +284,6 @@ function categoryForm(cat) {
     el('div', { class: 'modal modal-wide' },
       el('h3', {}, `Categoria: ${cat.name}`),
       el('input', { class: 'form-input', id: 'cat-name', type: 'text', value: cat.name, placeholder: 'Nome da categoria' }),
-      el('input', { class: 'form-input', id: 'cat-checkout', type: 'url', value: cat.checkoutUrl || '', placeholder: 'Link do checkout (loja) — ex.: https://checkout.exemplo.com/cristao', autocomplete: 'off' }),
       el('div', { class: 'modal-section-label' }, 'Foto da categoria'),
       el('div', { style: 'display:flex;align-items:center;gap:12px' },
         el('img', { id: 'cat-photo-preview', class: 'track-art', src: artworkUrl(cat.id, 96), alt: '', style: 'width:56px;height:56px;border-radius:8px;display:block;object-fit:cover' }),
@@ -432,12 +410,11 @@ function categoryForm(cat) {
     const errEl = overlay.querySelector('#cat-error')
     errEl.textContent = ''
     const name = overlay.querySelector('#cat-name').value.trim()
-    const checkoutUrl = overlay.querySelector('#cat-checkout').value.trim()
     const saveBtn = overlay.querySelector('.btn-accent')
     // Desabilita durante o save: evita duplo submit (cliques repetidos).
     saveBtn.disabled = true
     try {
-      await endpoints.admin.updateCategory(cat.id, { name, checkoutUrl, songIds: assigned.songIds })
+      await endpoints.admin.updateCategory(cat.id, { name, songIds: assigned.songIds })
       overlay.remove()
       refreshApp()
     } catch (err) {

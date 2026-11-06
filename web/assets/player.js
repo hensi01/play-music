@@ -3,11 +3,34 @@
 // (the server 302s /api/stream to a signed CDN URL) — no retry ladder, no
 // local/transcode fallback: a failed stream simply stops playback.
 
-import { endpoints, streamUrl, artworkUrl } from './api.js'
+import { endpoints, streamUrl, artworkUrl, getToken } from './api.js'
+import { createListenTracker, sampleListen } from './listening.js'
 
 const audio = new Audio()
 audio.preload = 'auto'
 audio.volume = 0.8
+
+let listenTracker = null
+function tokenUserId() {
+  try {
+    const part = getToken().split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    return JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, '='))).uid || null
+  } catch { return null }
+}
+function startListening(song) {
+  const playId = globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+  listenTracker = createListenTracker(song.id, playId, tokenUserId())
+}
+function resetListenAnchor() { if (listenTracker) { listenTracker.wall = null; listenTracker.position = null } }
+function sampleListening() {
+  const duration = resolvedTrackDuration()
+  if (sampleListen(listenTracker, { position: audio.currentTime, wall: performance.now(), playing: !audio.paused, seeking: audio.seeking, rate: audio.playbackRate, duration })) {
+    if (listenTracker.userId && listenTracker.userId === tokenUserId()) endpoints.qualifiedListen(listenTracker.songId, listenTracker.playId).catch(() => undefined)
+  }
+}
+audio.addEventListener('playing', sampleListening)
+audio.addEventListener('seeking', resetListenAnchor)
+audio.addEventListener('seeked', resetListenAnchor)
 
 // True while the audio element is being handed a new track (src swap). The
 // browser fires a `pause` event during the media load algorithm, so those
@@ -59,6 +82,7 @@ function set(patch) {
 }
 
 audio.addEventListener('timeupdate', () => {
+  sampleListening()
   if (Number.isFinite(audio.currentTime) && audio.currentTime >= 0) {
     set({ progress: audio.currentTime })
   }
@@ -73,11 +97,13 @@ audio.addEventListener('loadedmetadata', updateDuration)
 audio.addEventListener('durationchange', updateDuration)
 audio.addEventListener('canplay', updateDuration)
 audio.addEventListener('play', () => {
+  if (!state.current) return
   switching = false
   set({ playing: true })
   setMediaSessionPlaybackState(true)
 })
 audio.addEventListener('pause', () => {
+  resetListenAnchor()
   if (switching) {
     // Consumed the pause fired by the media load algorithm during a src swap.
     // Do not let it flip the UI to paused; the next `play` event re-syncs.
@@ -89,6 +115,7 @@ audio.addEventListener('pause', () => {
 })
 audio.addEventListener('ended', () => {
   if (state.repeat) {
+    if (state.current) startListening(state.current)
     audio.currentTime = 0
     playAudio()
   } else {
@@ -179,6 +206,7 @@ function updateMediaSessionPosition() {
 }
 
 function loadAndPlay(song) {
+  startListening(song)
   switching = true
   state.pendingSeek = null
   set({ progress: 0, duration: resolveDuration(song.duration), playing: true })
@@ -201,6 +229,18 @@ export function playSong(song) {
   set({ queue: [song], currentIndex: 0, current: song, progress: 0 })
   loadAndPlay(song)
   updateMediaSession()
+}
+
+// Clear playback and listening state when the account changes.
+export function clearSession() {
+  listenTracker = null
+  switching = false
+  audio.pause()
+  audio.removeAttribute('src')
+  audio.load()
+  set({ queue: [], currentIndex: -1, current: null, playing: false, progress: 0, duration: 0, pendingSeek: null, fullScreen: false, shuffle: false, repeat: false })
+  setMediaSessionPlaybackState(false)
+  if ('mediaSession' in navigator) navigator.mediaSession.metadata = null
 }
 
 export function togglePlay() {

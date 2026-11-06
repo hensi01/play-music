@@ -97,7 +97,7 @@ func handleStoreError(w http.ResponseWriter, err error) {
 type ctxKey string
 
 const (
-	ctxUserID ctxKey = "user_id"
+	ctxUserID  ctxKey = "user_id"
 	ctxIsAdmin ctxKey = "is_admin"
 )
 
@@ -113,12 +113,5 @@ func isAdminOf(ctx context.Context) bool {
 	return v
 }
 
-// filterUser returns the user id for ACCESS FILTERS: "" (see everything) for
-// admins, the user id otherwise. Owner-scoped operations (playlists, likes,
-// history, queue) must keep using userIDOf(ctx).
-func (s *Server) filterUser(r *http.Request) string {
-	if isAdminOf(r.Context()) {
-		return ""
-	}
-	return userIDOf(r.Context())
-}
+// All authenticated users can access the free catalog. Ownership is checked separately.
+func (s *Server) filterUser(r *http.Request) string { return "" }

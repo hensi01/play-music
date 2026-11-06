@@ -41,10 +41,6 @@ type Config struct {
 	// Vazia = mesmo domínio do frontend.
 	FrontendBaseURL string
 
-	// StoreConfigJSON é a configuração da loja (preços/links de checkout),
-	// JSON injetado em loja.html (STORE_CONFIG). Vazia = sem preços/links.
-	StoreConfigJSON string
-
 	Port                 int
 	Address              string
 	LogLevel             string
@@ -196,7 +192,6 @@ func Load() *Config {
 		FfmpegPath: getenv("ND_FFMPEGPATH"),
 
 		FrontendBaseURL: getenv("ND_FRONTEND_BASEURL"),
-		StoreConfigJSON: getenv("ND_STORE_CONFIG_JSON"),
 
 		Port:                 getenvInt("ND_PORT", 4533),
 		Address:              getenv("ND_ADDRESS"),

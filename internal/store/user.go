@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"encoding/json"
+
+	"play-music/internal/model"
 )
 
 // ---------- likes ----------
@@ -47,4 +49,36 @@ func (s *Store) SavePlayQueue(ctx context.Context, userID string, data []byte) e
 		`INSERT INTO play_queue (user_id, data, updated_at) VALUES ($1, $2, now())
 		 ON CONFLICT (user_id) DO UPDATE SET data=EXCLUDED.data, updated_at=now()`, userID, data)
 	return err
+}
+
+// ApplySongLikes decorates songs exclusively with the requesting user's likes.
+func (s *Store) ApplySongLikes(ctx context.Context, userID string, songs []model.Song) error {
+	if len(songs) == 0 {
+		return nil
+	}
+	ids := make([]string, len(songs))
+	for i := range songs {
+		ids[i] = songs[i].ID
+		songs[i].Liked = false
+	}
+	rows, err := s.pool.Query(ctx, `SELECT entity_id FROM user_likes WHERE user_id=$1 AND entity_type='song' AND entity_id=ANY($2)`, userID, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	likes := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			return err
+		}
+		likes[id] = true
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	for i := range songs {
+		songs[i].Liked = likes[songs[i].ID]
+	}
+	return nil
 }

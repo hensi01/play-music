@@ -83,48 +83,6 @@ func TestStaticKnownAssets(t *testing.T) {
 	}
 }
 
-// The store config (ND_STORE_CONFIG_JSON) must be injected into /loja.html at
-// boot; an empty/invalid env var must yield "{}" (no prices/checkout links).
-func TestStaticLojaStoreConfigInjected(t *testing.T) {
-	raw := `{"categories":{"Cristão":{"price":"R$ 9,90","url":"https://checkout.exemplo.com/cristao"}},"packs":[]}`
-	s := &Server{cfg: &config.Config{StoreConfigJSON: raw}}
-	rec := httptest.NewRecorder()
-	s.handleStatic().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/loja.html", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	body := rec.Body.String()
-	if strings.Contains(body, "__STORE_CONFIG__") {
-		t.Fatalf("placeholder __STORE_CONFIG__ ainda presente no HTML")
-	}
-	if !strings.Contains(body, `https://checkout.exemplo.com/cristao`) {
-		t.Fatalf("config da loja não injetada no HTML: %q", body)
-	}
-}
-
-func TestStaticLojaStoreConfigEmpty(t *testing.T) {
-	s := testStaticServer() // StoreConfigJSON vazio -> "{}"
-	rec := httptest.NewRecorder()
-	s.handleStatic().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/loja.html", nil))
-	body := rec.Body.String()
-	if strings.Contains(body, "__STORE_CONFIG__") {
-		t.Fatalf("placeholder __STORE_CONFIG__ ainda presente no HTML")
-	}
-	if !strings.Contains(body, "const STORE_CONFIG = {}") {
-		t.Fatalf("STORE_CONFIG deveria cair para {}: %q", body)
-	}
-}
-
-func TestStaticLojaStoreConfigInvalidJSON(t *testing.T) {
-	s := &Server{cfg: &config.Config{StoreConfigJSON: "not-json"}}
-	rec := httptest.NewRecorder()
-	s.handleStatic().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/loja.html", nil))
-	body := rec.Body.String()
-	if !strings.Contains(body, "const STORE_CONFIG = {}") {
-		t.Fatalf("JSON inválido deveria cair para {}: %q", body)
-	}
-}
-
 // ND_FRONTEND_BASEURL must be injected into index.html as a JSON string
 // literal (empty -> ""), with quotes escaped safely (json.Marshal escapes
 // " as \" and < as \u003c, so a value cannot break out of the <script> tag).
@@ -147,5 +105,13 @@ func TestStaticIndexBaseURLEmpty(t *testing.T) {
 	s.handleStatic().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if !strings.Contains(rec.Body.String(), "baseURL: \"\"") {
 		t.Fatalf("baseURL vazio deveria ser \"\": %q", rec.Body.String())
+	}
+}
+func TestSettingsDoesNotExposeStorageCredentials(t *testing.T) {
+	s := &Server{cfg: &config.Config{MusicFolder: "s3://bucket?accessKey=private-user&secretKey=private-secret"}}
+	rec := httptest.NewRecorder()
+	s.handleSettings(rec, httptest.NewRequest("GET", "/api/settings", nil))
+	if strings.Contains(rec.Body.String(), "private-user") || strings.Contains(rec.Body.String(), "private-secret") || strings.Contains(rec.Body.String(), "musicFolder") {
+		t.Fatal("storage connection exposed in settings")
 	}
 }

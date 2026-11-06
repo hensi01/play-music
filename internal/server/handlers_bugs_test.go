@@ -18,7 +18,6 @@ import (
 	"play-music/internal/db"
 	"play-music/internal/metadata"
 	"play-music/internal/model"
-	"play-music/internal/phone"
 	"play-music/internal/scanner"
 	"play-music/internal/storage"
 	"play-music/internal/store"
@@ -243,39 +242,6 @@ func TestLikeExistingSongReturns204(t *testing.T) {
 	s.handleUnlike(rec, req)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("unlike existing: status = %d, want 204 (body %s)", rec.Code, rec.Body.String())
-	}
-}
-
-// B-NEW-2: /api/store/register used to silently ignore unknown category ids
-// (conceding nothing but also reporting success). It must now reject the
-// request with 400 listing the invalid ids, and must NOT create the user.
-func TestStoreRegisterRejectsUnknownCategories(t *testing.T) {
-	s, st := newTestServerStore(t)
-	p := "1" + randomDigits(9)
-	body := `{"phone":"` + p + `","categoryIds":["does-not-exist-1","also-invalid"]}`
-
-	rec := httptest.NewRecorder()
-	s.handleStoreRegister(rec,
-		httptest.NewRequest(http.MethodPost, "/api/store/register", strings.NewReader(body)))
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400 (body %s)", rec.Code, rec.Body.String())
-	}
-	var resp map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	invalid, ok := resp["invalidCategoryIds"].([]any)
-	if !ok || len(invalid) != 2 {
-		t.Fatalf("invalidCategoryIds missing/wrong: %v", resp)
-	}
-
-	// The request must not have created the user (validation runs first).
-	normalized, err := phone.Normalize(p) // "1"+9 digits: always valid
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := st.GetUserByPhone(context.Background(), normalized); err == nil {
-		t.Fatal("B-NEW-2: user was created even though the request was rejected")
 	}
 }
 

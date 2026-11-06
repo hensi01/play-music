@@ -277,6 +277,9 @@ func (s *Scanner) indexAudio(ctx context.Context, a audioObj, prev store.SongFil
 	if albumArtist == "" {
 		albumArtist = tags.Artist
 	}
+	if song.Artist == "" && albumArtist != "" {
+		song.Artist = albumArtist
+	}
 	artistID := ""
 	if albumArtist != "" {
 		artistID, err = s.store.GetOrCreateArtist(ctx, albumArtist)
@@ -288,7 +291,15 @@ func (s *Scanner) indexAudio(ctx context.Context, a audioObj, prev store.SongFil
 	if err != nil {
 		s.log.Error("album upsert", "name", song.Album, "err", err)
 	}
-	song.ArtistID = artistID
+	songArtistID := artistID
+	if tags.Artist != "" && tags.Artist != albumArtist {
+		if id, err := s.store.GetOrCreateArtist(ctx, tags.Artist); err == nil {
+			songArtistID = id
+		} else {
+			s.log.Error("song artist upsert", "err", err)
+		}
+	}
+	song.ArtistID = songArtistID
 	song.AlbumID = albumID
 
 	song.HasCover = tags.Picture != nil

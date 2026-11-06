@@ -13,7 +13,7 @@ const artistCols = `
 	a.id, a.name,
 	(SELECT count(*)::int FROM albums al WHERE al.artist_id=a.id) AS album_count,
 	(SELECT count(*)::int FROM songs s WHERE s.artist_id=a.id) AS song_count,
-	EXISTS(SELECT 1 FROM user_likes ul WHERE ul.entity_type='artist' AND ul.entity_id=a.id) AS liked`
+	FALSE AS liked`
 
 // GetOrCreateArtist resolves a name to an artist id, creating it if needed.
 func (s *Store) GetOrCreateArtist(ctx context.Context, name string) (string, error) {
@@ -37,7 +37,7 @@ func (s *Store) GetOrCreateArtist(ctx context.Context, name string) (string, err
 // GetArtists lists artists that have at least one accessible album.
 func (s *Store) GetArtists(ctx context.Context, userID string) ([]model.Artist, error) {
 	base := "SELECT " + artistCols + ` FROM artists a
-		WHERE EXISTS (SELECT 1 FROM albums al WHERE al.artist_id=a.id)`
+		WHERE EXISTS (SELECT 1 FROM songs s WHERE s.artist_id=a.id)`
 	var args []any
 	if s.HasAccessFilter(userID) {
 		base += " AND EXISTS (SELECT 1 FROM albums al2 WHERE al2.artist_id=a.id AND al2.id IN " + visibleAlbumSet("$1") + ")"

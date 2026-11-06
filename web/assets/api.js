@@ -26,11 +26,13 @@ export async function apiFetch(path, options = {}) {
   const res = await fetch(resolve(path), { ...options, headers })
 
   const refreshed = res.headers.get(AUTH_HEADER)
-  if (refreshed) setToken(refreshed)
+  if (refreshed && token === getToken()) setToken(refreshed)
 
   if (res.status === 401) {
-    setToken(null)
-    window.dispatchEvent(new Event('pm:unauthorized'))
+    if (token === getToken()) {
+      setToken(null)
+      window.dispatchEvent(new Event('pm:unauthorized'))
+    }
     let msg = 'Não autenticado'
     try {
       const body = await res.json()
@@ -81,6 +83,9 @@ export const api = {
 
 export const endpoints = {
   me: () => api.get('/api/me'),
+  register: (phone) => api.post('/api/register', { phone }),
+  recommendations: () => api.get('/api/recommendations'),
+  qualifiedListen: (songId, playId) => api.post('/api/me/listens', { songId, playId }),
   settings: () => api.get('/api/settings'),
   home: () => api.get('/api/home'),
   search: (q, type = 'all') => api.get(`/api/search?q=${encodeURIComponent(q)}&type=${encodeURIComponent(type)}`),
@@ -120,7 +125,7 @@ export const endpoints = {
     deleteUser: (id) => api.del(`/api/admin/users/${id}`),
     categories: () => api.get('/api/admin/categories'),
     category: (id) => api.get(`/api/admin/categories/${id}`),
-    createCategory: (name, checkoutUrl) => api.post('/api/admin/categories', { name, checkoutUrl: checkoutUrl || '' }),
+    createCategory: (name) => api.post('/api/admin/categories', { name }),
     updateCategory: (id, body) => api.put(`/api/admin/categories/${id}`, body),
     deleteCategory: (id) => api.del(`/api/admin/categories/${id}`),
     albums: () => api.get('/api/admin/albums'),

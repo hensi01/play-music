@@ -38,57 +38,33 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		AppName:     "Play Music",
 		Version:     version.Version,
 		LibraryName: "Play Music",
-		MusicFolder: s.cfg.MusicFolder,
 	})
 }
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	userID := userIDOf(ctx)
 	filter := s.filterUser(r)
-
 	var sections []model.HomeSection
-	if userID != "" && !isAdminOf(ctx) {
-		// Client: one section per granted category.
-		cats, err := s.store.GrantedCategoryIDs(ctx, userID)
-		if err != nil {
-			handleStoreError(w, err)
-			return
-		}
-		for _, cid := range cats {
-			cat, err := s.store.GetCategory(ctx, cid)
-			if err != nil {
-				continue
-			}
-			songs, err := s.store.CategorySongs(ctx, cid)
-			if err != nil {
-				handleStoreError(w, err)
-				return
-			}
-			if len(songs) > 0 {
-				sections = append(sections, model.HomeSection{Title: cat.Name, Songs: songs})
-			}
-		}
-	} else {
-		// Admin: recently added and most played songs.
-		recent, err := s.store.RecentlyAddedSongs(ctx, filter, 24)
-		if err != nil {
-			handleStoreError(w, err)
-			return
-		}
-		top, err := s.store.MostPlayedSongs(ctx, filter, 24)
-		if err != nil {
-			handleStoreError(w, err)
-			return
-		}
-		if len(recent) > 0 {
-			sections = append(sections, model.HomeSection{Title: "Adicionadas recentemente", Songs: recent})
-		}
-		if len(top) > 0 {
-			sections = append(sections, model.HomeSection{Title: "Mais ouvidas", Songs: top})
-		}
-
+	recent, err := s.store.RecentlyAddedSongs(ctx, filter, 24)
+	if err != nil {
+		handleStoreError(w, err)
+		return
 	}
+	top, err := s.store.MostPlayedSongs(ctx, filter, 24)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	if !s.addLikes(w, r, recent) || !s.addLikes(w, r, top) {
+		return
+	}
+	if len(recent) > 0 {
+		sections = append(sections, model.HomeSection{Title: "Adicionadas recentemente", Songs: recent})
+	}
+	if len(top) > 0 {
+		sections = append(sections, model.HomeSection{Title: "Mais ouvidas", Songs: top})
+	}
+
 	writeJSON(w, http.StatusOK, model.Home{Sections: sections, Genres: []model.Genre{}})
 }
 
@@ -141,21 +117,16 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if !s.addLikes(w, r, res.Songs) {
+		return
+	}
 	writeJSON(w, http.StatusOK, res)
 }
 
 // ---------- categories (client view) ----------
 
 func (s *Server) handleCategories(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	userID := userIDOf(ctx)
-	var cats []model.Category
-	var err error
-	if userID != "" && !isAdminOf(ctx) {
-		cats, err = s.store.UserCategories(ctx, userID)
-	} else {
-		cats, err = s.store.GetCategories(ctx)
-	}
+	cats, err := s.store.GetCategories(r.Context())
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -187,6 +158,9 @@ func (s *Server) handleCategory(w http.ResponseWriter, r *http.Request) {
 	songs, err := s.store.CategorySongs(ctx, id)
 	if err != nil {
 		handleStoreError(w, err)
+		return
+	}
+	if !s.addLikes(w, r, songs) {
 		return
 	}
 	cat.Songs = songs
@@ -226,6 +200,9 @@ func (s *Server) handleAlbum(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	if !s.addLikes(w, r, songs) {
+		return
+	}
 	album.Songs = songs
 	writeJSON(w, http.StatusOK, album)
 }
@@ -253,13 +230,12 @@ func (s *Server) handleArtist(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
-	if len(albums) == 0 {
-		writeError(w, http.StatusForbidden, "Sem permissão")
-		return
-	}
 	top, err := s.store.TopSongsByArtist(ctx, s.filterUser(r), artist.ID, 10)
 	if err != nil {
 		handleStoreError(w, err)
+		return
+	}
+	if !s.addLikes(w, r, top) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -282,6 +258,9 @@ func (s *Server) handleSongs(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	if !s.addLikes(w, r, songs) {
+		return
+	}
 	writeJSON(w, http.StatusOK, songs)
 }
 
@@ -302,7 +281,11 @@ func (s *Server) handleSong(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, song)
+	decorated := []model.Song{*song}
+	if !s.addLikes(w, r, decorated) {
+		return
+	}
+	writeJSON(w, http.StatusOK, decorated[0])
 }
 
 // ---------- playlists (owner-scoped) ----------
@@ -321,6 +304,16 @@ func (s *Server) handlePlaylist(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		handleStoreError(w, err)
 		return
+	}
+	songs := make([]model.Song, len(pl.Songs))
+	for i := range pl.Songs {
+		songs[i] = pl.Songs[i].Song
+	}
+	if !s.addLikes(w, r, songs) {
+		return
+	}
+	for i := range pl.Songs {
+		pl.Songs[i].Song = songs[i]
 	}
 	writeJSON(w, http.StatusOK, pl)
 }
@@ -427,6 +420,9 @@ func (s *Server) handleLiked(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	if !s.addLikes(w, r, songs) {
+		return
+	}
 	writeJSON(w, http.StatusOK, songs)
 }
 
@@ -481,6 +477,9 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	songs, err := s.store.HistorySongs(r.Context(), userIDOf(r.Context()), s.filterUser(r), 50)
 	if err != nil {
 		handleStoreError(w, err)
+		return
+	}
+	if !s.addLikes(w, r, songs) {
 		return
 	}
 	writeJSON(w, http.StatusOK, songs)
@@ -728,8 +727,7 @@ func (s *Server) handleAdminListCategories(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleAdminCreateCategory(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name        string `json:"name"`
-		CheckoutURL string `json:"checkoutUrl"`
+		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Requisição inválida")
@@ -740,7 +738,7 @@ func (s *Server) handleAdminCreateCategory(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "Nome da categoria é obrigatório")
 		return
 	}
-	cat, err := s.store.CreateCategory(r.Context(), name, strings.TrimSpace(req.CheckoutURL))
+	cat, err := s.store.CreateCategory(r.Context(), name)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -763,16 +761,16 @@ func (s *Server) handleAdminCategoryDetail(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleAdminUpdateCategory(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name        string   `json:"name"`
-		CheckoutURL *string  `json:"checkoutUrl"`
-		SongIDs     []string `json:"songIds"`
+		Name string `json:"name"`
+
+		SongIDs []string `json:"songIds"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Requisição inválida")
 		return
 	}
 	if err := s.store.UpdateCategory(r.Context(), r.PathValue("id"),
-		strings.TrimSpace(req.Name), req.CheckoutURL, req.SongIDs); err != nil {
+		strings.TrimSpace(req.Name), req.SongIDs); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -1128,4 +1126,12 @@ func (s *Server) handleAdminUploadSong(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, song)
+}
+
+func (s *Server) addLikes(w http.ResponseWriter, r *http.Request, songs []model.Song) bool {
+	if err := s.store.ApplySongLikes(r.Context(), userIDOf(r.Context()), songs); err != nil {
+		handleStoreError(w, err)
+		return false
+	}
+	return true
 }

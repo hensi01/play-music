@@ -17,11 +17,11 @@ type SongFileInfo struct {
 }
 
 const songCols = `
-	s.id, s.path, s.title, s.artist, COALESCE(s.artist_id, ''), s.album,
+	s.id, s.path, s.title, COALESCE(NULLIF(s.artist, ''), (SELECT ar.name FROM artists ar WHERE ar.id=s.artist_id), ''), COALESCE(s.artist_id, ''), s.album,
 	COALESCE(s.album_id, ''), s.year, s.genre, s.duration, s.format, s.bitrate,
 	s.sample_rate, s.track_number, s.disc_number, s.size, s.has_cover,
 	s.created_at, s.updated_at, s.play_count,
-	EXISTS(SELECT 1 FROM user_likes ul WHERE ul.entity_type='song' AND ul.entity_id=s.id) AS liked`
+	FALSE AS liked`
 
 func scanSong(row pgx.Row) (*model.Song, error) {
 	var s model.Song
@@ -68,13 +68,37 @@ func (s *Store) SongExists(ctx context.Context, id string) (bool, error) {
 
 // UpdateSongMeta overrides the title/artist of a song (admin upload form).
 func (s *Store) UpdateSongMeta(ctx context.Context, id, title, artist string) error {
-	_, err := s.pool.Exec(ctx, `
-		UPDATE songs SET
-			title=COALESCE(NULLIF($2, ''), title),
-			artist=COALESCE(NULLIF($3, ''), artist),
-			updated_at=now()
-		WHERE id=$1`, id, title, artist)
-	return err
+	return dbTx(ctx, s, func(q queryer) error {
+		var album, oldAlbumID string
+		var year int
+		if err := q.QueryRow(ctx, "SELECT album,year,COALESCE(album_id,'') FROM songs WHERE id=$1 FOR UPDATE", id).Scan(&album, &year, &oldAlbumID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if artist == "" {
+			_, err := q.Exec(ctx, "UPDATE songs SET title=COALESCE(NULLIF($2,''),title),updated_at=now() WHERE id=$1", id, title)
+			return err
+		}
+		var artistID, albumID string
+		if err := q.QueryRow(ctx, `INSERT INTO artists(id,name) VALUES($1,$2) ON CONFLICT(lower(name)) DO UPDATE SET name=artists.name RETURNING id`, newID(), artist).Scan(&artistID); err != nil {
+			return err
+		}
+		if album == "" {
+			album = "Desconhecido"
+		}
+		if err := q.QueryRow(ctx, `INSERT INTO albums(id,name,artist,artist_id,year,created_at,updated_at) VALUES($1,$2,$3,$4,$5,now(),now()) ON CONFLICT(lower(name),lower(artist)) DO UPDATE SET artist_id=EXCLUDED.artist_id,updated_at=now() RETURNING id`, newID(), album, artist, artistID, year).Scan(&albumID); err != nil {
+			return err
+		}
+		if oldAlbumID != "" && oldAlbumID != albumID {
+			if _, err := q.Exec(ctx, `INSERT INTO artworks(entity_type,entity_id,data,mime,updated_at) SELECT 'album',$2,data,mime,now() FROM artworks WHERE entity_type='album' AND entity_id=$1 ON CONFLICT(entity_type,entity_id) DO NOTHING`, oldAlbumID, albumID); err != nil {
+				return err
+			}
+		}
+		_, err := q.Exec(ctx, `UPDATE songs SET title=COALESCE(NULLIF($2,''),title),artist=$3,artist_id=$4,album_id=$5,updated_at=now() WHERE id=$1`, id, title, artist, artistID, albumID)
+		return err
+	})
 }
 
 // UpsertSong inserts or updates a song (matched by path) and returns its id.
