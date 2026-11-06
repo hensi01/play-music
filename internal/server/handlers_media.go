@@ -25,12 +25,8 @@ func (s *Server) handleArtwork(w http.ResponseWriter, r *http.Request) {
 	s.artwork.Serve(w, r, id, size)
 }
 
-// handleStream serves GET /api/stream/{id}?format=mp3. Non-admin users can
-// only stream songs from granted categories. The Bunny CDN is the ONLY
-// delivery path: native formats are 302-redirected to a signed CDN URL and
-// non-native formats (or an explicit format=mp3) are transcoded with ffmpeg.
-// There is no local proxy fallback — if the CDN is not configured the
-// endpoint answers 500.
+// handleStream serves authorized songs through time-limited storage URLs.
+// Other formats (or an explicit format=mp3) are transcoded with ffmpeg.
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	songID := parseID(r)
@@ -70,13 +66,12 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Native format: CDN-only — always redirect to the signed Bunny CDN URL.
-	// No probe, no ?nocdn=1, no local proxy. A missing/disabled CDN is a
-	// server error, not a silent fallback.
+	// Redirect native audio to the configured S3-compatible storage.
 	url, err := s.stream.StreamURL(ctx, song)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	w.Header().Set("Cache-Control", "private, no-store")
 	http.Redirect(w, r, url, http.StatusFound)
 }

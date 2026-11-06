@@ -14,8 +14,8 @@ Playlists são pessoais e só aceitam músicas liberadas.
 Este repositório contém:
 
 - **Backend em Go** (`main.go` + `internal/`) — API REST, varredura da biblioteca
-  (S3-compatible — Bunny Storage Zone), stream **somente via CDN Bunny** (302 para URL assinada; sem
-  fallback local), transcodificação de formatos não-nativos com ffmpeg,
+  (S3-compatible — MinIO), stream via URL temporária assinada e
+  transcodificação de formatos não-nativos com ffmpeg,
   artwork (inclui upload de foto por álbum), letras, autenticação JWT,
   usuários e controle de acesso por categoria.
 - **UI vanilla JS** (`web/assets/`) — embutida no binário via `go:embed` e
@@ -25,7 +25,7 @@ Este repositório contém:
 
 - Go 1.26+ (build) — ou Docker para rodar o container.
 - PostgreSQL (único banco suportado — **sem SQLite**).
-- Bucket S3-compatible (produção: **Bunny Storage Zone**) com a biblioteca de músicas.
+- Bucket S3-compatible (produção: **MinIO**) com a biblioteca de músicas.
 - ffmpeg (para transcodificação de formatos não-nativos).
 
 ## Configuração
@@ -38,12 +38,14 @@ preencha os valores reais):
 | --- | --- |
 | `ND_ADMINUSERNAME` / `ND_ADMINPASSWORD` | Credenciais do administrador (fonte única) |
 | `DATABASE_URL` | Conexão PostgreSQL (`postgres://...`) |
-| `ND_MUSICFOLDER` | URL da biblioteca: `s3://bucket?endpoint=...&accessKey=...&secretKey=...&secure=...` (fallback: `ND_S3_*` / `MINIO_*`). Produção usa **Bunny Storage Zone** (S3-compatible): `s3://files3?endpoint=jh-s3.storage.bunnycdn.com&accessKey=files3&secretKey=...&region=us-east-1&secure=true` |
-| `ND_CDN_ENABLED`, `ND_CDN_BASEURL`, `ND_CDN_TOKENAUTHKEY`, `ND_CDN_TOKENTTL`, `ND_CDN_ADVANCEDAUTH`, `ND_CDN_PATH_PREFIX` | Pull Zone Bunny CDN (token Basic MD5 ou Advanced HS256). **Única via de entrega** de áudio e karaokê: o servidor 302 para a URL assinada. Sem CDN configurado → erro 500 nos streams (não há fallback local/presigned) |
+| `ND_MUSICFOLDER` | URL S3 da biblioteca; quando presente, prevalece sobre `ND_S3_*` e `MINIO_*`. |
+| `ND_S3_ENDPOINT`, `ND_S3_ACCESSKEY`, `ND_S3_SECRETKEY`, `ND_S3_BUCKET`, `ND_S3_REGION`, `ND_S3_SECURE` | Conexão com o armazenamento S3 compatível; use HTTPS para a URL assinada ser acessível no navegador. |
+| `ND_STREAM_URL_TTL` | Validade das URLs assinadas do MinIO (padrão `1h`, máximo `168h`) |
 | `ND_REDIS_ENABLED`, `ND_REDIS_URL` | Cache opcional de artwork (fallback: disco) |
 | `ND_FRONTEND_BASEURL` | URL base da API vista pelo navegador (injetada em `index.html` → `window.__APP_CONFIG__.baseURL`). Vazia = mesmo domínio do frontend |
 | `ND_STORE_CONFIG_JSON` | Configuração da loja (`/loja.html`): JSON `{ categories: { '<nome>' : { price, url } }, packs: [...] }`. Injetada pelo backend no HTML. Vazia = sem preços/links de checkout |
 | `ND_SCANNER_SCHEDULE` | Agendamento da varredura (ex.: `@every 1h`) |
+| `ND_SCANNER_DELETE_MISSING` | Remove do catálogo arquivos ausentes após uma listagem completa; padrão `false` para proteger o catálogo ao trocar de bucket |
 | `ND_FFMPEGPATH` | Caminho do ffmpeg (opcional se estiver no PATH) |
 | `ND_PORT`, `ND_ADDRESS`, `ND_LOGLEVEL` | HTTP server |
 | `ND_TRANSCODINGCACHESIZE`, `ND_IMAGECACHESIZE` | Limites de cache em disco |
@@ -87,9 +89,8 @@ Rotas principais (todas exigem JWT, exceto `/auth/login`):
 - `GET /api/me/history`, `POST /api/me/history/{id}` (por usuário)
 - `GET|PUT /api/queue` (por usuário)
 - `GET /api/lyrics/{id}`, `GET /api/artwork/{id}?size=N`, `GET /api/stream/{id}?format=mp3`
-  (formatos nativos → 302 para a URL assinada do CDN Bunny; `format=mp3` ou
-  formato não-nativo → transcode via ffmpeg; sem CDN configurado → 500),
-  `GET /api/karaoke/stream/{id}` (sempre 302 para a URL assinada do CDN)
+  (formatos nativos → 302 para URL assinada do MinIO/S3; `format=mp3` ou
+  formato não-nativo → transcode via ffmpeg)
 
 Admin (JWT + `is_admin`):
 
@@ -110,10 +111,10 @@ main.go                 (inicialização, migrations, cron, HTTP server)
 internal/config/        (leitura do .env)
 internal/db/            (pgxpool + migrations SQL embutidas)
 internal/store/         (repositórios PostgreSQL + controle de acesso)
-internal/storage/       (cliente S3-compatible — Bunny Storage Zone)
+internal/storage/       (cliente S3-compatible — MinIO)
 internal/scanner/       (varredura do bucket: áudio, capas, .m3u)
 internal/metadata/      (tags via dhowden/tag + ffprobe)
-internal/stream/        (URLs assinadas Bunny CDN + transcode de formato)
+internal/stream/        (URLs assinadas MinIO/S3 + transcode de formato)
 internal/artwork/       (capas: resize + cache disco/Redis + upload de foto)
 internal/lyrics/        (letras embutidas + .lrc sincronizadas)
 internal/phone/         (normalização/máscara de telefone BR)

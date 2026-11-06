@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/minio/minio-go/v7"
+
 	"play-music/internal/config"
 	"play-music/internal/metadata"
 	"play-music/internal/model"
@@ -81,40 +83,12 @@ func (s *Scanner) Run(ctx context.Context) Result {
 		return res
 	}
 
-	// Pass 1: list the bucket and classify objects.
-	var audios []audioObj
-	// folder -> cover key
-	coverByFolder := map[string]string{}
-	var m3uFiles []string
-	seenPaths := map[string]bool{}
-
-	for obj := range s.st.List(ctx) {
-		if obj.Err != nil {
-			s.log.Error("list error", "err", obj.Err)
-			continue
-		}
-		if obj.Size == 0 {
-			continue
-		}
-		key := obj.Key
-		seenPaths[key] = true
-		lower := strings.ToLower(key)
-		ext := filepath.Ext(lower)
-		switch {
-		case audioExts[ext]:
-			audios = append(audios, audioObj{key, obj.Size, obj.LastModified})
-		// Apenas .m3u são playlists do app. .m3u8 são playlists HLS (segmentos
-		// de vídeo) — o bucket/Storage Zone pode conter conteúdo de outros
-		// projetos (ex.: videos/*/hls/*/playlist.m3u8) e importá-las polui o
-		// catálogo com playlists vazias ("master"/"playlist").
-		case strings.HasSuffix(lower, ".m3u"):
-			m3uFiles = append(m3uFiles, key)
-		case coverNames[filepath.Base(lower)]:
-			folder := folderOf(key)
-			if _, ok := coverByFolder[folder]; !ok {
-				coverByFolder[folder] = key
-			}
-		}
+	// Do not process an incomplete inventory or delete from it.
+	audios, coverByFolder, m3uFiles, seenPaths, err := collectInventory(ctx, s.st.List(ctx))
+	if err != nil {
+		s.log.Error("list error", "err", err)
+		res.Error = err
+		return res
 	}
 
 	// Pass 2: process audio files (changed ones) with a small worker pool.
@@ -147,15 +121,18 @@ func (s *Scanner) Run(ctx context.Context) Result {
 		s.log.Error("folder covers failed", "err", err)
 	}
 
-	// Pass 4: remove songs no longer present.
-	keep := make([]string, 0, len(seenPaths))
-	for k := range seenPaths {
-		keep = append(keep, k)
-	}
-	if deleted, err := s.store.DeleteMissing(ctx, keep); err != nil {
-		s.log.Error("delete missing failed", "err", err)
-	} else {
-		res.Deleted = int(deleted)
+	// Pruning is opt-in: switching buckets must not erase the existing catalog.
+	if s.cfg.ScannerDeleteMissing {
+		keep := make([]string, 0, len(seenPaths))
+		for k := range seenPaths {
+			keep = append(keep, k)
+		}
+		if deleted, err := s.store.DeleteMissing(ctx, keep); err != nil {
+			s.log.Error("delete missing failed", "err", err)
+			res.Error = err
+		} else {
+			res.Deleted = int(deleted)
+		}
 	}
 
 	// Pass 5: import playlists (owned by the admin user).
@@ -174,6 +151,40 @@ func (s *Scanner) Run(ctx context.Context) Result {
 		"added", res.Added, "updated", res.Updated, "skipped", res.Skipped,
 		"deleted", res.Deleted, "duration", time.Since(start).Round(time.Millisecond).String())
 	return res
+}
+
+// collectInventory rejects partial listings to protect catalog associations.
+func collectInventory(ctx context.Context, objects <-chan minio.ObjectInfo) ([]audioObj, map[string]string, []string, map[string]bool, error) {
+	var audios []audioObj
+	covers := map[string]string{}
+	var playlists []string
+	seen := map[string]bool{}
+	for obj := range objects {
+		if obj.Err != nil {
+			return nil, nil, nil, nil, obj.Err
+		}
+		if obj.Size == 0 {
+			continue
+		}
+		key := obj.Key
+		seen[key] = true
+		lower := strings.ToLower(key)
+		switch {
+		case audioExts[filepath.Ext(lower)]:
+			audios = append(audios, audioObj{key, obj.Size, obj.LastModified})
+		case strings.HasSuffix(lower, ".m3u"):
+			playlists = append(playlists, key)
+		case coverNames[filepath.Base(lower)]:
+			folder := folderOf(key)
+			if _, ok := covers[folder]; !ok {
+				covers[folder] = key
+			}
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	return audios, covers, playlists, seen, nil
 }
 
 type audioResult struct{ added, updated, skipped int }

@@ -2,19 +2,12 @@ package stream
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/md5"
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -60,91 +53,10 @@ func New(cfg *config.Config, st *storage.Storage, log *slog.Logger) (*Service, e
 	}, nil
 }
 
-// CDNURL builds the signed URL for an object key, honoring the Bunny CDN
-// token authentication mode configured in the environment.
-//
-// Important: the token must be hashed over the DECODED path while the URL
-// carries the percent-ENCODED path (the CDN decodes the request path before
-// validating the signature).
-func (s *Service) CDNURL(key string) string {
-	base := strings.TrimRight(s.cfg.CDNBaseURL, "/")
-	prefix := strings.Trim(s.cfg.CDNPathPrefix, "/")
-	var decodedPath string
-	switch {
-	case prefix == "":
-		decodedPath = "/" + key
-	default:
-		decodedPath = "/" + prefix + "/" + key
-	}
-	encodedPath := escapePath(decodedPath)
-	expires := strconv.FormatInt(time.Now().Add(s.cfg.CDNTokenTTL).Unix(), 10)
-	token := s.sign(decodedPath, expires)
-	return base + encodedPath + "?token=" + token + "&expires=" + expires
-}
-
-// sign computes the token over the DECODED path using the configured mode
-// (Basic MD5 or Advanced HMAC-SHA256).
-func (s *Service) sign(decodedPath, expires string) string {
-	if s.cfg.CDNAdvancedAuth {
-		// Advanced: token = "HS256-" + Base64URL(HMAC-SHA256(key, path+expires))
-		mac := hmac.New(sha256.New, []byte(s.cfg.CDNTokenKey))
-		mac.Write([]byte(decodedPath))
-		mac.Write([]byte(expires))
-		return "HS256-" + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	}
-	// Basic: token = Base64(MD5(key+path+expires)) with URL-safe alphabet.
-	h := md5.New()
-	h.Write([]byte(s.cfg.CDNTokenKey))
-	h.Write([]byte(decodedPath))
-	h.Write([]byte(expires))
-	tok := base64.StdEncoding.EncodeToString(h.Sum(nil))
-	tok = strings.ReplaceAll(tok, "+", "-")
-	tok = strings.ReplaceAll(tok, "/", "_")
-	return strings.TrimRight(tok, "=")
-}
-
-// escapePath percent-encodes each path segment (spaces and special chars).
-func escapePath(p string) string {
-	segments := strings.Split(p, "/")
-	for i, seg := range segments {
-		if seg != "" {
-			segments[i] = url.PathEscape(seg)
-		}
-	}
-	return strings.Join(segments, "/")
-}
-
-// requireCDN validates that the Bunny CDN is fully configured. With the
-// CDN-only policy there is no local/presigned fallback: streaming endpoints
-// fail fast when the CDN is not configured.
-func (s *Service) requireCDN() error {
-	switch {
-	case !s.cfg.CDNEnabled:
-		return fmt.Errorf("CDN não configurado (ND_CDN_ENABLED=false)")
-	case s.cfg.CDNBaseURL == "":
-		return fmt.Errorf("CDN não configurado (ND_CDN_BASEURL vazio)")
-	case s.cfg.CDNTokenKey == "":
-		return fmt.Errorf("CDN não configurado (ND_CDN_TOKENAUTHKEY vazio)")
-	}
-	return nil
-}
-
-// StreamURL returns the signed Bunny CDN URL for a song (redirect target).
-// It errors when the CDN is not configured — there is no fallback.
+// StreamURL returns a time-limited URL for the configured S3-compatible
+// storage. Access is checked by the handler before a URL is issued.
 func (s *Service) StreamURL(ctx context.Context, song *model.Song) (string, error) {
-	if err := s.requireCDN(); err != nil {
-		return "", err
-	}
-	return s.CDNURL(song.Path), nil
-}
-
-// SignedURL returns the signed Bunny CDN URL for an object key.
-// It errors when the CDN is not configured.
-func (s *Service) SignedURL(key string) (string, error) {
-	if err := s.requireCDN(); err != nil {
-		return "", err
-	}
-	return s.CDNURL(key), nil
+	return s.st.PresignedURL(ctx, song.Path, s.cfg.StreamURLTTL)
 }
 
 // Transcode writes an mp3 version of the song to w, using the on-disk cache

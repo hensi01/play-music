@@ -30,12 +30,7 @@ type Config struct {
 	RedisEnabled bool
 	RedisURL     string
 
-	CDNEnabled      bool
-	CDNBaseURL      string
-	CDNTokenKey     string
-	CDNTokenTTL     time.Duration
-	CDNAdvancedAuth bool
-	CDNPathPrefix   string
+	StreamURLTTL time.Duration
 
 	DatabaseURL string
 
@@ -50,10 +45,11 @@ type Config struct {
 	// JSON injetado em loja.html (STORE_CONFIG). Vazia = sem preços/links.
 	StoreConfigJSON string
 
-	Port           int
-	Address        string
-	LogLevel       string
-	ScannerSchedule string
+	Port                 int
+	Address              string
+	LogLevel             string
+	ScannerSchedule      string
+	ScannerDeleteMissing bool
 
 	TranscodingCacheSize int64
 	ImageCacheSize       int64
@@ -179,9 +175,9 @@ func Load() *Config {
 		s3.Secure = getenvBool("MINIO_USE_SSL", true)
 	}
 
-	ttl, _ := time.ParseDuration(getenv("ND_CDN_TOKENTTL"))
-	if ttl <= 0 {
-		ttl = 24 * time.Hour
+	ttl, _ := time.ParseDuration(getenv("ND_STREAM_URL_TTL"))
+	if ttl < time.Second || ttl > 7*24*time.Hour {
+		ttl = time.Hour
 	}
 
 	return &Config{
@@ -193,12 +189,7 @@ func Load() *Config {
 		RedisEnabled: getenvBool("ND_REDIS_ENABLED", false),
 		RedisURL:     getenv("ND_REDIS_URL"),
 
-		CDNEnabled:      getenvBool("ND_CDN_ENABLED", false),
-		CDNBaseURL:      getenv("ND_CDN_BASEURL"),
-		CDNTokenKey:     getenv("ND_CDN_TOKENAUTHKEY"),
-		CDNTokenTTL:     ttl,
-		CDNAdvancedAuth: getenvBool("ND_CDN_ADVANCEDAUTH", false),
-		CDNPathPrefix:   getenv("ND_CDN_PATH_PREFIX"),
+		StreamURLTTL: ttl,
 
 		DatabaseURL: getenv("DATABASE_URL"),
 
@@ -207,10 +198,11 @@ func Load() *Config {
 		FrontendBaseURL: getenv("ND_FRONTEND_BASEURL"),
 		StoreConfigJSON: getenv("ND_STORE_CONFIG_JSON"),
 
-		Port:             getenvInt("ND_PORT", 4533),
-		Address:          getenv("ND_ADDRESS"),
-		LogLevel:         getenv("ND_LOGLEVEL"),
-		ScannerSchedule:  getenv("ND_SCANNER_SCHEDULE"),
+		Port:                 getenvInt("ND_PORT", 4533),
+		Address:              getenv("ND_ADDRESS"),
+		LogLevel:             getenv("ND_LOGLEVEL"),
+		ScannerSchedule:      getenv("ND_SCANNER_SCHEDULE"),
+		ScannerDeleteMissing: getenvBool("ND_SCANNER_DELETE_MISSING", false),
 
 		TranscodingCacheSize: parseSize(getenv("ND_TRANSCODINGCACHESIZE")),
 		ImageCacheSize:       parseSize(getenv("ND_IMAGECACHESIZE")),
