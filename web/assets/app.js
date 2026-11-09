@@ -1301,6 +1301,22 @@ function sidebarContent(onNavigate) {
   )
 }
 
+// Compact navigation keeps the most used destinations one tap away on phones.
+function mobileNavigation() {
+  const { path } = parseHash()
+  const destinations = [
+    ['/', 'Início', 'home'], ['/search', 'Buscar', 'search'],
+    ['/library', 'Biblioteca', 'library'], ['/recommendations', 'Para você', 'heart'],
+  ]
+  return el('nav', { class: 'mobile-nav', 'aria-label': 'Navegação principal' },
+    ...destinations.map(([to, label, ic]) => el('button', {
+      class: `mobile-nav-item ${path === to ? 'active' : ''}`,
+      'aria-current': path === to ? 'page' : null,
+      onclick: () => navigate(to),
+    }, icon(ic), el('span', {}, label))),
+  )
+}
+
 // ---------- Bottom bar ----------
 
 // refs holds live element references so progress/volume updates can mutate
@@ -1567,6 +1583,7 @@ function render() {
       ),
     ),
     el('div', { id: 'player-bar' }),
+    mobileNavigation(),
     el('div', { id: 'player-full' }),
   )
 

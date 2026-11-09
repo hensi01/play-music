@@ -8,7 +8,7 @@
 //    the current build.
 //  - On activate, stale caches from previous versions are removed.
 
-const CACHE_NAME = 'pm-shell-v3'
+const CACHE_NAME = 'pm-shell-v4'
 const SHELL = ['./', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png']
 
 self.addEventListener('install', (event) => {
