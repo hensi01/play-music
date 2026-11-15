@@ -3,12 +3,11 @@
 // Safety rules:
 //  - NEVER intercept /api/* or /auth/* (stream redirects, JWTs, range
 //    requests). The audio element must always hit the network.
-//  - Only same-origin GET static assets are cached, with
-//    stale-while-revalidate, so a redeploy (new ?v= URLs) always fetches
-//    the current build.
+//  - JavaScript uses network-first; other static assets use
+//    stale-while-revalidate.
 //  - On activate, stale caches from previous versions are removed.
 
-const CACHE_NAME = 'pm-shell-v4'
+const CACHE_NAME = 'pm-shell-v5'
 const SHELL = ['./', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png']
 
 self.addEventListener('install', (event) => {
@@ -46,6 +45,21 @@ self.addEventListener('fetch', (event) => {
           return res
         })
         .catch(() => caches.match(url.href)),
+    )
+    return
+  }
+
+  // Imports do not inherit the entry point's version query. Prefer the network
+  // for JavaScript to avoid serving an outdated module alongside a newer app.
+  if (path.endsWith('.js')) {
+    event.respondWith(
+      fetch(req).then((res) => {
+        if (res.ok) {
+          const copy = res.clone()
+          return caches.open(CACHE_NAME).then((c) => c.put(req, copy)).catch(() => undefined).then(() => res)
+        }
+        return res
+      }).catch(() => caches.match(req)),
     )
     return
   }

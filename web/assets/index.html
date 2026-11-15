@@ -31,6 +31,11 @@
     <script src="./pwa.js?v=__ASSET_VERSION__"></script>
     <script>
       if ('serviceWorker' in navigator) {
+        // Refresh an existing installation when its updated worker takes control.
+        var hadController = !!navigator.serviceWorker.controller
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          if (hadController) window.location.reload()
+        })
         window.addEventListener('load', function () {
           navigator.serviceWorker.register('./sw.js?v=__ASSET_VERSION__').catch(function () {})
         })
