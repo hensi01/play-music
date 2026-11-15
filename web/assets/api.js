@@ -110,8 +110,11 @@ export const endpoints = {
   reorderPlaylistTracks: (id, from, to) => api.put(`/api/playlists/${id}/tracks`, { from, to }),
 
   liked: () => api.get('/api/me/liked'),
+  likedAlbums: () => api.get('/api/me/liked/albums'),
   like: (id) => api.put(`/api/me/liked/${id}`),
   unlike: (id) => api.del(`/api/me/liked/${id}`),
+  likeAlbum: (id) => api.put(`/api/me/liked/albums/${id}`),
+  unlikeAlbum: (id) => api.del(`/api/me/liked/albums/${id}`),
   history: () => api.get('/api/me/history'),
   registerPlay: (id) => api.post(`/api/me/history/${id}`),
 

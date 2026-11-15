@@ -84,7 +84,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, res)
 		return
 	}
-	// type=songs|categories|playlists|all (default all)
+	// type=songs|albums|categories|playlists|all (default all)
 	searchAll := typ == "" || typ == "all"
 	accessUser := s.filterUser(r) // "" for admin (sees everything)
 	var err error
@@ -106,16 +106,22 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Legacy album/artist results (unused by the current UI).
-	if searchAll {
+	if searchAll || typ == "albums" {
 		if res.Albums, err = s.store.SearchAlbums(ctx, accessUser, q, 20); err != nil {
 			handleStoreError(w, err)
 			return
 		}
+	}
+	// Artist results are included with the combined search for compatibility.
+	if searchAll {
 		if res.Artists, err = s.store.SearchArtists(ctx, accessUser, q, 20); err != nil {
 			handleStoreError(w, err)
 			return
 		}
+	}
+	if err = s.store.ApplyAlbumLikes(ctx, userID, res.Albums); err != nil {
+		handleStoreError(w, err)
+		return
 	}
 	if !s.addLikes(w, r, res.Songs) {
 		return
@@ -175,6 +181,10 @@ func (s *Server) handleAlbums(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	if err = s.store.ApplyAlbumLikes(r.Context(), userIDOf(r.Context()), albums); err != nil {
+		handleStoreError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, albums)
 }
 
@@ -204,6 +214,12 @@ func (s *Server) handleAlbum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	album.Songs = songs
+	liked := []model.Album{*album}
+	if err = s.store.ApplyAlbumLikes(ctx, userIDOf(ctx), liked); err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	album.Liked = liked[0].Liked
 	writeJSON(w, http.StatusOK, album)
 }
 
@@ -424,6 +440,51 @@ func (s *Server) handleLiked(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, songs)
+}
+
+func (s *Server) handleLikedAlbums(w http.ResponseWriter, r *http.Request) {
+	albums, err := s.store.LikedAlbums(r.Context(), userIDOf(r.Context()), s.filterUser(r), 100)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, albums)
+}
+
+func (s *Server) setAlbumLike(w http.ResponseWriter, r *http.Request, liked bool) {
+	ctx := r.Context()
+	id := parseID(r)
+	ok, err := s.store.AlbumExists(ctx, id)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, "Álbum não encontrado")
+		return
+	}
+	ok, err = s.store.CanAccessAlbum(ctx, s.filterUser(r), id)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusForbidden, "Sem permissão")
+		return
+	}
+	if err = s.store.SetLike(ctx, userIDOf(ctx), "album", id, liked); err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeNoContent(w)
+}
+
+func (s *Server) handleLikeAlbum(w http.ResponseWriter, r *http.Request) {
+	s.setAlbumLike(w, r, true)
+}
+
+func (s *Server) handleUnlikeAlbum(w http.ResponseWriter, r *http.Request) {
+	s.setAlbumLike(w, r, false)
 }
 
 func (s *Server) handleLike(w http.ResponseWriter, r *http.Request) {

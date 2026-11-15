@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -109,20 +110,57 @@ func (s *Store) MostPlayedAlbums(ctx context.Context, userID string, limit int) 
 	return collectAlbums(rows)
 }
 
-func (s *Store) LikedAlbums(ctx context.Context, userID string, limit int) ([]model.Album, error) {
-	base := "SELECT " + albumCols + albumJoin +
-		` JOIN user_likes ul ON ul.entity_type='album' AND ul.entity_id=a.id AND ul.user_id=$1`
-	args := []any{userID, limit}
-	if s.HasAccessFilter(userID) {
-		base += " WHERE a.id IN " + visibleAlbumSet("$1")
+func (s *Store) LikedAlbums(ctx context.Context, ownerUserID, accessUserID string, limit int) ([]model.Album, error) {
+	likedCols := strings.Replace(albumCols, "FALSE AS liked", "TRUE AS liked", 1)
+	base := "SELECT " + likedCols + albumJoin +
+		` JOIN user_likes ul ON ul.entity_type='album' AND ul.entity_id=a.id AND ul.user_id=$1 WHERE TRUE`
+	args := []any{ownerUserID}
+	limPh := "$2"
+	if s.HasAccessFilter(accessUserID) {
+		base += " AND a.id IN " + visibleAlbumSet("$2")
+		args = append(args, accessUserID)
+		limPh = "$3"
 	}
-	base += " GROUP BY a.id, ul.created_at ORDER BY ul.created_at DESC LIMIT $2"
+	base += " GROUP BY a.id, ul.created_at ORDER BY ul.created_at DESC LIMIT " + limPh
+	args = append(args, limit)
 	rows, err := s.pool.Query(ctx, base, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	return collectAlbums(rows)
+}
+
+// ApplyAlbumLikes decorates albums with only the requesting user's saved state.
+func (s *Store) ApplyAlbumLikes(ctx context.Context, userID string, albums []model.Album) error {
+	if len(albums) == 0 {
+		return nil
+	}
+	ids := make([]string, len(albums))
+	for i := range albums {
+		ids[i] = albums[i].ID
+		albums[i].Liked = false
+	}
+	rows, err := s.pool.Query(ctx, `SELECT entity_id FROM user_likes WHERE user_id=$1 AND entity_type='album' AND entity_id=ANY($2)`, userID, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	liked := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			return err
+		}
+		liked[id] = true
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	for i := range albums {
+		albums[i].Liked = liked[albums[i].ID]
+	}
+	return nil
 }
 
 func (s *Store) SearchAlbums(ctx context.Context, userID, q string, limit int) ([]model.Album, error) {
