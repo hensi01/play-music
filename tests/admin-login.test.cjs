@@ -48,7 +48,7 @@ function walk(node, predicate, found = []) {
   return found
 }
 
-test('o login comum mostra apenas telefone e link para a página administrativa', () => {
+test('o login comum mostra telefone sem links administrativos ou de documentação', () => {
   const f = fixture()
   vm.runInContext('renderLogin(root)', f.context)
   const inputs = walk(f.root, (node) => node.tag === 'input')
@@ -58,7 +58,8 @@ test('o login comum mostra apenas telefone e link para a página administrativa'
   assert.equal(inputs.length, 1)
   assert.equal(inputs[0].attrs.autocomplete, 'tel')
   assert.equal(buttons.some((button) => button.children.includes('Administrador')), false)
-  assert.equal(links.some((link) => link.attrs.href === '/admin/login'), true)
+  assert.equal(links.some((link) => link.attrs.href === '/admin/login'), false)
+  assert.equal(links.some((link) => link.attrs.href === '/docs/'), false)
 })
 
 test('a página administrativa tem formulário próprio e leva ao painel após login', async () => {

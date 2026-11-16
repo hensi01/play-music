@@ -86,7 +86,7 @@ test('player móvel e comandos Media Session mantêm faixa e posição sincroniz
   const installOverlay = page.locator('.pwa-overlay')
   await installOverlay.waitFor({ state: 'visible', timeout: 7000 })
   await installOverlay.getByRole('button', { name: 'Agora não' }).click()
-  await page.getByRole('link', { name: 'Acesso administrativo' }).click()
+  await page.goto('/admin/login')
   await page.getByPlaceholder('Usuário ou e-mail').fill('teste')
   await page.getByPlaceholder('Senha').fill('teste')
   await page.getByRole('button', { name: 'Entrar' }).click()

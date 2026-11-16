@@ -1691,8 +1691,6 @@ function renderLogin(container) {
           el('p', {}, loginMode === 'register' ? 'Crie sua conta gratuita' : 'Entre com seu telefone para ouvir'),
         ),
         form,
-        el('a', { class: 'login-admin-link', href: '/admin/login' }, 'Acesso administrativo'),
-        el('a', { href: '/docs/', class: 'settings-text' }, 'Documentação da API'),
       ),
     ),
   )
