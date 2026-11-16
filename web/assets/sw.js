@@ -7,8 +7,8 @@
 //    stale-while-revalidate.
 //  - On activate, stale caches from previous versions are removed.
 
-const CACHE_NAME = 'pm-shell-v18'
-const SHELL = ['./', './manifest.webmanifest', './icon-192.png?v=1.18.23', './icon-512.png?v=1.18.23', './apple-touch-icon.png?v=1.18.23', './favicon-16.png?v=1.18.23', './favicon-32.png?v=1.18.23', './notification-badge.svg?v=1.18.23']
+const CACHE_NAME = 'pm-shell-v19'
+const SHELL = ['./', './manifest.webmanifest', './icon-192.png?v=1.18.24', './icon-512.png?v=1.18.24', './apple-touch-icon.png?v=1.18.24', './favicon-16.png?v=1.18.24', './favicon-32.png?v=1.18.24', './notification-badge.svg?v=1.18.24']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -91,7 +91,7 @@ self.addEventListener('push', (event) => {
     const url = new URL(data.url || '/', self.location.origin)
     if ((url.protocol === 'https:' || url.origin === self.location.origin) && !url.username && !url.password) target = url.href
   } catch { /* open home */ }
-  event.waitUntil(self.registration.showNotification(title, { body, icon: '/icon-192.png?v=1.18.23', badge: '/notification-badge.svg?v=1.18.23', data: { url: target } }))
+  event.waitUntil(self.registration.showNotification(title, { body, icon: '/icon-192.png?v=1.18.24', badge: '/notification-badge.svg?v=1.18.24', data: { url: target } }))
 })
 
 self.addEventListener('notificationclick', (event) => {

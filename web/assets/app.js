@@ -1337,6 +1337,18 @@ function supportsPushNotifications() {
     'PushManager' in window && 'Notification' in window && !!navigator.locks
 }
 
+function pushVapidPublicKeyBytes(publicKey) {
+  const raw = atob(publicKey.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(publicKey.length / 4) * 4, '='))
+  return Uint8Array.from(raw, c => c.charCodeAt(0))
+}
+
+function pushSubscriptionUsesVapidKey(subscription, expectedKey) {
+  const currentKey = subscription?.options?.applicationServerKey
+  if (!currentKey) return true
+  const currentBytes = new Uint8Array(currentKey)
+  return currentBytes.length === expectedKey.length && currentBytes.every((byte, index) => byte === expectedKey[index])
+}
+
 // Serialize device operations so an opt-out always runs after an in-flight update.
 let pushOperation = Promise.resolve()
 function queuePushOperation(action) {
@@ -1524,13 +1536,21 @@ function notificationSettingsCard(required = false) {
         if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela e desative as notificações primeiro.')
         localStorage.setItem('pm_push_owner', userId)
         const reg = await pushServiceWorker()
+        const applicationServerKey = pushVapidPublicKeyBytes(config.publicKey)
         let sub = await reg.pushManager.getSubscription()
         ensurePushAccount(userId)
         if (!readPushState(userId).enabled) return
+        if (sub && !pushSubscriptionUsesVapidKey(sub, applicationServerKey)) {
+          const oldEndpoint = sub.endpoint
+          await sub.unsubscribe()
+          ensurePushAccount(userId)
+          sub = null
+          await removePushEndpoint(oldEndpoint)
+          ensurePushAccount(userId)
+        }
         if (!sub) {
-          const raw = atob(config.publicKey.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(config.publicKey.length / 4) * 4, '='))
           try {
-            sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, c => c.charCodeAt(0)) })
+            sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey })
           } catch (err) {
             pushServiceRegistrationFailed = true
             throw err

@@ -194,8 +194,12 @@ func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 		} `json:"data"`
 	}
 	status, err := s.relay(r.Context(), "POST", path+"/enrollment-ticket", "", sub, &ticket)
-	if err != nil || ticket.Data.Token == "" {
-		pushRelayError(w, status)
+	if err != nil {
+		pushRelayError(w, "enrollment_ticket", status, "request_failed")
+		return
+	}
+	if ticket.Data.Token == "" {
+		pushRelayError(w, "enrollment_ticket", status, "ticket_missing")
 		return
 	}
 	var result struct {
@@ -207,8 +211,12 @@ func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 		} `json:"data"`
 	}
 	status, err = s.relay(r.Context(), "POST", path+"/subscriptions", ticket.Data.Token, sub, &result)
-	if err != nil || result.Data.ID == "" || result.Data.Management.Token == "" {
-		pushRelayError(w, status)
+	if err != nil {
+		pushRelayError(w, "subscription", status, "request_failed")
+		return
+	}
+	if result.Data.ID == "" || result.Data.Management.Token == "" {
+		pushRelayError(w, "subscription", status, "subscription_credentials_missing")
 		return
 	}
 	tag, err := tx.Exec(r.Context(), `INSERT INTO push_subscriptions(endpoint,user_id,relay_id,management_token,subscription_data,active) VALUES($1,$2,$3,$4,$5,true) ON CONFLICT(endpoint) DO UPDATE SET relay_id=excluded.relay_id, management_token=excluded.management_token, subscription_data=excluded.subscription_data, active=true, updated_at=now() WHERE push_subscriptions.user_id=excluded.user_id OR push_subscriptions.user_id IS NULL`, sub.Endpoint, uid, result.Data.ID, result.Data.Management.Token, mustMarshalSubscription(sub))
@@ -224,7 +232,10 @@ func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 }
 func mustMarshalSubscription(sub pushSubscription) []byte { b, _ := json.Marshal(sub); return b }
 
-func pushRelayError(w http.ResponseWriter, status int) {
+func (s *Server) pushRelayError(w http.ResponseWriter, stage string, status int, reason string) {
+	if s.log != nil {
+		s.log.Warn("push relay request failed", "stage", stage, "upstream_status", status, "reason", reason)
+	}
 	if status == 429 {
 		writeError(w, 429, "Limite de inscrições ou de envios atingido; tente novamente mais tarde")
 		return
