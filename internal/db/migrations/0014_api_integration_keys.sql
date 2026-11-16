@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS api_integration_keys (
+ id TEXT PRIMARY KEY,
+ name TEXT NOT NULL,
+ key_hash BYTEA NOT NULL UNIQUE,
+ owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ last_used_at TIMESTAMPTZ,
+ revoked_at TIMESTAMPTZ
+);
