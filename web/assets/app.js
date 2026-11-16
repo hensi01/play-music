@@ -2132,7 +2132,7 @@ function fullscreenPlayer(refs) {
           'div',
           { style: 'display:flex;gap:8px' },
           downloadButton(current),
-          el('button', { class: 'icon-btn', 'aria-label': 'Fila', onclick: () => navigate('/queue') }, icon('list')),
+          el('button', { class: 'icon-btn', 'aria-label': 'Fila', onclick: () => { closeFullscreen(); navigate('/queue') } }, icon('list')),
         ),
     ),
     el(
