@@ -8,6 +8,10 @@ tela cheia, playlists, curtidas, histórico, busca e letras sincronizadas.
 usuário autenticado pode acessar todas as músicas e categorias. Playlists,
 curtidas, histórico e recomendações são individuais. A tela Para você usa
 escutas qualificadas e curtidas, com sugestões recentes quando não há histórico.
+O perfil considera até 5.000 escutas da própria conta, com maior peso para as
+recentes e retornos decrescentes para repetições. Artista, álbum, gênero e
+categorias aproximam músicas relacionadas; escutas dos últimos sete dias são
+temporariamente reduzidas nas sugestões para dar espaço a descobertas.
 
 Este repositório contém:
 
