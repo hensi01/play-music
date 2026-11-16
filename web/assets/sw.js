@@ -32,7 +32,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url)
   if (url.origin !== self.location.origin) return
   const path = url.pathname
-  if (path.startsWith('/api/') || path.startsWith('/auth/')) return
+  if (path.startsWith('/api/') || path.startsWith('/auth/') || path === '/docs' || path.startsWith('/docs/')) return
 
   // App shell: network-first for navigations (always fresh), stale-while-
   // revalidate for static assets.

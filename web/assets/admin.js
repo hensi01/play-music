@@ -1,6 +1,12 @@
 // Admin page: users, categories (songs per category) and song uploads.
 
-import { api, endpoints, artworkUrl, applyPhoneMask } from './api.js'
+import { api, endpoints, artworkUrl, applyPhoneMask, getToken } from './api.js'
+
+let pendingAPIKey = null
+let apiKeyCreating = false
+let apiKeyMessage = ''
+let apiKeySession = 0
+export function clearPendingAPIKey() { pendingAPIKey = null; apiKeyCreating = false; apiKeyMessage = ''; apiKeySession++ }
 
 let adminTab = 'users'
 let adminState = { users: [], categories: [], songs: [], songCategoryIds: {}, categoryNames: {} }
@@ -26,6 +32,7 @@ export function renderAdmin() {
     el('button', { class: `tab-btn ${adminTab === 'songs' ? 'active' : ''}`, onclick: () => { adminTab = 'songs'; refresh() } }, 'Músicas'),
     el('button', { class: `tab-btn ${adminTab === 'notifications' ? 'active' : ''}`, onclick: () => { adminTab = 'notifications'; refresh() } }, 'Notificações'),
     el('button', { class: `tab-btn ${adminTab === 'ads' ? 'active' : ''}`, onclick: () => { adminTab = 'ads'; refresh() } }, 'Anúncios'),
+    el('button', { class: `tab-btn ${adminTab === 'api-keys' ? 'active' : ''}`, onclick: () => { adminTab = 'api-keys'; refresh() } }, 'Chaves API'),
   )
   page.append(el('h1', { class: 'page-title' }, 'Administração'), tabs)
 
@@ -40,6 +47,7 @@ export function renderAdmin() {
     else if (adminTab === 'songs') await renderSongs(wrap, seq)
     else if (adminTab === 'notifications') renderNotifications(wrap)
     else if (adminTab === 'ads') await renderAds(wrap, seq)
+    else if (adminTab === 'api-keys') renderAPIKeys(wrap)
   }
 
   refresh()
@@ -88,6 +96,62 @@ async function renderAds(wrap, seq) {
   const saveFrequency = el('button', { class: 'btn-secondary', onclick: async () => { try { await save(); status.textContent = 'Frequência salva.' } catch (err) { status.textContent = err.message } } }, 'Salvar frequência')
   wrap.append(el('h2', {}, 'Anúncios entre músicas'), el('p', {}, 'Quantidade de músicas entre anúncios:'), frequency, saveFrequency, list, el('h3', {}, 'Adicionar ou editar anúncio'), name, embed, el('p', {}, 'Duração em segundos:'), duration, el('label', {}, active, ' Ativo'), submit, status)
   draw()
+}
+
+function apiKeyTokenUser(token) {
+  try {
+    const part = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    return JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, '='))).uid || null
+  } catch { return null }
+}
+
+function renderAPIKeys(wrap) {
+  const name = el('input', { class: 'form-input', placeholder: 'Nome da integração', maxlength: '80', required: true })
+  const status = el('p', { role: 'status' }, apiKeyMessage)
+  const secret = el('div', { class: 'settings-card' })
+  const list = el('div', { class: 'admin-table' })
+  const create = el('button', { class: 'btn-accent', type: 'submit' }, 'Criar chave')
+  async function refreshKeys() {
+    try {
+      const keys = await api.get('/api/admin/api-keys')
+      list.innerHTML = ''
+      if (!keys.length) list.append(el('p', {}, 'Nenhuma chave ativa.'))
+      for (const key of keys) list.append(el('div', { class: 'admin-row' },
+        el('div', { class: 'admin-row-main' }, el('p', { class: 'admin-row-title' }, key.name), el('p', { class: 'admin-row-sub' }, 'Criada em ' + new Date(key.createdAt).toLocaleString())),
+        el('button', { type: 'button', class: 'btn-secondary', onclick: async () => {
+          if (!confirm('Revogar esta chave? A integração deixará de funcionar.')) return
+          try { await api.del(`/api/admin/api-keys/${encodeURIComponent(key.id)}`); await refreshKeys() } catch (error) { status.textContent = error.message }
+        } }, 'Revogar')))
+    } catch (error) { status.textContent = error.message }
+  }
+  function showPendingKey() {
+    secret.innerHTML = ''
+    create.disabled = !!pendingAPIKey || apiKeyCreating
+    if (!pendingAPIKey) { secret.hidden = true; return }
+    secret.hidden = false
+    const value = el('input', { class: 'form-input', readonly: true, value: pendingAPIKey, 'aria-label': 'Chave de API' })
+    secret.append(el('strong', {}, 'Copie sua chave agora. Ela não será exibida após fechar esta sessão.'), value,
+      el('button', { type: 'button', class: 'btn-secondary', onclick: async () => { try { await navigator.clipboard.writeText(pendingAPIKey); status.textContent = 'Chave copiada.' } catch { status.textContent = 'Selecione e copie a chave acima.' } } }, 'Copiar chave'),
+      el('button', { type: 'button', class: 'btn-secondary', onclick: () => { pendingAPIKey = null; showPendingKey() } }, 'Já guardei a chave'))
+  }
+  const form = el('form', { onsubmit: async (event) => {
+    event.preventDefault(); if (pendingAPIKey || apiKeyCreating) return
+    apiKeyCreating = true; create.disabled = true; apiKeyMessage = ''; status.textContent = ''
+    const session = apiKeySession
+    const owner = apiKeyTokenUser(getToken())
+    try {
+      const result = await api.post('/api/admin/api-keys', { name: name.value })
+      if (session !== apiKeySession || !owner || apiKeyTokenUser(getToken()) !== owner) return
+      pendingAPIKey = result.key
+      showPendingKey()
+      refreshApp()
+      name.value = ''; await refreshKeys()
+    } catch (error) { if (session === apiKeySession) { apiKeyMessage = error.message || 'Não foi possível criar a chave.'; status.textContent = apiKeyMessage } }
+    finally { if (session === apiKeySession) { apiKeyCreating = false; create.disabled = !!pendingAPIKey; refreshApp() } }
+  } }, el('h2', {}, 'Chaves de API'), el('p', { class: 'settings-text' }, 'Cada chave concede acesso às operações administrativas, inclusive criação e revogação de chaves. Guarde-a em um local seguro.'), name, create, status)
+  showPendingKey()
+  wrap.append(form, secret, el('h2', {}, 'Chaves ativas'), list, el('a', { href: '/docs/', target: '_blank', rel: 'noopener noreferrer' }, 'Abrir documentação da API'))
+  void refreshKeys()
 }
 
 function renderNotifications(wrap) {

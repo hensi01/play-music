@@ -159,3 +159,22 @@ Administradores podem programar o envio para uma data e hora local e cancelar
 agendamentos pendentes. O servidor armazena o horário em UTC e retoma os
 agendamentos pendentes após reinício. Um envio interrompido ou com resposta
 incerta é marcado para revisão; não é repetido automaticamente.
+
+## Documentação e chaves de API
+
+A documentação interativa pública está disponível em `/docs/`; o contrato OpenAPI
+está em `/docs/openapi.json`. A documentação não precisa de autenticação para ser
+consultada. As rotas de usuário utilizam o JWT emitido em `/auth/login`; as rotas
+administrativas aceitam esse JWT ou o cabeçalho `X-API-Key`.
+
+No painel **Administração → Chaves API**, um administrador autenticado pode criar
+ou revogar chaves. O segredo é exibido somente no momento da criação; armazene-o
+com segurança. Cada chave tem acesso a **todas as rotas administrativas**, inclusive
+criar e revogar outras chaves. Ao revogar uma chave comprometida, revise e revogue
+separadamente quaisquer outras chaves que possam ter sido criadas por ela.
+
+Uma chave deixa de funcionar se for revogada, se seu proprietário deixar de ser
+administrador, se a conta for removida ou se não houver uma inscrição ativa de
+notificações para essa conta. Ela não autentica as rotas de usuário. Para testar
+no Swagger, clique em **Authorize** e informe a chave no campo `X-API-Key`.
+As rotas públicas de login e cadastro continuam públicas.

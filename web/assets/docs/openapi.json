@@ -1,0 +1,4145 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Play Music API",
+    "version": "1.0.0",
+    "description": "Referência interativa da API Play Music. As rotas administrativas aceitam chave de integração ou JWT de administrador. A conta proprietária precisa ter notificações ativas. As rotas de usuário utilizam JWT."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Autenticação",
+      "description": "Login e criação de conta."
+    },
+    {
+      "name": "Catálogo e conta",
+      "description": "Biblioteca, mídia e dados da conta autenticada."
+    },
+    {
+      "name": "Notificações",
+      "description": "Permissão e inscrição do dispositivo."
+    },
+    {
+      "name": "Administração",
+      "description": "Operações disponíveis para administradores."
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "UserJWT": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-ND-Authorization",
+        "description": "Informe Bearer seguido do token de login."
+      },
+      "AdminJWT": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-ND-Authorization",
+        "description": "Informe Bearer seguido do token de administrador."
+      },
+      "ApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Chave de integração com acesso administrativo. Guarde como uma senha. Se a chave for inválida, revogada, o dono não for mais administrador ou não tiver notificações ativas, a API retorna 401."
+      }
+    },
+    "schemas": {
+      "Song": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "artist": {
+            "type": "string"
+          },
+          "artistId": {
+            "type": "string"
+          },
+          "album": {
+            "type": "string"
+          },
+          "albumId": {
+            "type": "string"
+          },
+          "year": {
+            "type": "integer"
+          },
+          "genre": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "number"
+          },
+          "format": {
+            "type": "string"
+          },
+          "bitrate": {
+            "type": "integer"
+          },
+          "sampleRate": {
+            "type": "integer"
+          },
+          "trackNumber": {
+            "type": "integer"
+          },
+          "discNumber": {
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "playCount": {
+            "type": "integer"
+          },
+          "liked": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Album": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "artist": {
+            "type": "string"
+          },
+          "artistId": {
+            "type": "string"
+          },
+          "year": {
+            "type": "integer"
+          },
+          "songCount": {
+            "type": "integer"
+          },
+          "duration": {
+            "type": "number"
+          },
+          "liked": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "songs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Song"
+            }
+          }
+        }
+      },
+      "Artist": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "albumCount": {
+            "type": "integer"
+          },
+          "songCount": {
+            "type": "integer"
+          },
+          "liked": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PlaylistEntry": {
+        "type": "object",
+        "properties": {
+          "entryId": {
+            "type": "string"
+          },
+          "song": {
+            "$ref": "#/components/schemas/Song"
+          }
+        }
+      },
+      "Playlist": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "songCount": {
+            "type": "integer"
+          },
+          "duration": {
+            "type": "number"
+          },
+          "songs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaylistEntry"
+            }
+          }
+        }
+      },
+      "SearchResults": {
+        "type": "object",
+        "properties": {
+          "songs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Song"
+            }
+          },
+          "albums": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Album"
+            }
+          },
+          "artists": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Artist"
+            }
+          },
+          "playlists": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Playlist"
+            }
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Category"
+            }
+          }
+        }
+      },
+      "HomeSection": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "songs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Song"
+            }
+          },
+          "albums": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Album"
+            }
+          }
+        }
+      },
+      "Genre": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "songCount": {
+            "type": "integer"
+          }
+        }
+      },
+      "Home": {
+        "type": "object",
+        "properties": {
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HomeSection"
+            }
+          },
+          "genres": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Genre"
+            }
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isAdmin": {
+            "type": "boolean"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Category"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "songCount": {
+            "type": "integer"
+          },
+          "songs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Song"
+            }
+          }
+        }
+      },
+      "Settings": {
+        "type": "object",
+        "properties": {
+          "appName": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "libraryName": {
+            "type": "string"
+          }
+        }
+      },
+      "PushCampaign": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "scheduledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "sending",
+              "completed",
+              "partial",
+              "unknown",
+              "cancelled"
+            ]
+          },
+          "selected": {
+            "type": "integer"
+          },
+          "queued": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "APIKeyInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastUsedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "Recommendations": {
+        "type": "object",
+        "properties": {
+          "songs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Song"
+            }
+          },
+          "artists": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "songId": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "tastes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "personalized": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ArtistDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "albumCount": {
+            "type": "integer"
+          },
+          "songCount": {
+            "type": "integer"
+          },
+          "liked": {
+            "type": "boolean"
+          },
+          "topSongs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Song"
+            }
+          },
+          "albums": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Album"
+            }
+          }
+        }
+      },
+      "AdminSongs": {
+        "type": "object",
+        "properties": {
+          "songs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Song"
+            }
+          },
+          "categoryIds": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "categoryList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Category"
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "summary": "Entrar na conta",
+        "tags": [
+          "Autenticação"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "isAdmin": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "post_auth_login",
+        "description": "Para administrador envie username e password; para cliente envie phone. O token retornado é usado como Bearer no cabeçalho X-ND-Authorization."
+      }
+    },
+    "/api/register": {
+      "post": {
+        "summary": "Criar conta",
+        "tags": [
+          "Autenticação"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "isAdmin": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "phone"
+                ]
+              }
+            }
+          }
+        },
+        "operationId": "post_api_register",
+        "description": "Criar conta."
+      }
+    },
+    "/api/push/status": {
+      "post": {
+        "summary": "Verificar inscrição do dispositivo",
+        "tags": [
+          "Notificações"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "active": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "endpoint": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "endpoint"
+                ]
+              }
+            }
+          }
+        },
+        "operationId": "post_api_push_status",
+        "description": "Verificar inscrição do dispositivo."
+      }
+    },
+    "/api/push/config": {
+      "get": {
+        "summary": "Configuração pública de notificações",
+        "tags": [
+          "Notificações"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "publicKey": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "operationId": "get_api_push_config",
+        "description": "Configuração pública de notificações."
+      }
+    },
+    "/api/push/subscriptions": {
+      "post": {
+        "summary": "Gerenciar inscrição do dispositivo",
+        "tags": [
+          "Notificações"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "endpoint",
+                  "keys"
+                ],
+                "properties": {
+                  "endpoint": {
+                    "type": "string"
+                  },
+                  "expirationTime": {
+                    "type": "integer",
+                    "nullable": true
+                  },
+                  "keys": {
+                    "type": "object",
+                    "properties": {
+                      "p256dh": {
+                        "type": "string"
+                      },
+                      "auth": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "p256dh",
+                      "auth"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "post_api_push_subscriptions",
+        "description": "Gerenciar inscrição do dispositivo."
+      },
+      "delete": {
+        "summary": "Gerenciar inscrição do dispositivo",
+        "tags": [
+          "Notificações"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "endpoint": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "endpoint"
+                ]
+              }
+            }
+          }
+        },
+        "operationId": "delete_api_push_subscriptions",
+        "description": "Gerenciar inscrição do dispositivo."
+      }
+    },
+    "/api/admin/notifications": {
+      "post": {
+        "summary": "Gerenciar notificações",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "201": {
+            "description": "Criado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushCampaign"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "scheduledAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "title",
+                  "body"
+                ]
+              }
+            }
+          }
+        },
+        "operationId": "post_api_admin_notifications",
+        "description": "Gerenciar notificações."
+      },
+      "get": {
+        "summary": "Gerenciar notificações",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PushCampaign"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "operationId": "get_api_admin_notifications",
+        "description": "Gerenciar notificações."
+      }
+    },
+    "/api/admin/notifications/{id}": {
+      "delete": {
+        "summary": "Cancelar notificação agendada",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "delete_api_admin_notifications_id",
+        "description": "Cancelar notificação agendada."
+      }
+    },
+    "/api/me": {
+      "get": {
+        "summary": "Dados da conta",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "operationId": "get_api_me",
+        "description": "Dados da conta."
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "summary": "Configurações do servidor",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "operationId": "get_api_settings",
+        "description": "Configurações do servidor."
+      }
+    },
+    "/api/recommendations": {
+      "get": {
+        "summary": "Recomendações",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recommendations"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "operationId": "get_api_recommendations",
+        "description": "Recomendações."
+      }
+    },
+    "/api/me/listens": {
+      "post": {
+        "summary": "Registrar escuta",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "songId": {
+                    "type": "string"
+                  },
+                  "playId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "songId",
+                  "playId"
+                ]
+              }
+            }
+          }
+        },
+        "operationId": "post_api_me_listens",
+        "description": "Registrar escuta."
+      }
+    },
+    "/api/home": {
+      "get": {
+        "summary": "Página inicial",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Home"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "operationId": "get_api_home",
+        "description": "Página inicial."
+      }
+    },
+    "/api/search": {
+      "get": {
+        "summary": "Buscar no catálogo",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResults"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "get_api_search",
+        "description": "Buscar no catálogo."
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "summary": "Categorias",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Category"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "operationId": "get_api_categories",
+        "description": "Categorias."
+      }
+    },
+    "/api/categories/{id}": {
+      "get": {
+        "summary": "Detalhes da categoria",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Category"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "get_api_categories_id",
+        "description": "Detalhes da categoria."
+      }
+    },
+    "/api/albums": {
+      "get": {
+        "summary": "Álbuns",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Album"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "operationId": "get_api_albums",
+        "description": "Álbuns."
+      }
+    },
+    "/api/albums/{id}": {
+      "get": {
+        "summary": "Detalhes do álbum",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Album"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "get_api_albums_id",
+        "description": "Detalhes do álbum."
+      }
+    },
+    "/api/artists": {
+      "get": {
+        "summary": "Artistas",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Artist"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "operationId": "get_api_artists",
+        "description": "Artistas."
+      }
+    },
+    "/api/artists/{id}": {
+      "get": {
+        "summary": "Detalhes do artista",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtistDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "get_api_artists_id",
+        "description": "Detalhes do artista."
+      }
+    },
+    "/api/songs": {
+      "get": {
+        "summary": "Músicas",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Song"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "operationId": "get_api_songs",
+        "description": "Músicas."
+      }
+    },
+    "/api/songs/{id}": {
+      "get": {
+        "summary": "Detalhes da música",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Song"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "get_api_songs_id",
+        "description": "Detalhes da música."
+      }
+    },
+    "/api/playlists": {
+      "get": {
+        "summary": "Playlists",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Playlist"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "operationId": "get_api_playlists",
+        "description": "Playlists."
+      },
+      "post": {
+        "summary": "Playlists",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "201": {
+            "description": "Criado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Playlist"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "comment": {
+                    "type": "string"
+                  },
+                  "songIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "operationId": "post_api_playlists",
+        "description": "Playlists."
+      }
+    },
+    "/api/playlists/{id}": {
+      "get": {
+        "summary": "Playlist",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Playlist"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "get_api_playlists_id",
+        "description": "Playlist."
+      },
+      "put": {
+        "summary": "Playlist",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "comment": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "put_api_playlists_id",
+        "description": "Playlist."
+      },
+      "delete": {
+        "summary": "Playlist",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "delete_api_playlists_id",
+        "description": "Playlist."
+      }
+    },
+    "/api/playlists/{id}/tracks": {
+      "post": {
+        "summary": "Faixas da playlist",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "songIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "songIds"
+                ]
+              }
+            }
+          }
+        },
+        "operationId": "post_api_playlists_id_tracks",
+        "description": "Faixas da playlist."
+      },
+      "put": {
+        "summary": "Faixas da playlist",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "integer"
+                  },
+                  "to": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "from",
+                  "to"
+                ]
+              }
+            }
+          }
+        },
+        "operationId": "put_api_playlists_id_tracks",
+        "description": "Faixas da playlist."
+      }
+    },
+    "/api/playlists/{id}/tracks/{entryId}": {
+      "delete": {
+        "summary": "Faixa da playlist",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "delete_api_playlists_id_tracks_entryId",
+        "description": "Faixa da playlist."
+      }
+    },
+    "/api/me/liked": {
+      "get": {
+        "summary": "Curtidas",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Song"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "operationId": "get_api_me_liked",
+        "description": "Curtidas."
+      }
+    },
+    "/api/me/liked/{id}": {
+      "put": {
+        "summary": "Curtida",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "put_api_me_liked_id",
+        "description": "Curtida."
+      },
+      "delete": {
+        "summary": "Curtida",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "delete_api_me_liked_id",
+        "description": "Curtida."
+      }
+    },
+    "/api/me/history": {
+      "get": {
+        "summary": "Histórico",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Song"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "operationId": "get_api_me_history",
+        "description": "Histórico."
+      }
+    },
+    "/api/me/history/{id}": {
+      "post": {
+        "summary": "Histórico",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "post_api_me_history_id",
+        "description": "Histórico."
+      }
+    },
+    "/api/queue": {
+      "get": {
+        "summary": "Fila de reprodução",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "JSON armazenado pelo usuário; sua estrutura não é validada pelo servidor."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "operationId": "get_api_queue",
+        "description": "Fila de reprodução."
+      },
+      "put": {
+        "summary": "Fila de reprodução",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "description": "Estado da fila em JSON."
+              }
+            }
+          }
+        },
+        "operationId": "put_api_queue",
+        "description": "Fila de reprodução."
+      }
+    },
+    "/api/artwork/{id}": {
+      "get": {
+        "summary": "Imagem de capa",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 300
+            },
+            "description": "Tamanho aproximado da imagem."
+          }
+        ],
+        "operationId": "get_api_artwork_id",
+        "description": "Imagem de capa."
+      }
+    },
+    "/api/stream/{id}": {
+      "get": {
+        "summary": "Reproduzir música",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "audio/mpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "302": {
+            "description": "Redirecionamento para URL assinada do armazenamento"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Formato opcional."
+          }
+        ],
+        "description": "Áudio nativo retorna redirecionamento para o armazenamento; formatos não nativos ou format=mp3 podem ser transcodificados.",
+        "operationId": "get_api_stream_id"
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "summary": "Administrar usuários",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/User"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "operationId": "get_api_admin_users",
+        "description": "Administrar usuários."
+      },
+      "post": {
+        "summary": "Administrar usuários",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "201": {
+            "description": "Criado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "isAdmin": {
+                    "type": "boolean"
+                  },
+                  "categoryIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "post_api_admin_users",
+        "description": "Administrar usuários."
+      }
+    },
+    "/api/admin/users/{id}": {
+      "put": {
+        "summary": "Administrar usuário",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "isAdmin": {
+                    "type": "boolean"
+                  },
+                  "categoryIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "put_api_admin_users_id",
+        "description": "Administrar usuário."
+      },
+      "delete": {
+        "summary": "Administrar usuário",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "delete_api_admin_users_id",
+        "description": "Administrar usuário."
+      }
+    },
+    "/api/admin/categories": {
+      "get": {
+        "summary": "Administrar categorias",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Category"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "operationId": "get_api_admin_categories",
+        "description": "Administrar categorias."
+      },
+      "post": {
+        "summary": "Administrar categorias",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "201": {
+            "description": "Criado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Category"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "operationId": "post_api_admin_categories",
+        "description": "Administrar categorias."
+      }
+    },
+    "/api/admin/categories/{id}": {
+      "get": {
+        "summary": "Administrar categoria",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "songIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "get_api_admin_categories_id",
+        "description": "Administrar categoria."
+      },
+      "put": {
+        "summary": "Administrar categoria",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "songIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "put_api_admin_categories_id",
+        "description": "Administrar categoria."
+      },
+      "delete": {
+        "summary": "Administrar categoria",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "delete_api_admin_categories_id",
+        "description": "Administrar categoria."
+      }
+    },
+    "/api/admin/albums": {
+      "get": {
+        "summary": "Listar álbuns para administração",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Album"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "operationId": "get_api_admin_albums",
+        "description": "Listar álbuns para administração."
+      }
+    },
+    "/api/admin/artists": {
+      "get": {
+        "summary": "Listar artistas para administração",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Artist"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "operationId": "get_api_admin_artists",
+        "description": "Listar artistas para administração."
+      }
+    },
+    "/api/admin/songs": {
+      "get": {
+        "summary": "Administrar músicas",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSongs"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "operationId": "get_api_admin_songs",
+        "description": "Administrar músicas."
+      },
+      "post": {
+        "summary": "Enviar música",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "201": {
+            "description": "Criado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Song"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "description": "Requisição multipart até 512 MB. O áudio é armazenado e indexado. categoryId e photo são opcionais; falhas na associação ou capa podem ser registradas sem impedir resposta 201.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "song"
+                ],
+                "properties": {
+                  "song": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "artist": {
+                    "type": "string"
+                  },
+                  "categoryId": {
+                    "type": "string"
+                  },
+                  "photo": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "post_api_admin_songs"
+      }
+    },
+    "/api/admin/albums/{id}/photo": {
+      "post": {
+        "summary": "Capa",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "photo"
+                ],
+                "properties": {
+                  "photo": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "post_api_admin_albums_id_photo",
+        "description": "Capa."
+      },
+      "delete": {
+        "summary": "Capa",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "delete_api_admin_albums_id_photo",
+        "description": "Capa."
+      }
+    },
+    "/api/admin/songs/{id}/photo": {
+      "post": {
+        "summary": "Capa",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "photo"
+                ],
+                "properties": {
+                  "photo": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "post_api_admin_songs_id_photo",
+        "description": "Capa."
+      },
+      "delete": {
+        "summary": "Capa",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "delete_api_admin_songs_id_photo",
+        "description": "Capa."
+      }
+    },
+    "/api/admin/categories/{id}/photo": {
+      "post": {
+        "summary": "Capa",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "photo"
+                ],
+                "properties": {
+                  "photo": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "post_api_admin_categories_id_photo",
+        "description": "Capa."
+      },
+      "delete": {
+        "summary": "Capa",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "delete_api_admin_categories_id_photo",
+        "description": "Capa."
+      }
+    },
+    "/api/scan": {
+      "post": {
+        "summary": "Iniciar varredura",
+        "tags": [
+          "Administração"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "202": {
+            "description": "Varredura iniciada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "operationId": "post_api_scan",
+        "description": "Iniciar varredura."
+      }
+    },
+    "/api/admin/api-keys": {
+      "get": {
+        "summary": "Listar chaves de integração",
+        "tags": [
+          "Administração"
+        ],
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chaves ativas, sem os segredos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/APIKeyInfo"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Administrador necessário"
+          },
+          "428": {
+            "description": "Ative notificações"
+          }
+        },
+        "operationId": "get_api_admin_api_keys",
+        "description": "Listar chaves de integração."
+      },
+      "post": {
+        "summary": "Criar chave administrativa",
+        "description": "A chave é exibida uma única vez e dá acesso a todas as rotas administrativas, inclusive criação de outras chaves. Guarde-a como uma senha; ao revogar uma chave comprometida, revise outras chaves que possam ter sido criadas por ela.",
+        "tags": [
+          "Administração"
+        ],
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 80
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Chave criada; guarde o valor retornado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string",
+                      "description": "Exibida uma única vez."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Administrador necessário"
+          },
+          "428": {
+            "description": "Ative notificações"
+          }
+        },
+        "operationId": "post_api_admin_api_keys"
+      }
+    },
+    "/api/admin/api-keys/{id}": {
+      "delete": {
+        "summary": "Revogar chave de integração",
+        "tags": [
+          "Administração"
+        ],
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Chave revogada"
+          },
+          "404": {
+            "description": "Chave não encontrada"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Administrador necessário"
+          },
+          "428": {
+            "description": "Ative notificações"
+          }
+        },
+        "operationId": "delete_api_admin_api_keys_id",
+        "description": "Revogar chave de integração."
+      }
+    },
+    "/auth/admin/login": {
+      "post": {
+        "summary": "Login administrativo",
+        "tags": [
+          "Autenticação"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "isAdmin": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "username",
+                  "password"
+                ],
+                "properties": {
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "post_auth_admin_login",
+        "description": "Autentica administrador com usuário e senha."
+      }
+    },
+    "/api/ads": {
+      "get": {
+        "summary": "Listar anúncios ativos",
+        "operationId": "get_api_ads",
+        "tags": [
+          "Anúncios"
+        ],
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Configuração de anúncios",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "frequency",
+                    "ads"
+                  ],
+                  "properties": {
+                    "frequency": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "ads": {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "embedUrl",
+                          "duration",
+                          "active"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "maxLength": 120
+                          },
+                          "embedUrl": {
+                            "type": "string",
+                            "format": "uri"
+                          },
+                          "duration": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 3600
+                          },
+                          "active": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Não autenticado"
+          },
+          "403": {
+            "description": "Sem permissão"
+          }
+        }
+      }
+    },
+    "/api/admin/ads": {
+      "get": {
+        "summary": "Consultar anúncios",
+        "operationId": "get_api_admin_ads",
+        "tags": [
+          "Anúncios"
+        ],
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Configuração de anúncios",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "frequency",
+                    "ads"
+                  ],
+                  "properties": {
+                    "frequency": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "ads": {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "embedUrl",
+                          "duration",
+                          "active"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "maxLength": 120
+                          },
+                          "embedUrl": {
+                            "type": "string",
+                            "format": "uri"
+                          },
+                          "duration": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 3600
+                          },
+                          "active": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Não autenticado"
+          },
+          "403": {
+            "description": "Sem permissão"
+          }
+        }
+      },
+      "put": {
+        "summary": "Atualizar anúncios",
+        "operationId": "put_api_admin_ads",
+        "tags": [
+          "Anúncios"
+        ],
+        "security": [
+          {
+            "AdminJWT": []
+          },
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Configuração de anúncios",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "frequency",
+                    "ads"
+                  ],
+                  "properties": {
+                    "frequency": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "ads": {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "embedUrl",
+                          "duration",
+                          "active"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "maxLength": 120
+                          },
+                          "embedUrl": {
+                            "type": "string",
+                            "format": "uri"
+                          },
+                          "duration": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 3600
+                          },
+                          "active": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Não autenticado"
+          },
+          "403": {
+            "description": "Sem permissão"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "frequency",
+                  "ads"
+                ],
+                "properties": {
+                  "frequency": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  },
+                  "ads": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "embedUrl",
+                        "duration",
+                        "active"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "maxLength": 120
+                        },
+                        "embedUrl": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "duration": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 3600
+                        },
+                        "active": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

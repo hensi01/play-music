@@ -4,7 +4,7 @@ import { api, endpoints, artworkUrl, getToken, setToken, readAppConfig, applyPho
 import * as player from './player.js'
 // admin.js is imported with the build version so the service worker (which
 // caches by URL) never serves a stale copy after a redeploy.
-const { renderAdmin } = await import(`./admin.js?v=${readAppConfig().version}`)
+const { renderAdmin, clearPendingAPIKey } = await import(`./admin.js?v=${readAppConfig().version}`)
 
 const appConfig = readAppConfig()
 
@@ -125,6 +125,7 @@ function setAuth(patch) {
   const previousId = auth.user?.id || null
   const nextId = Object.hasOwn(patch, 'user') ? (patch.user?.id || null) : previousId
   if (previousId !== nextId) {
+    clearPendingAPIKey()
     sessionEpoch++
     playlistsCache = []
     libData = null
@@ -139,6 +140,18 @@ function setAuth(patch) {
   render()
   if (previousId !== nextId && nextId) void reconcilePushSubscription(nextId).finally(() => { if (auth.user?.id === nextId) void verifyNotificationGate(nextId) })
 }
+
+// Sessions share localStorage across tabs. Clear sensitive admin UI when a
+// different account signs in or the session is removed elsewhere.
+window.addEventListener('storage', (event) => {
+  if ((event.key !== 'pm_token' && event.key !== null) || !auth.user) return
+  try {
+    const part = (getToken() || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    const uid = JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, '='))).uid
+    if (uid === auth.user.id) return
+  } catch { /* missing or invalid token ends this tab's session */ }
+  setAuth({ user: null, loading: false })
+})
 
 // Lê a claim `exp` de um JWT (header.payload.signature, base64url) sem
 // validar a assinatura — suficiente para evitar o fetch de /api/me com token
@@ -1452,6 +1465,7 @@ function renderLogin(container) {
         ),
         form,
         el('a', { class: 'login-admin-link', href: '/admin/login' }, 'Acesso administrativo'),
+        el('a', { href: '/docs/', class: 'settings-text' }, 'Documentação da API'),
       ),
     ),
   )

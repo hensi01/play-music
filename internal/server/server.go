@@ -114,6 +114,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/artwork/{id}", s.requireAuth(http.HandlerFunc(s.handleArtwork)))
 	mux.Handle("GET /api/stream/{id}", s.requireAuth(http.HandlerFunc(s.handleStream)))
 
+	// API key management requires administrator authentication.
+	mux.Handle("GET /api/admin/api-keys", s.requireAdmin(http.HandlerFunc(s.handleListAPIKeys)))
+	mux.Handle("POST /api/admin/api-keys", s.requireAdmin(http.HandlerFunc(s.handleCreateAPIKey)))
+	mux.Handle("DELETE /api/admin/api-keys/{id}", s.requireAdmin(http.HandlerFunc(s.handleRevokeAPIKey)))
+
 	// Admin (JWT + is_admin).
 	mux.Handle("GET /api/admin/users", s.requireAdmin(http.HandlerFunc(s.handleAdminListUsers)))
 	mux.Handle("POST /api/admin/users", s.requireAdmin(http.HandlerFunc(s.handleAdminCreateUser)))
@@ -173,7 +178,12 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 
 // requireAdmin requires a valid JWT with the admin flag.
 func (s *Server) requireAdmin(next http.Handler) http.Handler {
+	apiKey := s.requireAdminAPIKey(next)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-API-Key") != "" {
+			apiKey.ServeHTTP(w, r)
+			return
+		}
 		token := s.auth.TokenFromRequest(r)
 		if token == "" {
 			writeError(w, http.StatusUnauthorized, "Não autenticado")
@@ -209,7 +219,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-ND-Authorization, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-ND-Authorization, Authorization, X-API-Key")
 		w.Header().Set("Access-Control-Expose-Headers", auth.HeaderName)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
