@@ -2645,6 +2645,8 @@ img {
   .modal-actions { flex-direction: column; }
   .modal-actions > button { width: 100%; min-height: 48px; }
 
+  .ad-media { inset: 0; }
+  .ad-media img, .ad-media video { width: 100%; height: 100%; max-width: none; max-height: none; object-fit: contain; }
   .ad-overlay [role="status"] { top: calc(env(safe-area-inset-top) + 12px); right: 12px; }
   .ad-destination { right: 12px; bottom: calc(env(safe-area-inset-bottom) + 16px); left: 12px; }
   .ad-destination a { width: min(100%, 360px); }
