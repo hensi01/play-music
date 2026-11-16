@@ -3337,3 +3337,224 @@ select:disabled { cursor: not-allowed; opacity: 0.6; }
 @media (prefers-reduced-motion: reduce) {
   .fullscreen-btn-main.is-playing::after { display: none; }
 }
+
+/* Mi Ritmo button system: consistent hierarchy, feedback and touch behavior. */
+:root {
+  --button-primary: #1ed760;
+  --button-primary-hover: #32df6e;
+  --button-primary-ink: #06130a;
+  --button-accent: #1ed760;
+  --button-accent-wash: rgba(30, 215, 96, 0.12);
+}
+
+[data-theme="light"] {
+  --button-accent: #117d38;
+  --button-accent-wash: rgba(17, 125, 56, 0.1);
+}
+
+button {
+  font: inherit;
+  transition-property: color, background-color, border-color, box-shadow, transform, filter;
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+button:disabled,
+button[aria-disabled="true"] {
+  cursor: not-allowed;
+  filter: saturate(0.55);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--button-accent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px var(--button-accent-wash);
+}
+
+.btn-primary,
+.btn-accent,
+.login-submit,
+.login-toggle-btn.active,
+.pwa-btn.primary,
+.notification-gate-action .btn-accent,
+.ad-overlay > .btn-primary {
+  min-height: 48px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--button-primary);
+  color: var(--button-primary-ink);
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(30, 215, 96, 0.2);
+}
+
+.btn-primary:hover:not(:disabled),
+.btn-accent:hover:not(:disabled),
+.login-submit:hover:not(:disabled),
+.login-toggle-btn.active:hover:not(:disabled),
+.pwa-btn.primary:hover:not(:disabled),
+.notification-gate-action .btn-accent:hover:not(:disabled),
+.ad-overlay > .btn-primary:hover:not(:disabled) {
+  background: var(--button-primary-hover);
+  box-shadow: 0 9px 24px rgba(30, 215, 96, 0.28);
+  filter: brightness(1.02);
+}
+
+.btn-primary:active:not(:disabled),
+.btn-accent:active:not(:disabled),
+.login-submit:active:not(:disabled),
+.login-toggle-btn.active:active:not(:disabled),
+.pwa-btn.primary:active:not(:disabled),
+.notification-gate-action .btn-accent:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-secondary,
+.install-app-btn {
+  min-height: 48px;
+  border: 1px solid var(--outline, #52525b);
+  border-radius: 14px;
+  background: var(--surface-3, #22222a);
+  color: var(--text, #f5f5f7);
+  font-weight: 600;
+}
+
+.btn-secondary:hover:not(:disabled),
+.install-app-btn:hover:not(:disabled) {
+  border-color: var(--button-accent);
+  background: var(--button-accent-wash);
+  color: var(--button-accent);
+  box-shadow: 0 4px 14px rgba(30, 215, 96, 0.1);
+}
+
+.btn-secondary:active:not(:disabled),
+.install-app-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.install-app-btn {
+  min-width: 48px;
+  padding: 0 16px;
+  border-color: var(--button-accent);
+  border-radius: 999px;
+  background: rgba(30, 215, 96, 0.06);
+  color: var(--text, #f5f5f7);
+  font-size: 14px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.tab-btn,
+.login-toggle-btn {
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.tab-btn.active,
+.login-toggle-btn.active {
+  border-color: transparent;
+  background: var(--button-primary);
+  color: var(--button-primary-ink);
+  box-shadow: 0 4px 14px rgba(30, 215, 96, 0.18);
+}
+
+.tab-btn:hover:not(.active):not(:disabled),
+.login-toggle-btn:hover:not(.active):not(:disabled) {
+  background: var(--button-accent-wash);
+  color: var(--button-accent);
+}
+
+.icon-btn,
+.btn-icon-lg,
+.download-button,
+.track-play-btn,
+.track-more-toggle,
+.player-btn,
+.mobile-nav-item {
+  transition-property: color, background-color, box-shadow, transform;
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+.icon-btn:hover:not(:disabled),
+.btn-icon-lg:hover:not(:disabled),
+.download-button:hover:not(:disabled),
+.track-play-btn:hover:not(:disabled),
+.track-more-toggle:hover:not(:disabled),
+.player-btn:hover:not(:disabled) {
+  background-color: var(--button-accent-wash);
+  color: var(--button-accent);
+}
+
+.icon-btn:active:not(:disabled),
+.btn-icon-lg:active:not(:disabled),
+.download-button:active:not(:disabled),
+.track-play-btn:active:not(:disabled),
+.track-more-toggle:active:not(:disabled),
+.player-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.player-btn.active,
+.icon-btn[aria-pressed="true"],
+.mobile-nav-item.active {
+  color: var(--button-accent);
+}
+
+.player-btn-main,
+.fullscreen-btn-main,
+.card-play {
+  background: var(--button-primary);
+  color: var(--button-primary-ink);
+  box-shadow: 0 8px 24px rgba(30, 215, 96, 0.22);
+}
+
+.player-btn-main:hover:not(:disabled),
+.fullscreen-btn-main:hover:not(:disabled),
+.card-play:hover:not(:disabled) {
+  background: var(--button-primary-hover);
+  color: var(--button-primary-ink);
+  box-shadow: 0 10px 28px rgba(30, 215, 96, 0.3);
+}
+
+.fullscreen-btn-main.is-playing {
+  background: var(--button-primary);
+  color: var(--button-primary-ink);
+}
+
+.mobile-nav-item.active {
+  text-shadow: 0 0 18px rgba(30, 215, 96, 0.18);
+}
+
+@media (max-width: 767px) {
+  .btn-primary,
+  .btn-secondary,
+  .btn-accent,
+  .login-submit,
+  .login-toggle-btn,
+  .tab-btn,
+  .pwa-btn,
+  .install-app-btn {
+    min-height: 48px;
+  }
+
+  .install-app-btn {
+    padding-inline: 14px;
+    font-size: 13px;
+  }
+
+  .icon-btn,
+  .btn-icon-lg,
+  .download-button,
+  .track-play-btn,
+  .track-more-toggle,
+  .player-btn {
+    min-width: 48px;
+    min-height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button { transition: none; }
+}
