@@ -7,6 +7,8 @@ let adminState = { users: [], categories: [], songs: [], songCategoryIds: {}, ca
 // Race guard do refresh: cada chamada incrementa o seq; respostas de
 // requisições antigas (troca rápida de abas) são descartadas.
 let adminRefreshSeq = 0
+let adSaving = false
+let adSavePending = null
 
 function isAdminRefreshCurrent(seq) {
   return seq === adminRefreshSeq
@@ -23,6 +25,7 @@ export function renderAdmin() {
     el('button', { class: `tab-btn ${adminTab === 'categories' ? 'active' : ''}`, onclick: () => { adminTab = 'categories'; refresh() } }, 'Categorias'),
     el('button', { class: `tab-btn ${adminTab === 'songs' ? 'active' : ''}`, onclick: () => { adminTab = 'songs'; refresh() } }, 'Músicas'),
     el('button', { class: `tab-btn ${adminTab === 'notifications' ? 'active' : ''}`, onclick: () => { adminTab = 'notifications'; refresh() } }, 'Notificações'),
+    el('button', { class: `tab-btn ${adminTab === 'ads' ? 'active' : ''}`, onclick: () => { adminTab = 'ads'; refresh() } }, 'Anúncios'),
   )
   page.append(el('h1', { class: 'page-title' }, 'Administração'), tabs)
 
@@ -36,10 +39,55 @@ export function renderAdmin() {
     else if (adminTab === 'categories') await renderCategories(wrap, seq)
     else if (adminTab === 'songs') await renderSongs(wrap, seq)
     else if (adminTab === 'notifications') renderNotifications(wrap)
+    else if (adminTab === 'ads') await renderAds(wrap, seq)
   }
 
   refresh()
   return page
+}
+
+async function renderAds(wrap, seq) {
+  if (adSavePending) { try { await adSavePending } catch { /* show current saved configuration */ } }
+  if (!isAdminRefreshCurrent(seq)) return
+  let config
+  try { config = await api.get('/api/admin/ads') } catch (err) { if (isAdminRefreshCurrent(seq)) wrap.textContent = err.message; return }
+  if (!isAdminRefreshCurrent(seq)) return
+  let editing = -1
+  const status = el('p', { role: 'status' })
+  const frequency = el('input', { class: 'form-input', type: 'number', min: '1', max: '100', value: String(config.frequency), 'aria-label': 'Músicas entre anúncios' })
+  const name = el('input', { class: 'form-input', placeholder: 'Nome do anúncio', maxlength: '120', 'aria-label': 'Nome do anúncio' })
+  const embed = el('textarea', { class: 'form-input', placeholder: 'Cole o código iframe ou o endereço do anúncio', 'aria-label': 'Código iframe ou endereço' })
+  const duration = el('input', { class: 'form-input', type: 'number', min: '1', max: '3600', value: '30', 'aria-label': 'Duração em segundos' })
+  const active = el('input', { type: 'checkbox' }); active.checked = true
+  const list = el('div', { class: 'admin-table' })
+  const save = async () => {
+    if (adSaving) throw new Error('Aguarde a gravação anterior terminar.')
+    adSaving = true
+    const controls = [...wrap.querySelectorAll('button, input, textarea')]
+    controls.forEach((control) => { control.disabled = true })
+    try { config.frequency = Number(frequency.value); adSavePending = api.put('/api/admin/ads', config); await adSavePending }
+    finally { adSavePending = null; adSaving = false; controls.forEach((control) => { control.disabled = false }) }
+  }
+  const reset = () => { editing = -1; name.value = ''; embed.value = ''; duration.value = '30'; active.checked = true; submit.textContent = 'Adicionar anúncio' }
+  const draw = () => {
+    list.replaceChildren()
+    config.ads.forEach((ad, index) => {
+      const edit = el('button', { class: 'btn-secondary', onclick: () => { editing = index; name.value = ad.name; embed.value = ad.embedUrl; duration.value = String(ad.duration); active.checked = ad.active; submit.textContent = 'Salvar anúncio' } }, 'Editar')
+      const toggle = el('button', { class: 'btn-secondary', onclick: async () => { ad.active = !ad.active; try { await save(); draw(); status.textContent = 'Anúncio atualizado.' } catch (err) { ad.active = !ad.active; status.textContent = err.message } } }, ad.active ? 'Desativar' : 'Ativar')
+      list.append(el('div', { class: 'admin-row' }, el('div', { class: 'admin-row-main' }, el('p', { class: 'admin-row-title' }, ad.name), el('p', { class: 'admin-row-sub' }, `${ad.duration} s · ${ad.active ? 'Ativo' : 'Inativo'}`)), el('div', { class: 'admin-row-actions' }, edit, toggle)))
+    })
+  }
+  const submit = el('button', { class: 'btn-primary', onclick: async () => {
+    let value = embed.value.trim()
+    if (value.startsWith('<')) { const doc = new DOMParser().parseFromString(value, 'text/html'); value = doc.querySelector('iframe')?.getAttribute('src') || '' }
+    const entry = { name: name.value.trim(), embedUrl: value, duration: Number(duration.value), active: active.checked }
+    const previous = config.ads.slice()
+    if (editing < 0) config.ads.push(entry); else config.ads[editing] = entry
+    try { await save(); reset(); draw(); status.textContent = 'Anúncio salvo.' } catch (err) { config.ads = previous; status.textContent = err.message }
+  } }, 'Adicionar anúncio')
+  const saveFrequency = el('button', { class: 'btn-secondary', onclick: async () => { try { await save(); status.textContent = 'Frequência salva.' } catch (err) { status.textContent = err.message } } }, 'Salvar frequência')
+  wrap.append(el('h2', {}, 'Anúncios entre músicas'), el('p', {}, 'Quantidade de músicas entre anúncios:'), frequency, saveFrequency, list, el('h3', {}, 'Adicionar ou editar anúncio'), name, embed, el('p', {}, 'Duração em segundos:'), duration, el('label', {}, active, ' Ativo'), submit, status)
+  draw()
 }
 
 function renderNotifications(wrap) {
