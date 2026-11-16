@@ -3,8 +3,9 @@
 // (the server 302s /api/stream to a signed CDN URL) — no retry ladder, no
 // local/transcode fallback: a failed stream simply stops playback.
 
-import { endpoints, streamUrl, artworkUrl, getToken } from './api.js'
+import { api, endpoints, streamUrl, artworkUrl, getToken } from './api.js'
 import { createListenTracker, sampleListen } from './listening.js'
+import { showAd } from './ads.js'
 
 const audio = new Audio()
 audio.preload = 'auto'
@@ -36,6 +37,50 @@ audio.addEventListener('seeked', resetListenAnchor)
 // browser fires a `pause` event during the media load algorithm, so those
 // events must not overwrite the real play state.
 let switching = false
+let adGate = false, adPlayer = null, adGeneration = 0, songsSinceAd = 0, adIndex = 0, gateOverlay = null
+
+async function afterSong() {
+  if (adGate) return
+  const hasNext = state.repeat || state.currentIndex + 1 < state.queue.length
+  if (!hasNext) { next(); return }
+  adGate = true
+  const generation = ++adGeneration
+  songsSinceAd++
+  set({ playing: false })
+  setMediaSessionPlaybackState(false)
+  if ('mediaSession' in navigator) { try { navigator.mediaSession.setPositionState() } catch { /* unsupported */ } }
+  const proceed = () => {
+    if (generation !== adGeneration) return
+    adGate = false; adPlayer = null; gateOverlay?.remove(); gateOverlay = null
+    if (state.repeat) { if (state.current) startListening(state.current); audio.currentTime = 0; playAudio() }
+    else next()
+    updateMediaSession()
+  }
+  gateOverlay = document.createElement('section'); gateOverlay.className = 'ad-overlay'
+  gateOverlay.setAttribute('aria-label', 'Publicidade')
+  const message = document.createElement('p'); message.setAttribute('role', 'status'); message.textContent = 'Preparando próxima música…'
+  const retry = document.createElement('button'); retry.className = 'btn-primary'; retry.textContent = 'Tentar novamente'; retry.hidden = true
+  gateOverlay.append(message, retry); document.body.append(gateOverlay)
+  const load = async () => {
+    retry.hidden = true; message.textContent = 'Preparando próxima música…'
+    try {
+      const config = await api.fetch('/api/ads', { signal: AbortSignal.timeout(15000) })
+      if (generation !== adGeneration) return
+      if (!config.ads?.length || songsSinceAd < config.frequency) { proceed(); return }
+      const ad = config.ads[adIndex++ % config.ads.length]; songsSinceAd = 0
+      gateOverlay.remove(); gateOverlay = null
+      adPlayer = showAd(ad, proceed, setMediaSessionPlaybackState)
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({ title: 'Publicidade', artist: ad.name })
+      }
+    } catch {
+      if (generation !== adGeneration) return
+      message.textContent = 'Não foi possível carregar a publicidade.'; retry.hidden = false
+    }
+  }
+  retry.onclick = load
+  await load()
+}
 
 export function resolveDuration(...candidates) {
   return candidates.find((value) => Number.isFinite(value) && value > 0) ?? 0
@@ -114,13 +159,7 @@ audio.addEventListener('pause', () => {
   setMediaSessionPlaybackState(false)
 })
 audio.addEventListener('ended', () => {
-  if (state.repeat) {
-    if (state.current) startListening(state.current)
-    audio.currentTime = 0
-    playAudio()
-  } else {
-    next()
-  }
+  afterSong()
 })
 
 audio.addEventListener('error', () => {
@@ -159,8 +198,8 @@ function updateMediaSession() {
     album: state.current.album,
     artwork: [{ src: artworkUrl(state.current.id, 512), sizes: '512x512' }],
   })
-  navigator.mediaSession.setActionHandler('play', () => playAudio())
-  navigator.mediaSession.setActionHandler('pause', () => audio.pause())
+  navigator.mediaSession.setActionHandler('play', () => { if (adGate) adPlayer?.resume(); else playAudio() })
+  navigator.mediaSession.setActionHandler('pause', () => { if (adGate) adPlayer?.pause(); else audio.pause() })
   navigator.mediaSession.setActionHandler('previoustrack', () => prev())
   navigator.mediaSession.setActionHandler('nexttrack', () => next())
   navigator.mediaSession.setActionHandler('seekbackward', (d) => {
@@ -218,6 +257,7 @@ function loadAndPlay(song) {
 }
 
 export function playContext(songs, index) {
+  if (adGate) return
   const song = songs[index]
   if (!song) return
   set({ queue: songs, currentIndex: index, current: song, progress: 0 })
@@ -226,6 +266,7 @@ export function playContext(songs, index) {
 }
 
 export function playSong(song) {
+  if (adGate) return
   set({ queue: [song], currentIndex: 0, current: song, progress: 0 })
   loadAndPlay(song)
   updateMediaSession()
@@ -233,6 +274,7 @@ export function playSong(song) {
 
 // Clear playback and listening state when the account changes.
 export function clearSession() {
+  adGeneration++; adGate = false; adPlayer?.cleanup(); adPlayer = null; gateOverlay?.remove(); gateOverlay = null; songsSinceAd = 0; adIndex = 0
   listenTracker = null
   switching = false
   audio.pause()
@@ -244,12 +286,14 @@ export function clearSession() {
 }
 
 export function togglePlay() {
+  if (adGate) { adPlayer?.toggle(); return }
   if (!state.current) return
   if (state.playing) audio.pause()
   else playAudio()
 }
 
 export function next() {
+  if (adGate) return
   const { queue, currentIndex, shuffle } = state
   if (queue.length === 0) return
   let idx = currentIndex + 1
@@ -276,6 +320,7 @@ export function next() {
 }
 
 export function prev() {
+  if (adGate) return
   const { queue, currentIndex, progress } = state
   if (queue.length === 0) return
   // Restart the current track if it has been playing for a while.
@@ -294,6 +339,7 @@ export function prev() {
 }
 
 export function seek(seconds) {
+  if (adGate) return
   if (!Number.isFinite(seconds)) return
   const duration = resolveDuration(audio.duration, state.duration, state.current?.duration ?? 0)
   if (duration === 0 || audio.readyState === 0) {

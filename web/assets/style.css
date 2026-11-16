@@ -2612,3 +2612,8 @@ img {
 .notification-gate-status:empty { display: none; }
 .notification-gate::after { content: ''; min-height: 56px; }
 @media (min-width: 768px) { .notification-gate-brand { padding: 28px 36px; } .notification-gate-content { padding: 42px 38px; } }
+.ad-overlay { position: fixed; inset: 0; z-index: 10000; background: #111; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; }
+.ad-overlay h2, .ad-overlay p { margin: 0; }
+.ad-overlay a { color: #72e6a1; }
+.ad-media { width: min(100%, 800px); max-height: 65vh; display: flex; align-items: center; justify-content: center; }
+.ad-media img, .ad-media video { display: block; max-width: 100%; max-height: 65vh; object-fit: contain; }
