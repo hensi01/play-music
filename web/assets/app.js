@@ -1171,10 +1171,12 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('appinstalled', () => render())
 
 function notificationSettingsCard(required = false) {
-  const status = el('p', { class: required ? 'notification-gate-status' : 'settings-text', role: 'status', 'aria-live': 'polite' }, required ? '' : 'Ative para receber avisos e promoções neste dispositivo.')
+  const userId = auth.user?.id
+  const pushState = readPushState(userId)
+  const active = !required && notificationGate.userId === userId && notificationGate.status === 'allowed' && window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && !!navigator.locks && Notification.permission === 'granted' && localStorage.getItem('pm_push_owner') === userId && pushState.enabled === true && !!pushState.endpoint && !pushState.pendingEndpoint
+  const status = el('p', { class: required ? 'notification-gate-status' : 'settings-text', role: 'status', 'aria-live': 'polite' }, required ? '' : active ? 'As notificações já estão ativadas neste dispositivo.' : 'Ative para receber avisos e promoções neste dispositivo.')
   const enable = el('button', { class: 'btn-accent', type: 'button' }, 'Ativar notificações')
   const disable = el('button', { class: 'btn-secondary', type: 'button' }, 'Desativar notificações')
-  const userId = auth.user?.id
   if (!('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext)) {
     const ios = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
     status.textContent = ios ? 'No iPhone ou iPad, abra no Safari, toque em Compartilhar e em Adicionar à Tela de Início. Depois, abra o aplicativo instalado.' : 'As notificações não estão disponíveis neste navegador. Abra o aplicativo em um navegador compatível.'
@@ -1182,7 +1184,7 @@ function notificationSettingsCard(required = false) {
   }
   else if (!navigator.locks) { status.textContent = 'Atualize o navegador para ativar notificações com segurança.'; enable.disabled = true }
   let config = null
-  if (!enable.disabled) {
+  if (!enable.disabled && !active) {
     enable.disabled = true
     pushRequest('/api/push/config').then(value => { config = value; enable.disabled = false; if (!value.enabled) status.textContent = 'Notificações indisponíveis. Toque para tentar novamente.' }).catch(() => { enable.disabled = false; status.textContent = 'Não foi possível verificar as notificações. Toque para tentar novamente.' })
   }
@@ -1261,7 +1263,7 @@ function notificationSettingsCard(required = false) {
     } catch (err) { status.textContent = err.message || 'Não foi possível desativar notificações. Tente novamente.' }
   })
   if (required) return el('div', { class: 'notification-gate-action' }, enable, status)
-  return el('section', { class: 'settings-card' }, el('h2', {}, 'Notificações'), status, el('div', { class: 'settings-actions' }, enable, disable))
+  return el('section', { class: 'settings-card' }, el('h2', {}, 'Notificações'), status, el('div', { class: 'settings-actions' }, active ? null : enable, disable))
 }
 
 async function renderSettings(container) {

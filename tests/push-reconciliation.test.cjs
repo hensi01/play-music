@@ -100,3 +100,21 @@ test('permissão recusada não libera nem redireciona', async () => {
  await f.ctx.verifyNotificationGate('alice')
  assert.equal(f.ctx.notificationGate.status,'required'); assert(!f.calls.includes('navigate:/'))
 })
+
+function visibleText(node) {
+  if (node == null) return ''
+  if (typeof node === 'string') return node
+  return (node.children || []).map(visibleText).join(' ')
+}
+
+test('inscrição confirmada mostra estado ativo e não oferece ativação novamente',()=>{
+ const f=fixture();f.data.set('pm_push_owner','alice');f.data.set(key('alice'),JSON.stringify({enabled:true,endpoint:'https://push.test/new'}));f.ctx.notificationGate={userId:'alice',status:'allowed'}
+ const text=visibleText(f.ctx.notificationSettingsCard())
+ assert.match(text,/notificações já estão ativadas/i);assert.doesNotMatch(text,/Ativar notificações/)
+})
+
+test('instalação sem permissão não é apresentada como notificações ativadas',()=>{
+ const f=fixture();f.ctx.window.navigator={standalone:true};f.Notification.permission='default';f.ctx.notificationGate={userId:'alice',status:'required'}
+ const text=visibleText(f.ctx.notificationSettingsCard(true))
+ assert.match(text,/Ativar notificações/);assert.doesNotMatch(text,/já estão ativadas/i)
+})
