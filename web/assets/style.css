@@ -1186,6 +1186,37 @@ img {
   color: var(--text, #fff);
 }
 
+/* Shared theme for every native select, including admin forms. */
+select {
+  color-scheme: dark;
+  accent-color: var(--accent, #1ed760);
+  min-height: 48px;
+}
+
+select.form-input {
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 12px;
+  padding: 12px 44px 12px 16px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23a0a0b0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  cursor: pointer;
+}
+
+select option,
+select optgroup {
+  background: var(--surface-3, #22222a);
+  color: var(--text, #fff);
+}
+
+select option:checked {
+  background: var(--accent, #1ed760);
+  color: #06130a;
+}
+
+select:disabled { cursor: not-allowed; opacity: 0.6; }
+
 .search-input {
   width: 100%;
   border-radius: 9999px;
