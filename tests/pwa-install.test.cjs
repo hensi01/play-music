@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const vm = require('node:vm')
 const fs = require('node:fs')
 
-function setup() {
+function setup(gateActive = false) {
   const listeners = {}, buttons = {}, steps = { textContent: '', scrollIntoView() {} }
   let overlay
   const card = {
@@ -17,7 +17,7 @@ function setup() {
       if (!overlay) { overlay = { className: '', appendChild(c) { this.card = c }, addEventListener() {}, remove() { this.removed = true } }; return overlay }
       return card
     },
-    querySelector(selector) { return selector.includes('install') ? (overlay && !overlay.removed ? buttons.install : null) : (overlay && !overlay.removed ? overlay : null) },
+    querySelector(selector) { if (selector === '.notification-gate') return gateActive ? {} : null; return selector.includes('install') ? (overlay && !overlay.removed ? buttons.install : null) : (overlay && !overlay.removed ? overlay : null) },
     body: { appendChild() {} },
   }
   const navigator = { userAgent: 'Android', platform: '', maxTouchPoints: 0 }
@@ -52,4 +52,9 @@ test('botão do cabeçalho abre instalação após dispensar aviso', async () =>
   s.listeners.beforeinstallprompt({ preventDefault() {}, prompt() { calls++; return Promise.resolve() }, userChoice: Promise.resolve({ outcome: 'accepted' }) })
   s.window.installPlayMusic()
   assert.equal(calls, 1)
+})
+
+
+test('aviso automático de instalação não cobre a ativação obrigatória', () => {
+  const s=setup(true); assert.equal(s.overlay, undefined)
 })

@@ -137,7 +137,7 @@
   }
 
   function show(force = false) {
-    if (isInstalled() || document.querySelector('.pwa-overlay') || (!force && pwaSeen())) return
+    if (isInstalled() || document.querySelector('.pwa-overlay') || (!force && (pwaSeen() || document.querySelector('.notification-gate')))) return
     const overlay = document.createElement('div')
     overlay.className = 'pwa-overlay'
     overlay.appendChild(buildCard())

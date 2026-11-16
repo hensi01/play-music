@@ -117,6 +117,7 @@ function icon(name) {
 
 let auth = { user: null, loading: true }
 let notificationGate = { userId: null, status: 'checking' }
+let notificationGateNeedsRedirect = false
 let notificationGateSeq = 0
 
 let sessionEpoch = 0
@@ -134,7 +135,7 @@ function setAuth(patch) {
     player.clearSession()
   }
   auth = { ...auth, ...patch }
-  if (previousId !== nextId) { notificationGateSeq++; notificationGate = { userId: nextId, status: 'checking' } }
+  if (previousId !== nextId) { notificationGateSeq++; notificationGateNeedsRedirect = false; notificationGate = { userId: nextId, status: 'checking' } }
   render()
   if (previousId !== nextId && nextId) void reconcilePushSubscription(nextId).finally(() => { if (auth.user?.id === nextId) void verifyNotificationGate(nextId) })
 }
@@ -1137,7 +1138,11 @@ async function verifyNotificationGate(userId) {
   } catch { /* Stay on the activation screen until verification succeeds. */ }
   if (seq !== notificationGateSeq || auth.user?.id !== userId) return
   notificationGate = { userId, status: allowed ? 'allowed' : 'required' }
-  if (!allowed) player.clearSession()
+  if (!allowed) { notificationGateNeedsRedirect = true; player.clearSession() }
+  if (allowed && notificationGateNeedsRedirect) {
+    notificationGateNeedsRedirect = false
+    if (window.location.hash !== '#/') navigate('/')
+  }
   render()
   if (allowed) void loadPlaylists()
 }
@@ -1146,41 +1151,51 @@ function installButton() {
   return el('button', { class: 'install-app-btn', type: 'button', onclick: () => window.installPlayMusic?.() }, 'Instalar aplicativo')
 }
 function renderNotificationGate() {
+  document.querySelector('.pwa-overlay')?.remove()
   root.innerHTML = ''
   const checking = notificationGate.status === 'checking'
+  const bell = el('span', { class: 'notification-gate-icon', 'aria-hidden': 'true', html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>' })
   root.append(el('main', { class: 'notification-gate' },
-    el('header', { class: 'notification-gate-header' }, el('strong', {}, 'Play Music'), installButton()),
-    el('section', { class: 'notification-gate-content' },
-      el('h1', {}, checking ? 'Verificando notificações…' : 'Ative as notificações para continuar'),
-      checking ? spinner() : el('p', { class: 'settings-text' }, 'As notificações são necessárias para usar o aplicativo neste dispositivo.'),
-      checking ? null : notificationSettingsCard(true),
-      checking ? null : el('button', { class: 'btn-secondary', type: 'button', onclick: () => verifyNotificationGate(auth.user.id) }, 'Tentar novamente'),
-      el('button', { class: 'btn-secondary', type: 'button', onclick: doLogout }, 'Sair'))))
+    el('div', { class: 'notification-gate-brand' }, icon('music'), el('strong', {}, 'Play Music')),
+    el('section', { class: 'notification-gate-content', 'aria-labelledby': 'notification-gate-title' },
+      bell,
+      el('p', { class: 'notification-gate-eyebrow' }, 'FIQUE POR DENTRO'),
+      el('h1', { id: 'notification-gate-title' }, checking ? 'Verificando notificações' : 'Ative as notificações'),
+      el('p', { class: 'notification-gate-description' }, checking ? 'Estamos preparando seu acesso.' : 'Permita as notificações para continuar e receber avisos e novidades do Play Music.'),
+      checking ? spinner('Só um instante…') : notificationSettingsCard(true))))
 }
+
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && auth.user) void verifyNotificationGate(auth.user.id)
 })
 window.addEventListener('appinstalled', () => render())
 
 function notificationSettingsCard(required = false) {
-  const status = el('p', { class: 'settings-text' }, 'Ative para receber avisos e promoções neste dispositivo.')
+  const status = el('p', { class: required ? 'notification-gate-status' : 'settings-text', role: 'status', 'aria-live': 'polite' }, required ? '' : 'Ative para receber avisos e promoções neste dispositivo.')
   const enable = el('button', { class: 'btn-accent', type: 'button' }, 'Ativar notificações')
   const disable = el('button', { class: 'btn-secondary', type: 'button' }, 'Desativar notificações')
   const userId = auth.user?.id
   if (!('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext)) {
-    status.textContent = 'Notificações indisponíveis neste navegador. No iPhone ou iPad, instale o aplicativo na tela de início e abra-o por lá.'
+    const ios = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    status.textContent = ios ? 'No iPhone ou iPad, abra no Safari, toque em Compartilhar e em Adicionar à Tela de Início. Depois, abra o aplicativo instalado.' : 'As notificações não estão disponíveis neste navegador. Abra o aplicativo em um navegador compatível.'
     enable.disabled = true; disable.disabled = true
   }
-  if (!navigator.locks) { status.textContent = 'Atualize o navegador para ativar notificações com segurança.'; enable.disabled = true }
+  else if (!navigator.locks) { status.textContent = 'Atualize o navegador para ativar notificações com segurança.'; enable.disabled = true }
   let config = null
   if (!enable.disabled) {
     enable.disabled = true
-    pushRequest('/api/push/config').then(value => { config = value; enable.disabled = !value.enabled; if (!value.enabled) status.textContent = 'Notificações ainda não estão configuradas.' }).catch(() => { status.textContent = 'Não foi possível verificar as notificações.' })
+    pushRequest('/api/push/config').then(value => { config = value; enable.disabled = false; if (!value.enabled) status.textContent = 'Notificações indisponíveis. Toque para tentar novamente.' }).catch(() => { enable.disabled = false; status.textContent = 'Não foi possível verificar as notificações. Toque para tentar novamente.' })
   }
   enable.addEventListener('click', async () => {
     const intent = `${Date.now()}-${Math.random()}`
     try {
       ensurePushAccount(userId)
+      if (!config?.enabled) {
+        config = await pushRequest('/api/push/config')
+        ensurePushAccount(userId)
+        status.textContent = config.enabled ? 'Tudo pronto. Toque novamente para permitir.' : 'Notificações indisponíveis. Tente novamente em instantes.'
+        return
+      }
       writePushState(userId, { ...readPushState(userId), enabled: true, intent })
       // This call must remain directly in the user's click for iOS.
       const permission = await Notification.requestPermission()
@@ -1245,7 +1260,8 @@ function notificationSettingsCard(required = false) {
       status.textContent = 'Notificações desativadas neste dispositivo.'
     } catch (err) { status.textContent = err.message || 'Não foi possível desativar notificações. Tente novamente.' }
   })
-  return el('section', { class: 'settings-card' }, el('h2', {}, 'Notificações'), status, el('div', { class: 'settings-actions' }, enable, required ? null : disable))
+  if (required) return el('div', { class: 'notification-gate-action' }, enable, status)
+  return el('section', { class: 'settings-card' }, el('h2', {}, 'Notificações'), status, el('div', { class: 'settings-actions' }, enable, disable))
 }
 
 async function renderSettings(container) {

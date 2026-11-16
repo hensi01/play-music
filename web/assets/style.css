@@ -2551,3 +2551,20 @@ img {
 .notification-gate-content { max-width: 540px; margin: 8vh auto; padding: 20px; }
 .notification-gate-content .settings-card { margin: 20px 0; }
 @media (max-width: 768px) { .topbar-menu { display: inline-flex; } .install-app-btn { font-size: 12px; padding: 7px 9px; } }
+/* Notification activation: mobile-first single-action card. */
+.notification-gate { min-height: 100dvh; display: flex; flex-direction: column; color: var(--text); background: radial-gradient(ellipse at 50% 8%, rgba(30,215,96,.13), transparent 48%), var(--bg); }
+.notification-gate-brand { display: flex; align-items: center; gap: 10px; padding: max(20px, env(safe-area-inset-top)) 22px 12px; font-size: 16px; letter-spacing: -.02em; }
+.notification-gate-brand svg { color: var(--accent); }
+.notification-gate-content { box-sizing: border-box; width: calc(100% - 32px); max-width: 440px; margin: auto; padding: 32px 24px; text-align: center; background: var(--surface, #121212); border: 1px solid rgba(255,255,255,.09); border-radius: 24px; box-shadow: 0 24px 70px rgba(0,0,0,.28); }
+.notification-gate-icon { display: inline-flex; align-items: center; justify-content: center; width: 68px; height: 68px; border-radius: 22px; color: var(--accent); background: rgba(30,215,96,.13); }
+.notification-gate-icon svg { width: 33px; height: 33px; }
+.notification-gate-eyebrow { margin: 24px 0 10px; color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .14em; }
+.notification-gate-content h1 { margin: 0; font-size: clamp(24px,6vw,30px); line-height: 1.15; letter-spacing: -.035em; }
+.notification-gate-description { margin: 14px auto 24px; max-width: 330px; color: var(--muted, #aaa); font-size: 15px; line-height: 1.55; }
+.notification-gate-action .btn-accent { width: 100%; min-height: 50px; border-radius: 999px; font-size: 15px; font-weight: 700; }
+.notification-gate-action .btn-accent:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
+.notification-gate-action .btn-accent:disabled { opacity: .55; }
+.notification-gate-status { margin: 12px 0 0; color: var(--muted, #aaa); font-size: 13px; line-height: 1.45; }
+.notification-gate-status:empty { display: none; }
+.notification-gate::after { content: ''; min-height: 56px; }
+@media (min-width: 768px) { .notification-gate-brand { padding: 28px 36px; } .notification-gate-content { padding: 42px 38px; } }

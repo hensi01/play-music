@@ -18,7 +18,7 @@ function fixture() {
   const Notification={permission:'granted',requestPermission:async()=> 'granted'}
   let tokenUser = null
   const getToken=()=>`header.${Buffer.from(JSON.stringify({uid:tokenUser || auth.user.id})).toString('base64url')}.signature`
-  const ctx={auth,api,el,getToken,localStorage:storage,setTimeout,clearTimeout,AbortController,navigator,Notification,document:{addEventListener(){}},window:{PushManager:function(){},Notification,isSecureContext:true,addEventListener(){}}, notificationGateSeq:0,notificationGate:{},render(){},player:{clearSession(){}},loadPlaylists:async()=>{},atob:s=>Buffer.from(s,'base64').toString('binary'),Uint8Array,Promise,Set,Error}
+  const ctx={auth,api,el,getToken,localStorage:storage,setTimeout,clearTimeout,AbortController,navigator,Notification,document:{addEventListener(){}},window:{PushManager:function(){},Notification,isSecureContext:true,location:{hash:'#/'},addEventListener(){}}, notificationGateSeq:0,notificationGateNeedsRedirect:false,notificationGate:{},navigate(path){ calls.push('navigate:'+path) },render(){},player:{clearSession(){}},loadPlaylists:async()=>{},atob:s=>Buffer.from(s,'base64').toString('binary'),Uint8Array,Promise,Set,Error}
   vm.createContext(ctx);vm.runInContext(code,ctx)
   return {ctx,data,calls,nodes,auth,Notification,setTokenUser(v){tokenUser=v},setFail(v){failPost=v},holdPost(){hold=true;return new Promise(r=>started=r)},release(){release()}}
 }
@@ -44,6 +44,7 @@ test('outra conta não desativa dispositivo da conta anterior',async()=>{
 
 test('desativar durante solicitação de permissão impede ativação posterior',async()=>{
  const f=fixture();f.ctx.notificationSettingsCard();const b=buttons(f);let resolve
+ await new Promise(setImmediate)
  f.Notification.requestPermission=()=>new Promise(r=>resolve=r)
  const enabling=b.enable.click();const disabling=b.disable.click();resolve('granted');await Promise.all([enabling,disabling])
  assert.equal(JSON.parse(f.data.get(key('alice'))).enabled,false);assert(!f.calls.includes('post'))
@@ -83,4 +84,19 @@ test('falha de rede durante verificação devolve tela recuperável', async () =
  f.ctx.api.fetch=(_path,opts)=>new Promise((_,reject)=>opts.signal.addEventListener('abort',()=>reject(new Error('timeout'))))
  f.ctx.setTimeout=(fn)=>{queueMicrotask(fn);return 1}; f.ctx.clearTimeout=()=>{}
  await f.ctx.verifyNotificationGate('alice'); assert.equal(f.ctx.notificationGate.status,'required')
+})
+
+
+test('após ativação confirmada o usuário vai à página inicial', async () => {
+ const f=fixture(); f.data.set('pm_push_owner','alice'); f.data.set(key('alice'),JSON.stringify({enabled:true,endpoint:'https://push.test/new'}))
+ f.ctx.notificationGateNeedsRedirect=true; f.ctx.window.location.hash='#/search'
+ await f.ctx.verifyNotificationGate('alice')
+ assert.equal(f.ctx.notificationGate.status,'allowed'); assert(f.calls.includes('navigate:/'))
+})
+
+test('permissão recusada não libera nem redireciona', async () => {
+ const f=fixture(); f.data.set('pm_push_owner','alice'); f.data.set(key('alice'),JSON.stringify({enabled:true,endpoint:'https://push.test/new'}))
+ f.ctx.notificationGateNeedsRedirect=true; f.ctx.window.location.hash='#/search'; f.Notification.permission='denied'
+ await f.ctx.verifyNotificationGate('alice')
+ assert.equal(f.ctx.notificationGate.status,'required'); assert(!f.calls.includes('navigate:/'))
 })
