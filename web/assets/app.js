@@ -133,7 +133,7 @@ function setAuth(patch) {
   }
   auth = { ...auth, ...patch }
   render()
-  if (previousId !== nextId && nextId) void loadPlaylists()
+  if (previousId !== nextId && nextId) { void loadPlaylists(); void reconcilePushSubscription(nextId) }
 }
 
 // Lê a claim `exp` de um JWT (header.payload.signature, base64url) sem
@@ -1019,6 +1019,166 @@ function renderQueue(container) {
 
 // ---------- Settings ----------
 
+// Serialize device operations so an opt-out always runs after an in-flight update.
+let pushOperation = Promise.resolve()
+function queuePushOperation(action) {
+  const next = pushOperation.catch(() => undefined).then(() =>
+    navigator.locks ? navigator.locks.request('pm-push-device', action) : action())
+  pushOperation = next.catch(() => undefined)
+  return next
+}
+function pushStateKey(userId) { return `pm_push_state:${userId}` }
+function readPushState(userId) {
+  try { return JSON.parse(localStorage.getItem(pushStateKey(userId)) || 'null') || { enabled: false } }
+  catch { return { enabled: false } }
+}
+function writePushState(userId, state) { localStorage.setItem(pushStateKey(userId), JSON.stringify(state)) }
+function ensurePushAccount(userId) {
+  let tokenUser = null
+  try {
+    const part = getToken().split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    tokenUser = JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, '='))).uid
+  } catch { /* A missing or malformed token cannot authorize this operation. */ }
+  if (auth.user?.id !== userId || tokenUser !== userId) throw new Error('A conta mudou. Entre novamente para concluir a operação.')
+}
+
+async function removePushEndpoint(endpoint) {
+  await api.fetch('/api/push/subscriptions', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint }) })
+}
+async function reconcilePushSubscription(userId) {
+  return queuePushOperation(async () => {
+    let state = readPushState(userId)
+    const owner = localStorage.getItem('pm_push_owner')
+    if (owner !== userId) return
+    if (!navigator.locks && state.enabled) return
+    if (!('serviceWorker' in navigator) || !('Notification' in window)) return
+    try {
+      const registration = await navigator.serviceWorker.ready
+      const current = await registration.pushManager.getSubscription()
+      ensurePushAccount(userId)
+      state = readPushState(userId)
+      if (!state.enabled) {
+        if (localStorage.getItem('pm_push_owner') !== userId) return
+        const endpoints = [...new Set([state.endpoint, state.pendingEndpoint].filter(Boolean))]
+        for (const endpoint of endpoints) { await removePushEndpoint(endpoint); ensurePushAccount(userId) }
+        if (current) await current.unsubscribe()
+        ensurePushAccount(userId)
+        writePushState(userId, { enabled: false })
+        localStorage.removeItem('pm_push_owner')
+        return
+      }
+      if (Notification.permission !== 'granted' || !current) {
+        // Keep the old endpoint until the server confirms revocation.
+        for (const endpoint of new Set([state.endpoint, state.pendingEndpoint].filter(Boolean))) { await removePushEndpoint(endpoint); ensurePushAccount(userId) }
+        ensurePushAccount(userId)
+        state = readPushState(userId)
+        if (state.enabled) {
+          writePushState(userId, { enabled: false })
+          if (localStorage.getItem('pm_push_owner') === userId) localStorage.removeItem('pm_push_owner')
+        }
+        return
+      }
+      if (current.endpoint === state.endpoint && !state.pendingEndpoint) return
+      // Save both endpoints before any request; failures are retried on next login.
+      state.pendingEndpoint = current.endpoint
+      writePushState(userId, state)
+      if (state.endpoint && state.endpoint !== current.endpoint) {
+        await removePushEndpoint(state.endpoint)
+        ensurePushAccount(userId)
+      }
+      if (!readPushState(userId).enabled) return
+      await api.post('/api/push/subscriptions', current.toJSON())
+      ensurePushAccount(userId)
+      state = readPushState(userId)
+      if (state.enabled) writePushState(userId, { enabled: true, endpoint: current.endpoint })
+    } catch { /* Keep the pending state for retry; do not request permission. */ }
+  })
+}
+
+function notificationSettingsCard() {
+  const status = el('p', { class: 'settings-text' }, 'Ative para receber avisos e promoções neste dispositivo.')
+  const enable = el('button', { class: 'btn-accent', type: 'button' }, 'Ativar notificações')
+  const disable = el('button', { class: 'btn-secondary', type: 'button' }, 'Desativar notificações')
+  const userId = auth.user?.id
+  if (!('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext)) {
+    status.textContent = 'Notificações indisponíveis neste navegador. No iPhone ou iPad, instale o aplicativo na tela de início e abra-o por lá.'
+    enable.disabled = true; disable.disabled = true
+  }
+  if (!navigator.locks) { status.textContent = 'Atualize o navegador para ativar notificações com segurança.'; enable.disabled = true }
+  let config = null
+  if (!enable.disabled) {
+    enable.disabled = true
+    api.get('/api/push/config').then(value => { config = value; enable.disabled = !value.enabled; if (!value.enabled) status.textContent = 'Notificações ainda não estão configuradas.' }).catch(() => { status.textContent = 'Não foi possível verificar as notificações.' })
+  }
+  enable.addEventListener('click', async () => {
+    const intent = `${Date.now()}-${Math.random()}`
+    try {
+      ensurePushAccount(userId)
+      writePushState(userId, { ...readPushState(userId), enabled: true, intent })
+      // This call must remain directly in the user's click for iOS.
+      const permission = await Notification.requestPermission()
+      ensurePushAccount(userId)
+      if (readPushState(userId).intent !== intent || !readPushState(userId).enabled) return
+      if (permission !== 'granted') { writePushState(userId, { ...readPushState(userId), enabled: false }); throw new Error('Permissão não concedida. Verifique as configurações do navegador.') }
+      await queuePushOperation(async () => {
+        ensurePushAccount(userId)
+        if (!readPushState(userId).enabled || readPushState(userId).intent !== intent) return
+        const owner = localStorage.getItem('pm_push_owner')
+        if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela e desative as notificações primeiro.')
+        localStorage.setItem('pm_push_owner', userId)
+        const reg = await navigator.serviceWorker.ready
+        let sub = await reg.pushManager.getSubscription()
+        ensurePushAccount(userId)
+        if (!readPushState(userId).enabled) return
+        if (!sub) {
+          const raw = atob(config.publicKey.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(config.publicKey.length / 4) * 4, '='))
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, c => c.charCodeAt(0)) })
+        }
+        ensurePushAccount(userId)
+        let next = readPushState(userId)
+        // Record the endpoint even if opt-out arrived while subscribe was in flight.
+        next.pendingEndpoint = sub.endpoint
+        writePushState(userId, next)
+        if (!next.enabled) return
+        if (next.endpoint && next.endpoint !== sub.endpoint) { await removePushEndpoint(next.endpoint); ensurePushAccount(userId) }
+        if (!readPushState(userId).enabled) return
+        await api.post('/api/push/subscriptions', sub.toJSON())
+        ensurePushAccount(userId)
+        next = readPushState(userId)
+        if (next.enabled) writePushState(userId, { enabled: true, endpoint: sub.endpoint })
+      })
+      status.textContent = readPushState(userId).enabled ? 'Notificações ativadas neste dispositivo.' : 'Cancelamento em andamento.'
+    } catch (err) { status.textContent = err.message || 'Não foi possível ativar notificações.' }
+  })
+  disable.addEventListener('click', async () => {
+    try {
+      ensurePushAccount(userId)
+      const owner = localStorage.getItem('pm_push_owner')
+      if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela para desativar as notificações.')
+      // Record opt-out synchronously, before waiting for any earlier network call.
+      writePushState(userId, { ...readPushState(userId), enabled: false, intent: '' })
+      await queuePushOperation(async () => {
+        ensurePushAccount(userId)
+        const owner = localStorage.getItem('pm_push_owner')
+        if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela para desativar as notificações.')
+        const state = readPushState(userId)
+        if (owner !== userId && !state.endpoint && !state.pendingEndpoint) throw new Error('Não foi possível confirmar a conta desta inscrição. Entre na conta que ativou as notificações.')
+        const reg = await navigator.serviceWorker.ready
+        const sub = await reg.pushManager.getSubscription()
+        ensurePushAccount(userId)
+        const endpoints = [...new Set([state.endpoint, state.pendingEndpoint, sub?.endpoint].filter(Boolean))]
+        for (const endpoint of endpoints) { await removePushEndpoint(endpoint); ensurePushAccount(userId) }
+        if (sub) await sub.unsubscribe()
+        ensurePushAccount(userId)
+        writePushState(userId, { enabled: false })
+        if (localStorage.getItem('pm_push_owner') === userId) localStorage.removeItem('pm_push_owner')
+      })
+      status.textContent = 'Notificações desativadas neste dispositivo.'
+    } catch (err) { status.textContent = err.message || 'Não foi possível desativar notificações. Tente novamente.' }
+  })
+  return el('section', { class: 'settings-card' }, el('h2', {}, 'Notificações'), status, el('div', { class: 'settings-actions' }, enable, disable))
+}
+
 async function renderSettings(container) {
   container.innerHTML = ''
   container.append(spinner())
@@ -1072,6 +1232,7 @@ async function renderSettings(container) {
       el('div', { class: 'settings-page' },
         el('h1', { class: 'page-title' }, 'Minha Conta'),
         phoneCard,
+        notificationSettingsCard(),
         playlistsCard,
       ),
     )
@@ -1115,6 +1276,7 @@ async function renderSettings(container) {
     el('div', { class: 'settings-page' },
       el('h1', { class: 'page-title' }, 'Configurações'),
       accountCard,
+      notificationSettingsCard(),
       serverCard,
     ),
   )

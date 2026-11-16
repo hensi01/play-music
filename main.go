@@ -89,6 +89,8 @@ func main() {
 		Log:     logger,
 	})
 
+	go srv.RunPushScheduler(ctx)
+
 	// --- HTTP server ---
 	httpSrv := &http.Server{
 		Addr:              cfg.ListenAddr(),
