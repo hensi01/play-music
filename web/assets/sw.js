@@ -8,7 +8,7 @@
 //    the current build.
 //  - On activate, stale caches from previous versions are removed.
 
-const CACHE_NAME = 'pm-shell-v3'
+const CACHE_NAME = 'pm-shell-v4'
 const SHELL = ['./', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png']
 
 self.addEventListener('install', (event) => {
@@ -46,6 +46,21 @@ self.addEventListener('fetch', (event) => {
           return res
         })
         .catch(() => caches.match(url.href)),
+    )
+    return
+  }
+
+  // JavaScript modules must come from the same deployment as the entry point.
+  // Imports do not inherit its version query, so never prefer an older cached module.
+  if (path.endsWith('.js')) {
+    event.respondWith(
+      fetch(req).then((res) => {
+        if (res.ok) {
+          const copy = res.clone()
+          return caches.open(CACHE_NAME).then((c) => c.put(req, copy)).catch(() => undefined).then(() => res)
+        }
+        return res
+      }).catch(() => caches.match(req)),
     )
     return
   }
