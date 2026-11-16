@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Play Music — protótipo Rust</title></head>
+<body><main id="app">Carregando…</main><script type="module">
+import init, { start_experimental_app } from './pkg/play_music_web.js';
+init().then(start_experimental_app).catch(() => { document.getElementById('app').textContent = 'Não foi possível iniciar o aplicativo.'; });
+</script></body></html>
