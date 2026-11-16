@@ -70,6 +70,19 @@ function emptyState2(msg, hint) {
   return el('div', { class: 'empty-state' }, el('p', {}, msg), el('p', {}, hint))
 }
 
+let toastTimer
+function showToast(message) {
+  let toast = document.getElementById('app-toast')
+  if (!toast) {
+    toast = el('div', { id: 'app-toast', class: 'app-toast', role: 'status', 'aria-live': 'polite' })
+    document.body.append(toast)
+  }
+  toast.textContent = message
+  toast.classList.add('visible')
+  window.clearTimeout(toastTimer)
+  toastTimer = window.setTimeout(() => toast.classList.remove('visible'), 2200)
+}
+
 // ---------- Icons (inline SVG) ----------
 
 const icons = {
@@ -240,7 +253,7 @@ function navigate(to) {
 // ---------- Track row ----------
 
 function trackRow(song, index, opts = {}) {
-  const { onPlay } = opts
+  const { onPlay, onQueue, compactActions = false } = opts
   const isCurrent = player.getPlayerState().current?.id === song.id
 
   const numCell = el(
@@ -268,25 +281,44 @@ function trackRow(song, index, opts = {}) {
     icon('heart'),
   )
 
-  const shareBtn = el(
+  const shareBtn = compactActions ? null : el(
     'button',
     { class: 'track-add track-share', 'aria-label': 'Copiar link da música', onclick: (e) => { e.stopPropagation(); copySongLink(song.id) } },
     icon('link'),
   )
 
-  const addBtn = el(
+  const addBtn = compactActions ? null : el(
     'button',
     { class: 'track-add', 'aria-label': 'Adicionar à playlist', onclick: (e) => { e.stopPropagation(); openPlaylistPicker(song) } },
     icon('plus'),
   )
 
+  const queueBtn = onQueue
+    ? el(
+        'button',
+        {
+          class: 'track-add track-queue',
+          'aria-label': `Adicionar ${song.title} à fila`,
+          title: 'Adicionar à fila',
+          onclick: (e) => {
+            e.stopPropagation()
+            onQueue(song)
+          },
+        },
+        icon('list'),
+      )
+    : null
+
   return el(
     'div',
     { class: `track-row${isCurrent ? ' playing' : ''}`, 'data-song-id': song.id },
     numCell,
-    el(
-      'div',
-      { class: 'track-main' },
+      el(onPlay ? 'button' : 'div', {
+        class: 'track-main',
+        type: onPlay ? 'button' : undefined,
+        'aria-label': onPlay ? `Tocar ${song.title}` : undefined,
+        onclick: onPlay ? () => onPlay(song, index ?? 0) : undefined,
+      },
       el('img', { class: 'track-art', src: artworkUrl(song.id, 48), alt: '', loading: 'lazy' }),
       el(
         'div',
@@ -295,7 +327,7 @@ function trackRow(song, index, opts = {}) {
         el('p', { class: 'track-artist' }, song.artist || 'Desconhecido'),
       ),
     ),
-    el('div', { class: 'track-actions' }, likeBtn, addBtn, shareBtn, downloadButton(song), el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
+    el('div', { class: 'track-actions' }, likeBtn, queueBtn, addBtn, shareBtn, downloadButton(song), el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
   )
 }
 
@@ -405,7 +437,18 @@ async function toggleLike(songId, btn) {
 function card({ image, title, subtitle, onClick, onPlay, square = true }) {
   return el(
     'div',
-    { class: 'card', onclick: onClick },
+    {
+      class: 'card',
+      role: onClick && !onPlay ? 'button' : undefined,
+      tabindex: onClick && !onPlay ? '0' : undefined,
+      onclick: onClick,
+      onkeydown: onClick && !onPlay ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onClick(event)
+        }
+      } : undefined,
+    },
     el(
       'div',
       { class: `card-image-wrap ${square ? 'square' : ''}` },
@@ -453,6 +496,35 @@ function categoryCard(c) {
   })
 }
 
+function albumCard(album, from = '/library') {
+  const details = [album.artist, album.year > 0 ? album.year : null].filter(Boolean).join(' • ')
+  return card({
+    image: artworkUrl(album.id, 300),
+    title: album.name,
+    subtitle: [details, musicas(album.songCount ?? 0)].filter(Boolean).join(' • '),
+    onClick: () => navigate(`/album/${encodeURIComponent(album.id)}?from=${encodeURIComponent(from)}`),
+  })
+}
+
+async function toggleAlbumLike(album, button) {
+  const next = !album.liked
+  button.disabled = true
+  try {
+    if (next) await endpoints.likeAlbum(album.id)
+    else await endpoints.unlikeAlbum(album.id)
+    album.liked = next
+    button.classList.toggle('liked', next)
+    button.setAttribute('aria-pressed', String(next))
+    button.setAttribute('aria-label', next ? 'Remover álbum dos salvos' : 'Salvar álbum')
+    button.replaceChildren(icon('heart'), document.createTextNode(next ? 'Salvo' : 'Salvar álbum'))
+    showToast(next ? 'Álbum salvo na biblioteca' : 'Álbum removido da biblioteca')
+  } catch (err) {
+    showToast(err.message || 'Não foi possível salvar o álbum')
+  } finally {
+    button.disabled = false
+  }
+}
+
 // ---------- Pages ----------
 
 const pages = {
@@ -468,6 +540,7 @@ const pages = {
   '/settings': renderSettings,
   '/admin': renderAdminPage,
   '/category/:id': renderCategory,
+  '/album/:id': renderAlbum,
   '/playlist/:id': renderPlaylist,
   '/song/:id': renderSong,
 }
@@ -507,10 +580,15 @@ async function renderHome(container) {
   container.innerHTML = ''
   container.append(el('div', { class: 'page-padding' }, el('h1', { class: 'page-title' }, greeting())))
   try {
-    const [home, rec] = await Promise.all([endpoints.home(), endpoints.recommendations().catch(() => ({ songs: [], artists: [], tastes: [] }))])
+    const [home, rec, albums] = await Promise.all([
+      endpoints.home(),
+      endpoints.recommendations().catch(() => ({ songs: [], artists: [], tastes: [] })),
+      endpoints.albums().catch(() => []),
+    ])
     const sectionsEl = []
     if (rec.songs?.length) sectionsEl.push(section('Para você', rec.songs.slice(0, 10).map((song) => songCard(song, () => player.playContext(rec.songs, rec.songs.indexOf(song))))))
     if (rec.artists?.length) sectionsEl.push(section('Artistas para você', rec.artists.slice(0, 10).map((a) => card({ image: artworkUrl(a.songId, 300), title: a.name, subtitle: 'Artista', onClick: () => navigate(`/recommended-artist/${encodeURIComponent(a.name)}`) }))))
+    if (albums.length) sectionsEl.push(section('Álbuns', albums.slice(0, 12).map((album) => albumCard(album, '/'))))
     for (const s of home.sections ?? []) {
       const songs = s.songs ?? []
       if (songs.length > 0) {
@@ -532,7 +610,7 @@ async function renderHome(container) {
       )
     }
     container.append(...sectionsEl)
-    if ((home.sections ?? []).length === 0) {
+    if (sectionsEl.length === 0) {
       container.append(
         emptyState2(
           'Sua biblioteca está vazia.',
@@ -647,10 +725,15 @@ function renderSearchResults(container, results) {
       ),
     )
   }
+  const albums = results.albums ?? []
+  if ((all || searchType === 'albums') && albums.length > 0) {
+    container.append(section('Álbuns', albums.map((album) => albumCard(album, '/search'))))
+  }
   const total =
     (all || searchType === 'songs' ? songs.length : 0) +
     (all || searchType === 'categories' ? cats.length : 0) +
-    (all || searchType === 'playlists' ? pls.length : 0)
+    (all || searchType === 'playlists' ? pls.length : 0) +
+    (all || searchType === 'albums' ? albums.length : 0)
   if (total === 0) {
     container.append(el('p', { class: 'empty-state' }, `Nada encontrado para “${searchQuery}”.`))
   }
@@ -659,6 +742,7 @@ function renderSearchResults(container, results) {
 const searchTypes = [
   { id: 'all', label: 'Tudo' },
   { id: 'songs', label: 'Músicas' },
+  { id: 'albums', label: 'Álbuns' },
   { id: 'categories', label: 'Categorias' },
   { id: 'playlists', label: 'Playlists' },
 ]
@@ -722,12 +806,13 @@ async function loadLibrary() {
   if (libLoading) return
   libLoading = true
   const epoch = sessionEpoch
-  const [s, p, c] = await Promise.allSettled([endpoints.songs(), endpoints.playlists(), endpoints.categories()])
+  const [s, p, c, a] = await Promise.allSettled([endpoints.songs(), endpoints.playlists(), endpoints.categories(), endpoints.albums()])
   if (epoch !== sessionEpoch) return
   libData = {
     songs: s.status === 'fulfilled' ? s.value : [],
     playlists: p.status === 'fulfilled' ? p.value : [],
     categories: c.status === 'fulfilled' ? c.value : [],
+    albums: a.status === 'fulfilled' ? a.value : [],
   }
   libLoading = false
   render()
@@ -742,6 +827,7 @@ async function renderLibrary(container) {
   }
   const tabs = [
     { id: 'songs', label: 'Músicas' },
+    { id: 'albums', label: 'Álbuns' },
     { id: 'categories', label: 'Categorias' },
     { id: 'playlists', label: 'Playlists' },
   ]
@@ -766,6 +852,12 @@ async function renderLibrary(container) {
       trackRow(s, i, { onPlay: (_song, idx) => player.playContext(libData.songs, idx) }),
     )
     page.append(el('div', { class: 'track-list' }, ...rows))
+  } else if (libTab === 'albums') {
+    if (libData.albums.length === 0) {
+      wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhum álbum disponível.'))
+      return
+    }
+    for (const album of libData.albums) wrap.append(albumCard(album))
   } else if (libTab === 'categories') {
     if (libData.categories.length === 0) {
       wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhuma categoria ainda.'))
@@ -865,8 +957,105 @@ async function renderCategory(container, params) {
   }
 }
 
+async function renderAlbum(container, params) {
+  container.innerHTML = ''
+  container.append(spinner())
+  const { params: query } = parseHash()
+  const requestedReturn = query.get('from')
+  const returnTo = ['/search', '/', '/liked'].includes(requestedReturn) ? requestedReturn : '/library'
+  try {
+    const album = await endpoints.album(params.id)
+    const songs = album.songs ?? []
+    const duration = album.duration || songs.reduce((total, song) => total + (Number(song.duration) || 0), 0)
+    const meta = [
+      album.artist || 'Artista desconhecido',
+      album.year > 0 ? album.year : null,
+      musicas(songs.length),
+      fmtDurationLong(duration),
+    ].filter(Boolean).join(' • ')
+    const header = el(
+      'div',
+      { class: 'detail-header horizontal album-detail-header' },
+      el('img', { class: 'detail-art', src: artworkUrl(album.id, 480), alt: `Capa do álbum ${album.name}`, loading: 'lazy' }),
+      el(
+        'div',
+        { class: 'detail-info' },
+        el('p', { class: 'detail-type' }, 'Álbum'),
+        el('h1', { class: 'detail-title' }, album.name),
+        el('p', { class: 'detail-meta' }, meta),
+        album.artist
+          ? el('button', {
+              class: 'album-artist-link',
+              onclick: () => navigate(`/recommended-artist/${encodeURIComponent(album.artist)}`),
+            }, `Ver artista: ${album.artist}`)
+          : null,
+        el(
+          'div',
+          { class: 'detail-actions' },
+          el(
+            'button',
+            { class: 'btn-accent', disabled: songs.length === 0, onclick: () => player.playContext(songs, 0) },
+            icon('play'),
+            'Tocar álbum',
+          ),
+          el(
+            'button',
+            {
+              class: 'btn-secondary album-shuffle',
+              disabled: songs.length === 0,
+              'aria-label': 'Tocar álbum aleatoriamente',
+              onclick: () => playShuffle(songs),
+            },
+            icon('shuffle'),
+            'Aleatório',
+          ),
+          el(
+            'button',
+            {
+              class: `btn-secondary album-save${album.liked ? ' liked' : ''}`,
+              'aria-label': album.liked ? 'Remover álbum dos salvos' : 'Salvar álbum',
+              'aria-pressed': String(!!album.liked),
+              onclick: (event) => toggleAlbumLike(album, event.currentTarget),
+            },
+            icon('heart'),
+            album.liked ? 'Salvo' : 'Salvar álbum',
+          ),
+        ),
+      ),
+    )
+
+    const content = el('div', { class: 'detail-content album-detail-content' })
+    content.append(el('h2', { class: 'section-title album-tracks-title' }, 'Faixas'))
+    if (songs.length === 0) {
+      content.append(emptyState('Este álbum ainda não tem músicas disponíveis.'))
+    } else {
+      const rows = songs.map((song, index) => trackRow(song, index, {
+        onPlay: (_selected, selectedIndex) => player.playContext(songs, selectedIndex),
+        compactActions: true,
+        onQueue: (selected) => {
+          player.addToQueue(selected)
+          showToast(`“${selected.title}” adicionada à fila`)
+        },
+      }))
+      content.append(el('div', { class: 'track-list album-track-list' }, ...rows))
+    }
+    content.append(el('button', { class: 'back-link', onclick: () => navigate(returnTo) }, icon('arrowLeft'), 'Voltar'))
+    container.innerHTML = ''
+    container.append(el('div', { class: 'page' }, header, content))
+  } catch (err) {
+    container.innerHTML = ''
+    container.append(emptyState(err.message))
+  }
+}
+
 function playShuffle(songs) {
-  const shuffled = [...songs].sort(() => Math.random() - 0.5)
+  const shuffled = [...songs]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const current = shuffled[i]
+    shuffled[i] = shuffled[j]
+    shuffled[j] = current
+  }
   player.playContext(shuffled, 0)
 }
 
@@ -956,7 +1145,7 @@ async function renderLiked(container) {
   container.innerHTML = ''
   container.append(spinner())
   try {
-    const songs = await endpoints.liked()
+    const [songs, albums] = await Promise.all([endpoints.liked(), endpoints.likedAlbums()])
     const header = el(
       'div',
       { class: 'detail-header' },
@@ -966,7 +1155,7 @@ async function renderLiked(container) {
         { class: 'detail-info' },
         el('p', { class: 'detail-type' }, 'Playlist'),
         el('h1', { class: 'detail-title' }, 'Curtidas'),
-        el('p', { class: 'detail-meta' }, musicas(songs.length)),
+        el('p', { class: 'detail-meta' }, `${musicas(songs.length)} • ${albums.length} ${albums.length === 1 ? 'álbum salvo' : 'álbuns salvos'}`),
         el(
           'div',
           { class: 'detail-actions' },
@@ -980,11 +1169,18 @@ async function renderLiked(container) {
       ),
     )
     const content = el('div', { class: 'detail-content' })
-    if (songs.length === 0) {
+    if (songs.length === 0 && albums.length === 0) {
       content.append(emptyState2('Nenhuma música curtida ainda.', 'Toque no coração de uma música para salvá-la aqui.'))
     } else {
-      const rows = songs.map((s, i) => trackRow(s, i, { onPlay: (_song, idx) => player.playContext(songs, idx) }))
-      content.append(el('div', { class: 'track-list' }, ...rows))
+      if (songs.length) {
+        content.append(el('h2', { class: 'section-title liked-section-title' }, 'Músicas'))
+        const rows = songs.map((s, i) => trackRow(s, i, { onPlay: (_song, idx) => player.playContext(songs, idx) }))
+        content.append(el('div', { class: 'track-list' }, ...rows))
+      }
+      if (albums.length) {
+        content.append(el('h2', { class: 'section-title liked-section-title' }, 'Álbuns'))
+        content.append(el('div', { class: 'card-wrap' }, ...albums.map((album) => albumCard(album, '/liked'))))
+      }
     }
     container.innerHTML = ''
     container.append(el('div', { class: 'page' }, header, content))
@@ -1681,18 +1877,24 @@ function bottomBar(refs) {
   })
   refs.volInput = volInput
 
-  const openFullscreen = () => player.setFullScreen(true)
+  const openFullscreen = () => {
+    fullscreenReturnTarget = document.activeElement
+    player.setFullScreen(true)
+    scheduleFullscreenFocus(true)
+  }
 
   return el(
     'div',
     { class: 'bottom-bar' },
     el(
       'div',
-      { class: 'now-playing', onclick: openFullscreen },
-      el('img', { class: 'now-playing-art', src: artworkUrl(current.id, 64), alt: '' }),
-      el('div', { class: 'now-playing-info' },
-        el('p', { class: 'now-playing-title' }, current.title),
-        el('p', { class: 'now-playing-artist' }, current.artist || 'Desconhecido'),
+      { class: 'now-playing' },
+      el('button', { class: 'now-playing-open', type: 'button', 'aria-label': `Abrir player: ${current.title}`, onclick: openFullscreen },
+        el('img', { class: 'now-playing-art', src: artworkUrl(current.id, 64), alt: '' }),
+        el('div', { class: 'now-playing-info' },
+          el('p', { class: 'now-playing-title' }, current.title),
+          el('p', { class: 'now-playing-artist' }, current.artist || 'Desconhecido'),
+        ),
       ),
       likeBtn,
       downloadButton(current),
@@ -1796,6 +1998,48 @@ async function toggleLikeCurrent() {
 
 // ---------- Fullscreen player ----------
 
+let fullscreenReturnTarget = null
+let fullscreenFocusRequest = 0
+
+function focusFullscreenDialog(preferredLabel) {
+  const dialog = document.querySelector('.fullscreen-player[role="dialog"]')
+  if (!dialog) return false
+  const buttons = [...dialog.querySelectorAll('button:not([disabled])')]
+  const target = (preferredLabel === 'fullscreen-main' && dialog.querySelector('.fullscreen-btn-main'))
+    || buttons.find((button) => button.getAttribute('aria-label') === preferredLabel)
+    || dialog.querySelector('button[aria-label="Fechar"]')
+    || dialog
+  target.focus()
+  return true
+}
+
+function scheduleFullscreenFocus(opening, preferredLabel = null) {
+  const request = ++fullscreenFocusRequest
+  let frames = 30
+  const attempt = () => {
+    if (request !== fullscreenFocusRequest) return
+    if (player.getPlayerState().fullScreen !== opening) return
+    if (opening) {
+      if (focusFullscreenDialog(preferredLabel || 'Fechar')) return
+    } else {
+      const target = (fullscreenReturnTarget?.isConnected && fullscreenReturnTarget)
+        || document.querySelector('.now-playing-open')
+      if (target) {
+        target.focus()
+        fullscreenReturnTarget = null
+        return
+      }
+    }
+    if (frames-- > 0) requestAnimationFrame(attempt)
+  }
+  requestAnimationFrame(attempt)
+}
+
+function closeFullscreen() {
+  player.setFullScreen(false)
+  scheduleFullscreenFocus(false)
+}
+
 function fullscreenPlayer(refs) {
   const { current, playing, progress, duration, shuffle, repeat } = player.getPlayerState()
   if (!current) return null
@@ -1813,11 +2057,11 @@ function fullscreenPlayer(refs) {
 
   return el(
     'div',
-    { class: 'fullscreen-player' },
+    { class: 'fullscreen-player', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Player de música', tabindex: '-1' },
     el(
       'div',
       { class: 'fullscreen-top' },
-        el('button', { class: 'icon-btn', 'aria-label': 'Fechar', onclick: () => player.setFullScreen(false) }, icon('chevronDown')),
+        el('button', { class: 'icon-btn', 'aria-label': 'Fechar', onclick: closeFullscreen }, icon('chevronDown')),
         el(
           'div',
           { style: 'display:flex;gap:8px' },
@@ -2001,9 +2245,14 @@ function refreshPlayerBar() {
   const key = structuralKey()
   if (key !== barKey) {
     if (barRenderTimer) return
+    const activeElement = document.activeElement
+    const activeDialogLabel = player.getPlayerState().fullScreen && activeElement?.closest('.fullscreen-player')
+      ? (activeElement.classList.contains('fullscreen-btn-main') ? 'fullscreen-main' : activeElement.getAttribute('aria-label'))
+      : null
     barRenderTimer = setTimeout(() => {
       barRenderTimer = null
       renderPlayerBar()
+      if (activeDialogLabel) focusFullscreenDialog(activeDialogLabel)
     }, 50)
     return
   }
@@ -2072,6 +2321,30 @@ player.subscribe(refreshPlayerBar)
 // ---------- Keyboard shortcuts ----------
 
 document.addEventListener('keydown', (e) => {
+  const dialog = document.querySelector('.fullscreen-player[role="dialog"]')
+  if (dialog && e.key === 'Escape') {
+    e.preventDefault()
+    closeFullscreen()
+    return
+  }
+  if (dialog && e.key === 'Tab') {
+    const focusable = [...dialog.querySelectorAll('button:not([disabled])')]
+    if (focusable.length) {
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        e.preventDefault()
+        first.focus()
+      }
+    } else {
+      e.preventDefault()
+      dialog.focus()
+    }
+    return
+  }
   if (e.altKey || e.ctrlKey || e.metaKey) return
   if (e.key === 'Escape' && menuOpen) {
     menuOpen = false

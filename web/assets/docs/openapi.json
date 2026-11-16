@@ -4211,6 +4211,130 @@
           }
         ]
       }
+    },
+    "/api/me/liked/albums": {
+      "get": {
+        "summary": "Listar álbuns curtidos",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Song"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "operationId": "get_api_liked_albums",
+        "description": "Curtidas."
+      }
+    },
+    "/api/me/liked/albums/{id}": {
+      "put": {
+        "summary": "Curtir álbum",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "put_api_liked_albums_id",
+        "description": "Curtida."
+      },
+      "delete": {
+        "summary": "Remover curtida do álbum",
+        "tags": [
+          "Catálogo e conta"
+        ],
+        "responses": {
+          "400": {
+            "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Autenticação inválida"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "428": {
+            "description": "Ative notificações na conta"
+          },
+          "204": {
+            "description": "Concluído sem conteúdo"
+          }
+        },
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "delete_api_liked_albums_id",
+        "description": "Curtida."
+      }
     }
   }
 }

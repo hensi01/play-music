@@ -161,6 +161,42 @@ func TestFreeCatalogAndRecommendationsIntegration(t *testing.T) {
 	if err = st.UpsertArt(ctx, "album", oldAlbum, []byte("original-cover"), "image/jpeg"); err != nil {
 		t.Fatal(err)
 	}
+	if rec := call("PUT", "/api/me/liked/albums/"+oldAlbum, tokenA, ""); rec.Code != 204 {
+		t.Fatalf("save album: %d %s", rec.Code, rec.Body.String())
+	}
+	likedAlbum := call("GET", "/api/albums/"+oldAlbum, tokenA, "")
+	var albumPayload struct {
+		Liked bool `json:"liked"`
+	}
+	if json.Unmarshal(likedAlbum.Body.Bytes(), &albumPayload) != nil || !albumPayload.Liked {
+		t.Fatalf("album saved state missing: %s", likedAlbum.Body)
+	}
+	likedAlbums := call("GET", "/api/me/liked/albums", tokenA, "")
+	var savedAlbums []struct {
+		ID    string `json:"id"`
+		Liked bool   `json:"liked"`
+	}
+	if json.Unmarshal(likedAlbums.Body.Bytes(), &savedAlbums) != nil || len(savedAlbums) != 1 || savedAlbums[0].ID != oldAlbum || !savedAlbums[0].Liked {
+		t.Fatalf("saved album library incorrect: %s", likedAlbums.Body)
+	}
+	otherUserAlbums := call("GET", "/api/me/liked/albums", tokenB, "")
+	var otherSavedAlbums []any
+	if json.Unmarshal(otherUserAlbums.Body.Bytes(), &otherSavedAlbums) != nil || len(otherSavedAlbums) != 0 {
+		t.Fatalf("album save leaked to another user: %s", otherUserAlbums.Body)
+	}
+	albumSearch := call("GET", "/api/search?q=Demo+Album&type=albums", tokenA, "")
+	var searchPayload struct {
+		Albums []struct {
+			ID    string `json:"id"`
+			Liked bool   `json:"liked"`
+		} `json:"albums"`
+	}
+	if json.Unmarshal(albumSearch.Body.Bytes(), &searchPayload) != nil || len(searchPayload.Albums) != 1 || searchPayload.Albums[0].ID != oldAlbum || !searchPayload.Albums[0].Liked {
+		t.Fatalf("album-only search or saved state incorrect: %s", albumSearch.Body)
+	}
+	if rec := call("DELETE", "/api/me/liked/albums/"+oldAlbum, tokenA, ""); rec.Code != 204 {
+		t.Fatalf("remove saved album: %d %s", rec.Code, rec.Body.String())
+	}
 	if err = st.UpdateSongMeta(ctx, song1, "", "New Band"); err != nil {
 		t.Fatal(err)
 	}

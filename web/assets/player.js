@@ -137,6 +137,7 @@ const updateDuration = () => {
   set({ duration: resolvedTrackDuration() })
   // Apply a seek that arrived before the metadata was available.
   if (state.pendingSeek != null) seek(state.pendingSeek)
+  updateMediaSessionPosition()
 }
 audio.addEventListener('loadedmetadata', updateDuration)
 audio.addEventListener('durationchange', updateDuration)
@@ -146,6 +147,7 @@ audio.addEventListener('play', () => {
   switching = false
   set({ playing: true })
   setMediaSessionPlaybackState(true)
+  updateMediaSessionPosition()
 })
 audio.addEventListener('pause', () => {
   resetListenAnchor()
@@ -157,6 +159,7 @@ audio.addEventListener('pause', () => {
   }
   set({ playing: false })
   setMediaSessionPlaybackState(false)
+  updateMediaSessionPosition()
 })
 audio.addEventListener('ended', () => {
   afterSong()
@@ -191,36 +194,65 @@ function playAudio() {
 
 // Media Session API: system media controls + notifications.
 function updateMediaSession() {
-  if (!('mediaSession' in navigator) || !state.current) return
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: state.current.title,
-    artist: state.current.artist,
-    album: state.current.album,
-    artwork: [{ src: artworkUrl(state.current.id, 512), sizes: '512x512' }],
-  })
-  navigator.mediaSession.setActionHandler('play', () => { if (adGate) adPlayer?.resume(); else playAudio() })
-  navigator.mediaSession.setActionHandler('pause', () => { if (adGate) adPlayer?.pause(); else audio.pause() })
-  navigator.mediaSession.setActionHandler('previoustrack', () => prev())
-  navigator.mediaSession.setActionHandler('nexttrack', () => next())
-  navigator.mediaSession.setActionHandler('seekbackward', (d) => {
+  const session = globalThis.navigator?.mediaSession
+  if (!session || !state.current) return
+  try {
+    if (typeof globalThis.MediaMetadata === 'function') {
+      session.metadata = new MediaMetadata({
+        title: state.current.title,
+        artist: state.current.artist,
+        album: state.current.album,
+        artwork: [{ src: artworkUrl(state.current.id, 512), sizes: '512x512' }],
+      })
+    }
+  } catch {
+    // Metadata support differs by browser; playback controls can still work.
+  }
+  setMediaSessionAction('play', () => { if (adGate) adPlayer?.resume(); else playAudio() })
+  setMediaSessionAction('pause', () => { if (adGate) adPlayer?.pause(); else audio.pause() })
+  setMediaSessionAction('previoustrack', () => prev())
+  setMediaSessionAction('nexttrack', () => next())
+  setMediaSessionAction('seekbackward', (d) => {
     const delta = (d && d.seekOffset) || 10
     seek(audio.currentTime - delta)
   })
-  navigator.mediaSession.setActionHandler('seekforward', (d) => {
+  setMediaSessionAction('seekforward', (d) => {
     const delta = (d && d.seekOffset) || 10
     seek(audio.currentTime + delta)
   })
-  navigator.mediaSession.setActionHandler('seekto', (d) => {
+  setMediaSessionAction('seekto', (d) => {
     if (d.seekTime != null) seek(d.seekTime)
   })
   setMediaSessionPlaybackState(state.playing)
+  updateMediaSessionPosition()
+}
+
+function setMediaSessionAction(action, handler) {
+  const session = globalThis.navigator?.mediaSession
+  if (!session || typeof session.setActionHandler !== 'function') return
+  try {
+    session.setActionHandler(action, handler)
+  } catch {
+    // Ignore individual actions that the current browser does not support.
+  }
+}
+
+function clearMediaSession() {
+  const session = globalThis.navigator?.mediaSession
+  if (!session) return
+  for (const action of ['play', 'pause', 'previoustrack', 'nexttrack', 'seekbackward', 'seekforward', 'seekto']) {
+    setMediaSessionAction(action, null)
+  }
+  try { session.metadata = null } catch { /* unsupported */ }
+  try { session.playbackState = 'none' } catch { /* unsupported */ }
 }
 
 // Syncs the lock-screen/notification play state (iOS/Android).
 function setMediaSessionPlaybackState(playing) {
-  if (!('mediaSession' in navigator)) return
+  const session = globalThis.navigator?.mediaSession
+  if (!session) return
   try {
-    navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'
+    session.playbackState = state.current ? (playing ? 'playing' : 'paused') : 'none'
   } catch {
     /* not supported */
   }
@@ -229,12 +261,13 @@ function setMediaSessionPlaybackState(playing) {
 // Keeps the system media controls in sync with the audio element, clamping the
 // position so it can never exceed the duration (avoids setPositionState errors).
 function updateMediaSessionPosition() {
-  if (!('mediaSession' in navigator) || !state.current) return
-  const duration = resolveDuration(audio.duration, state.current.duration ?? 0)
+  const session = globalThis.navigator?.mediaSession
+  if (!session || typeof session.setPositionState !== 'function' || !state.current) return
+  const duration = resolveDuration(audio.duration, state.duration, state.current.duration ?? 0)
   if (duration <= 0 || !Number.isFinite(audio.currentTime)) return
   const position = Math.min(Math.max(audio.currentTime, 0), duration)
   try {
-    navigator.mediaSession.setPositionState({
+    session.setPositionState({
       duration,
       position,
       playbackRate: audio.playbackRate,
@@ -272,6 +305,12 @@ export function playSong(song) {
   updateMediaSession()
 }
 
+// Add a track after the current queue without interrupting playback.
+export function addToQueue(song) {
+  if (!song?.id) return
+  set({ queue: [...state.queue, song] })
+}
+
 // Clear playback and listening state when the account changes.
 export function clearSession() {
   adGeneration++; adGate = false; adPlayer?.cleanup(); adPlayer = null; gateOverlay?.remove(); gateOverlay = null; songsSinceAd = 0; adIndex = 0
@@ -281,8 +320,7 @@ export function clearSession() {
   audio.removeAttribute('src')
   audio.load()
   set({ queue: [], currentIndex: -1, current: null, playing: false, progress: 0, duration: 0, pendingSeek: null, fullScreen: false, shuffle: false, repeat: false })
-  setMediaSessionPlaybackState(false)
-  if ('mediaSession' in navigator) navigator.mediaSession.metadata = null
+  clearMediaSession()
 }
 
 export function togglePlay() {
@@ -307,8 +345,13 @@ export function next() {
       // End of queue: actually stop the audio, otherwise the element keeps
       // playing the last track while the UI state reports paused.
       audio.pause()
+      if (audio.readyState > 0) {
+        try { audio.currentTime = 0 } catch { /* duration may no longer be seekable */ }
+      }
       switching = false
       set({ playing: false, currentIndex: Math.max(0, queue.length - 1), progress: 0 })
+      setMediaSessionPlaybackState(false)
+      updateMediaSessionPosition()
       return
     }
     idx = 0
@@ -357,6 +400,7 @@ export function seek(seconds) {
       audio.currentTime = target
       set({ progress: target, duration: seekable })
       state.pendingSeek = null
+      updateMediaSessionPosition()
       return
     }
     state.pendingSeek = seconds
@@ -369,6 +413,7 @@ export function seek(seconds) {
     audio.currentTime = target
   }
   set({ progress: target })
+  updateMediaSessionPosition()
 }
 
 // Nudge playback by delta seconds (e.g. the +5s / -5s buttons and keyboard).
