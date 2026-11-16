@@ -22,8 +22,9 @@ type S3Config struct {
 // Config is the runtime configuration, loaded exclusively from the
 // environment variables defined in .env (ND_* prefix + DATABASE_URL).
 type Config struct {
-	AdminUsername string
-	AdminPassword string
+	PushProvider, RelayBaseURL, RelayAppID, RelayAppSecret, RelayVapidPublicKey string
+	AdminUsername                                                               string
+	AdminPassword                                                               string
 
 	S3 S3Config
 
@@ -177,6 +178,7 @@ func Load() *Config {
 	}
 
 	return &Config{
+		PushProvider: getenv("PUSH_PROVIDER"), RelayBaseURL: getenv("RELAY_BASE_URL"), RelayAppID: getenv("RELAY_APP_ID"), RelayAppSecret: getenv("RELAY_APP_SECRET"), RelayVapidPublicKey: getenv("RELAY_VAPID_PUBLIC_KEY"),
 		AdminUsername: getenv("ND_ADMINUSERNAME"),
 		AdminPassword: getenv("ND_ADMINPASSWORD"),
 

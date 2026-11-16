@@ -1,6 +1,6 @@
 // Admin page: users, categories (songs per category) and song uploads.
 
-import { endpoints, artworkUrl, applyPhoneMask } from './api.js'
+import { api, endpoints, artworkUrl, applyPhoneMask } from './api.js'
 
 let adminTab = 'users'
 let adminState = { users: [], categories: [], songs: [], songCategoryIds: {}, categoryNames: {} }
@@ -22,6 +22,7 @@ export function renderAdmin() {
     el('button', { class: `tab-btn ${adminTab === 'users' ? 'active' : ''}`, onclick: () => { adminTab = 'users'; refresh() } }, 'Usuários'),
     el('button', { class: `tab-btn ${adminTab === 'categories' ? 'active' : ''}`, onclick: () => { adminTab = 'categories'; refresh() } }, 'Categorias'),
     el('button', { class: `tab-btn ${adminTab === 'songs' ? 'active' : ''}`, onclick: () => { adminTab = 'songs'; refresh() } }, 'Músicas'),
+    el('button', { class: `tab-btn ${adminTab === 'notifications' ? 'active' : ''}`, onclick: () => { adminTab = 'notifications'; refresh() } }, 'Notificações'),
   )
   page.append(el('h1', { class: 'page-title' }, 'Administração'), tabs)
 
@@ -34,10 +35,57 @@ export function renderAdmin() {
     if (adminTab === 'users') await renderUsers(wrap, seq)
     else if (adminTab === 'categories') await renderCategories(wrap, seq)
     else if (adminTab === 'songs') await renderSongs(wrap, seq)
+    else if (adminTab === 'notifications') renderNotifications(wrap)
   }
 
   refresh()
   return page
+}
+
+function renderNotifications(wrap) {
+  const title = el('input', { class: 'form-input', placeholder: 'Título', maxlength: '120', required: true })
+  const body = el('textarea', { class: 'form-input', placeholder: 'Mensagem', maxlength: '500', required: true })
+  const link = el('input', { class: 'form-input', placeholder: 'Link HTTPS opcional' })
+  const date = el('input', { class: 'form-input', type: 'datetime-local', 'aria-label': 'Data e hora do envio' })
+  const status = el('p', { role: 'status' })
+  const list = el('div', { class: 'admin-table' })
+  const configStatus = el('p', { class: 'settings-text' }, 'Verificando serviço de notificações…')
+  api.get('/api/push/config').then(config => { configStatus.textContent = config.enabled ? 'Serviço de notificações configurado.' : 'Serviço indisponível: configure o relay no servidor.' }).catch(() => { configStatus.textContent = 'Não foi possível verificar o serviço.' })
+  const button = el('button', { class: 'btn-accent', type: 'submit' }, 'Programar notificação')
+  async function load() {
+    try {
+      const campaigns = await api.get('/api/admin/notifications')
+      list.innerHTML = ''
+      const labels = { pending: 'Agendada', sending: 'Processando', completed: 'Enfileirada', partial: 'Parcial', unknown: 'Resultado incerto', cancelled: 'Cancelada' }
+      for (const item of campaigns) {
+        const row = el('div', { class: 'admin-row' }, el('div', { class: 'admin-row-main' },
+          el('p', { class: 'admin-row-title' }, item.title),
+          el('p', { class: 'admin-row-sub' }, `${new Date(item.scheduledAt).toLocaleString()} · ${labels[item.status] || item.status} · ${item.queued}/${item.selected} enfileiradas`),
+          item.detail ? el('p', { class: 'admin-row-sub' }, item.detail) : null))
+        if (item.status === 'pending') row.append(el('button', { class: 'btn-secondary', type: 'button', onclick: async () => {
+          if (!confirm('Cancelar esta notificação agendada?')) return
+          try { await api.del(`/api/admin/notifications/${encodeURIComponent(item.id)}`); await load() } catch (err) { status.textContent = err.message }
+        } }, 'Cancelar'))
+        list.append(row)
+      }
+      if (!campaigns.length) list.append(el('p', { class: 'settings-text' }, 'Nenhuma notificação programada.'))
+    } catch (err) { status.textContent = err.message }
+  }
+  const form = el('form', { onsubmit: async (event) => {
+    event.preventDefault()
+    const scheduledAt = date.value ? new Date(date.value) : new Date()
+    if (Number.isNaN(scheduledAt.getTime())) { status.textContent = 'Informe uma data válida.'; return }
+    if (!confirm(`Programar envio para ${scheduledAt.toLocaleString()}?`)) return
+    button.disabled = true
+    try {
+      await api.post('/api/admin/notifications', { title: title.value, body: body.value, url: link.value, scheduledAt: scheduledAt.toISOString() })
+      status.textContent = 'Notificação programada. O enfileiramento não confirma a exibição no dispositivo.'
+      form.reset(); await load()
+    } catch (err) { status.textContent = err.message }
+    finally { button.disabled = false }
+  } }, el('h2', {}, 'Avisos e promoções'), el('p', { class: 'settings-text' }, 'Escolha a data e a hora local. Deixe em branco para enviar agora.'), title, body, link, date, button, status)
+  wrap.append(configStatus, form, el('h2', {}, 'Histórico e agendamentos'), list)
+  void load()
 }
 
 function el(tag, attrs = {}, ...children) {

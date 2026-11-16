@@ -137,3 +137,18 @@ listar os objetos cadastrados e, após conferir a lista, execute
 usados por músicas, verifica cada objeto removido e só então exclui os registros.
 Se falhar, mantenha a aplicação parada e execute novamente; objetos já ausentes
 são aceitos. A migração 0010 só avança quando não restam registros de karaokê.
+
+### Notificações Web Push
+
+Para ativar o relay, configure no ambiente `PUSH_PROVIDER=relay`, `RELAY_APP_ID`,
+`RELAY_APP_SECRET` e `RELAY_VAPID_PUBLIC_KEY`. `RELAY_BASE_URL` é opcional e
+usa https://vapid.party por padrão. Nunca exponha a chave secreta no navegador.
+Em Configurações, cada usuário pode ativar ou desativar notificações no próprio
+dispositivo. Administradores enviam avisos na aba Notificações. O serviço aceita
+até 150 inscrições ativas e lotes de até 100 destinatários; enfileiramento não
+comprova entrega. No iOS, instale o aplicativo na tela de início antes de ativar.
+
+Administradores podem programar o envio para uma data e hora local e cancelar
+agendamentos pendentes. O servidor armazena o horário em UTC e retoma os
+agendamentos pendentes após reinício. Um envio interrompido ou com resposta
+incerta é marcado para revisão; não é repetido automaticamente.

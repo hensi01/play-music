@@ -79,3 +79,23 @@ self.addEventListener('fetch', (event) => {
     }),
   )
 })
+
+// Push messages contain only administrator-provided notification text and URL.
+self.addEventListener('push', (event) => {
+  let data = {}
+  try { data = event.data ? event.data.json() : {} } catch { /* malformed payload */ }
+  const title = typeof data.title === 'string' && data.title ? data.title : 'Play Music'
+  const body = typeof data.body === 'string' ? data.body : ''
+  let target = '/'
+  try {
+    const url = new URL(data.url || '/', self.location.origin)
+    if ((url.protocol === 'https:' || url.origin === self.location.origin) && !url.username && !url.password) target = url.href
+  } catch { /* open home */ }
+  event.waitUntil(self.registration.showNotification(title, { body, icon: '/icon-192.png', data: { url: target } }))
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const target = event.notification.data?.url || '/'
+  event.waitUntil(clients.openWindow(target))
+})

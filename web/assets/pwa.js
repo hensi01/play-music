@@ -23,15 +23,20 @@
   let deferredPrompt = null
 
   window.addEventListener('beforeinstallprompt', (e) => {
+    if (pwaSeen()) return
     e.preventDefault()
     deferredPrompt = e
+    const button = document.querySelector('.pwa-overlay [data-act="install"]')
+    if (button) button.textContent = 'Instalar'
   })
 
-  // O aviso de instalação aparece UMA vez por sessão (sessionStorage): ele é
-  // gravado no primeiro show, então recarregar/navegar na mesma aba não
-  // re-exibe o card. Fechar a aba/janela inicia uma nova sessão (o aviso
-  // volta). try/catch: se o storage não estiver disponível, mantém o
-  // comportamento antigo (mostrar em toda visita).
+  window.addEventListener('appinstalled', () => {
+    deferredPrompt = null
+    document.querySelector('.pwa-overlay')?.remove()
+  })
+
+  // Ao dispensar o aviso, não mostrá-lo novamente na mesma sessão. Uma
+  // atualização automática antes da escolha não deve escondê-lo.
   const SEEN_KEY = 'pm_pwa_seen'
 
   function pwaSeen() {
@@ -86,7 +91,6 @@
       'Abre em tela cheia, sem a barra do navegador',
       'Ícone próprio do Play Music no seu dispositivo',
     ]
-    const canInstall = deferredPrompt != null
     const steps = stepsFor()
 
     const card = document.createElement('div')
@@ -101,34 +105,45 @@
       '<p class="pwa-steps-title">Como instalar:</p>' +
       '<ol class="pwa-steps">' + steps.map((s) => '<li>' + s + '</li>').join('') + '</ol>' +
       '<div class="pwa-actions">' +
-        (canInstall ? '<button type="button" class="pwa-btn primary" data-act="install">Instalar</button>' : '') +
+        '<button type="button" class="pwa-btn primary" data-act="install">' + (deferredPrompt ? 'Instalar' : 'Como instalar') + '</button>' +
         '<button type="button" class="pwa-btn" data-act="dismiss">Agora não</button>' +
       '</div>'
 
     card.querySelector('[data-act="dismiss"]').addEventListener('click', () => {
+      markPwaSeen()
       const overlay = card.closest('.pwa-overlay')
       if (overlay) overlay.remove()
     })
-    card.querySelectorAll('[data-act="install"]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        if (!deferredPrompt) return
-        deferredPrompt.prompt()
-        await deferredPrompt.userChoice.catch(() => undefined)
-        deferredPrompt = null
-        card.remove()
-      })
+    card.querySelector('[data-act="install"]').addEventListener('click', async () => {
+      const prompt = deferredPrompt
+      if (!prompt) {
+        const steps = card.querySelector('.pwa-steps-title')
+        steps.textContent = 'Siga as etapas abaixo para instalar:'
+        steps.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
+        return
+      }
+      // prompt() must run directly from the user's click. Each event is single-use.
+      deferredPrompt = null
+      card.querySelector('[data-act="install"]').textContent = 'Como instalar'
+      try {
+        await prompt.prompt()
+        const choice = await prompt.userChoice
+        if (choice.outcome === 'accepted') card.closest('.pwa-overlay')?.remove()
+        else card.querySelector('.pwa-steps-title').textContent = 'Você também pode instalar pelo menu do navegador:'
+      } catch {
+        card.querySelector('.pwa-steps-title').textContent = 'Siga as etapas abaixo para instalar:'
+      }
     })
     return card
   }
 
   function show() {
     if (isInstalled() || document.querySelector('.pwa-overlay') || pwaSeen()) return
-    markPwaSeen()
     const overlay = document.createElement('div')
     overlay.className = 'pwa-overlay'
     overlay.appendChild(buildCard())
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) overlay.remove()
+      if (e.target === overlay) { markPwaSeen(); overlay.remove() }
     })
     document.body.appendChild(overlay)
   }
