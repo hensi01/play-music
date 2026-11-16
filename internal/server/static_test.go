@@ -57,7 +57,7 @@ func TestStaticUnknownAsset404(t *testing.T) {
 func TestStaticSpaFallbackPreserved(t *testing.T) {
 	s := testStaticServer()
 	h := s.handleStatic()
-	for _, p := range []string{"/", "/home", "/library", "/login", "/some/hash/route"} {
+	for _, p := range []string{"/", "/home", "/library", "/login", "/admin/login", "/some/hash/route"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, p, nil))
 		if rec.Code != http.StatusOK {

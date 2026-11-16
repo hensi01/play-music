@@ -64,9 +64,12 @@ indexa o bucket (músicas + capas + playlists `.m3u`). O servidor escuta em
 
 ## API
 
-Autenticação: `POST /auth/login` com `{username, password}` (administrador) ou
-`{phone}` (cliente — **somente o telefone**, aceito com ou sem máscara;
-desconhecido → 401)
+Autenticação de clientes: `POST /auth/login` com `{phone}` (**somente o telefone**,
+aceito com ou sem máscara; desconhecido → 401). O login administrativo fica em
+uma página separada (`/admin/login`) e usa `POST /auth/admin/login` com
+`{username, password}`.
+Por compatibilidade, integrações antigas ainda podem enviar credenciais
+administrativas a `POST /auth/login`.
 → `{token, id, name, phone, isAdmin}`. O JWT viaja no header
 `X-ND-Authorization: Bearer <token>` (ou `?jwt=` em URLs de `<img>`/`<audio>`);
 o header de resposta pode trazer um token renovado.

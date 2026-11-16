@@ -14,65 +14,79 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-// handleLogin serves POST /auth/login. Clients authenticate with {phone}
-// ONLY (no password — access comes from the account the admin created).
-// Administrators use {username, password}.
+// handleLogin supports client phone login and the legacy administrator login.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	req, ok := decodeLoginRequest(w, r)
+	if !ok {
+		return
+	}
+	if req.Phone == "" {
+		s.loginAdmin(w, r, req)
+		return
+	}
+	if req.Username != "" || req.Password != "" {
+		writeError(w, http.StatusBadRequest, "Use o acesso de clientes com seu telefone")
+		return
+	}
+
+	normalized, err := phone.Normalize(req.Phone)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "Telefone não cadastrado")
+		return
+	}
+	u, token, err := s.auth.LoginPhone(r.Context(), normalized)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	writeLoginResponse(w, u.ID, u.Username, u.Name, u.Phone, false, token)
+}
+
+// handleAdminLogin serves POST /auth/admin/login. The legacy login route
+// continues to accept administrator credentials for existing integrations.
+func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
+	req, ok := decodeLoginRequest(w, r)
+	if !ok {
+		return
+	}
+	s.loginAdmin(w, r, req)
+}
+
+func (s *Server) loginAdmin(w http.ResponseWriter, r *http.Request, req loginRequest) {
+	if req.Phone != "" || req.Username == "" || req.Password == "" {
+		writeError(w, http.StatusBadRequest, "Informe usuário e senha de administrador")
+		return
+	}
+
+	u, token, err := s.auth.LoginUsername(r.Context(), req.Username, req.Password)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	writeLoginResponse(w, u.ID, u.Username, u.Name, u.Phone, true, token)
+}
+
+func decodeLoginRequest(w http.ResponseWriter, r *http.Request) (loginRequest, bool) {
 	var req loginRequest
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "Requisição inválida")
-		return
+		return loginRequest{}, false
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "Requisição inválida")
-		return
+		return loginRequest{}, false
 	}
+	return req, true
+}
 
-	var user = struct {
-		id       string
-		name     string
-		phone    string
-		username string
-		isAdmin  bool
-	}{}
-	var token string
-
-	if req.Phone != "" {
-		// Client login: phone only.
-		normalized, err := phone.Normalize(req.Phone)
-		if err != nil {
-			writeError(w, http.StatusUnauthorized, "Telefone não cadastrado")
-			return
-		}
-		u, tok, err := s.auth.LoginPhone(r.Context(), normalized)
-		if err != nil {
-			writeError(w, http.StatusUnauthorized, err.Error())
-			return
-		}
-		user.id, user.name, user.phone, user.isAdmin = u.ID, u.Name, u.Phone, u.IsAdmin
-		token = tok
-	} else {
-		// Admin login: username + password.
-		if req.Username == "" || req.Password == "" {
-			writeError(w, http.StatusBadRequest, "Informe usuário e senha")
-			return
-		}
-		u, tok, err := s.auth.LoginUsername(r.Context(), req.Username, req.Password)
-		if err != nil {
-			writeError(w, http.StatusUnauthorized, err.Error())
-			return
-		}
-		user.id, user.name, user.username, user.isAdmin = u.ID, u.Name, u.Username, u.IsAdmin
-		token = tok
-	}
-
+func writeLoginResponse(w http.ResponseWriter, id, username, name, phone string, isAdmin bool, token string) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token":    token,
-		"id":       user.id,
-		"username": user.username,
-		"name":     user.name,
-		"phone":    user.phone,
-		"isAdmin":  user.isAdmin,
+		"id":       id,
+		"username": username,
+		"name":     name,
+		"phone":    phone,
+		"isAdmin":  isAdmin,
 	})
 }

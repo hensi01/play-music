@@ -184,8 +184,10 @@ async function refreshAuth() {
 
 async function doLogin(mode, credential, password) {
   const body = mode === 'client' ? { phone: credential } : { username: credential, password }
-  const res = await api.fetch('/auth/login', {
+  const endpoint = mode === 'admin' ? '/auth/admin/login' : '/auth/login'
+  const res = await api.fetch(endpoint, {
     method: 'POST',
+    anonymous: true,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
@@ -1383,7 +1385,7 @@ async function createPlaylist() {
 
 // ---------- Login ----------
 
-let loginMode = 'client' // client, register, admin
+let loginMode = 'client' // client, register
 
 function renderLogin(container) {
   const toggle = el(
@@ -1391,19 +1393,10 @@ function renderLogin(container) {
     { class: 'login-toggle' },
     el('button', { class: `login-toggle-btn ${loginMode === 'client' ? 'active' : ''}`, 'aria-pressed': loginMode === 'client' ? 'true' : 'false', onclick: () => { loginMode = 'client'; render() } }, 'Cliente'),
     el('button', { class: `login-toggle-btn ${loginMode === 'register' ? 'active' : ''}`, 'aria-pressed': loginMode === 'register' ? 'true' : 'false', onclick: () => { loginMode = 'register'; render() } }, 'Criar conta'),
-    el('button', { class: `login-toggle-btn ${loginMode === 'admin' ? 'active' : ''}`, 'aria-pressed': loginMode === 'admin' ? 'true' : 'false', onclick: () => { loginMode = 'admin'; render() } }, 'Administrador'),
   )
 
-  const phoneInput = loginMode !== 'admin'
-    ? el('input', { class: 'form-input', type: 'tel', inputmode: 'numeric', placeholder: 'Telefone (99) 99999-9999', autofocus: true, autocomplete: 'tel' })
-    : null
-  if (phoneInput) phoneInput.addEventListener('input', () => applyPhoneMask(phoneInput))
-  const usernameInput = loginMode === 'admin'
-    ? el('input', { class: 'form-input', type: 'text', placeholder: 'Usuário ou e-mail', autofocus: true, autocomplete: 'username' })
-    : null
-  const passwordInput = loginMode === 'admin'
-    ? el('input', { class: 'form-input', type: 'password', placeholder: 'Senha', autocomplete: 'current-password' })
-    : null
+  const phoneInput = el('input', { class: 'form-input', type: 'tel', inputmode: 'numeric', placeholder: 'Telefone (99) 99999-9999', autofocus: true, autocomplete: 'tel', required: true })
+  phoneInput.addEventListener('input', () => applyPhoneMask(phoneInput))
   const errorEl = el('p', { class: 'login-error' })
   const submitBtn = el('button', { class: 'login-submit', type: 'submit' }, loginMode === 'register' ? 'Criar conta' : 'Entrar')
 
@@ -1414,13 +1407,8 @@ function renderLogin(container) {
       onsubmit: async (e) => {
         e.preventDefault()
         errorEl.textContent = ''
-        if (loginMode !== 'admin') {
-          if (!phoneInput.value.trim()) {
-            errorEl.textContent = 'Informe seu telefone.'
-            return
-          }
-        } else if (!usernameInput.value.trim() || !passwordInput.value) {
-          errorEl.textContent = 'Informe usuário e senha.'
+        if (!phoneInput.value.trim()) {
+          errorEl.textContent = 'Informe seu telefone.'
           return
         }
         submitBtn.disabled = true
@@ -1431,7 +1419,7 @@ function renderLogin(container) {
             const user = await endpoints.register(phoneInput.value.trim())
             setToken(user.token)
             setAuth({ user, loading: false })
-          } else await doLogin('admin', usernameInput.value.trim(), passwordInput.value)
+          }
           if (!parseHash().path.startsWith('/song/')) navigate('/')
         } catch (err) {
           errorEl.textContent = err instanceof Error ? err.message : 'Erro ao entrar'
@@ -1442,8 +1430,6 @@ function renderLogin(container) {
       },
     },
     phoneInput,
-    usernameInput,
-    passwordInput,
     errorEl,
     submitBtn,
   )
@@ -1462,12 +1448,51 @@ function renderLogin(container) {
           { class: 'login-brand' },
           icon('music'),
           el('h1', {}, 'Play Music'),
-          el('p', {}, loginMode === 'admin' ? 'Acesso administrativo' : (loginMode === 'register' ? 'Crie sua conta gratuita' : 'Entre com seu telefone para ouvir')),
+          el('p', {}, loginMode === 'register' ? 'Crie sua conta gratuita' : 'Entre com seu telefone para ouvir'),
         ),
         form,
+        el('a', { class: 'login-admin-link', href: '/admin/login' }, 'Acesso administrativo'),
       ),
     ),
   )
+}
+
+function renderAdminLogin(container) {
+  const usernameInput = el('input', { class: 'form-input', type: 'text', name: 'username', placeholder: 'Usuário ou e-mail', autofocus: true, autocomplete: 'username', required: true })
+  const passwordInput = el('input', { class: 'form-input', type: 'password', name: 'password', placeholder: 'Senha', autocomplete: 'current-password', required: true })
+  const errorEl = el('p', { class: 'login-error', role: 'alert', 'aria-live': 'polite' })
+  const submitBtn = el('button', { class: 'login-submit', type: 'submit' }, 'Entrar no painel')
+  const form = el('form', {
+    class: 'login-form admin-login-form',
+    onsubmit: async (event) => {
+      event.preventDefault()
+      errorEl.textContent = ''
+      if (!usernameInput.value.trim() || !passwordInput.value) {
+        errorEl.textContent = 'Informe seu usuário e senha.'
+        return
+      }
+      submitBtn.disabled = true
+      submitBtn.textContent = 'Verificando…'
+      try {
+        await doLogin('admin', usernameInput.value.trim(), passwordInput.value)
+        window.location.replace('/#/admin')
+      } catch (err) {
+        errorEl.textContent = err instanceof Error ? err.message : 'Não foi possível entrar.'
+      } finally {
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Entrar no painel'
+      }
+    },
+  }, usernameInput, passwordInput, errorEl, submitBtn)
+
+  container.innerHTML = ''
+  container.append(el('div', { class: 'login-screen admin-login-screen' },
+    el('div', { class: 'login-box admin-login-box' },
+      el('div', { class: 'login-brand' }, icon('settings'), el('h1', {}, 'Painel administrativo'), el('p', {}, 'Acesso restrito à equipe autorizada')),
+      form,
+      el('a', { class: 'login-admin-link admin-login-back', href: '/' }, 'Voltar ao acesso dos clientes'),
+    ),
+  ))
 }
 
 // ---------- Sidebar ----------
@@ -1799,6 +1824,11 @@ function render() {
   if (auth.loading) {
     root.innerHTML = ''
     root.append(el('div', { class: 'loading-screen' }, icon('music'), 'Carregando…'))
+    return
+  }
+
+  if (window.location.pathname.replace(/\/+$/, '') === '/admin/login') {
+    renderAdminLogin(root)
     return
   }
 
