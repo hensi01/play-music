@@ -79,6 +79,7 @@ const icons = {
   heart: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>',
   video: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>',
   link: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.1 0l3-3a5 5 0 0 0-7.1-7.1l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.1 0l-3 3a5 5 0 0 0 7.1 7.1l1.7-1.7"/></svg>',
+  download: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-5-5 5 5 5-5M4 17v3h16v-3"/></svg>',
   clock: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
   music: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
   settings: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -294,8 +295,22 @@ function trackRow(song, index, opts = {}) {
         el('p', { class: 'track-artist' }, song.artist || 'Desconhecido'),
       ),
     ),
-    el('div', { class: 'track-actions' }, likeBtn, addBtn, shareBtn, el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
+    el('div', { class: 'track-actions' }, likeBtn, addBtn, shareBtn, downloadButton(song), el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
   )
+}
+
+function downloadButton(song) {
+  return el('button', { class: 'download-button', 'aria-label': 'Baixar música', title: 'Baixar música', onclick: async (e) => {
+    e.stopPropagation()
+    const btn = e.currentTarget
+    btn.disabled = true
+    try {
+      const result = await endpoints.download(song.id)
+      const link = el('a', { href: result.url, download: '', rel: 'noreferrer' })
+      document.body.append(link); link.click(); link.remove()
+    } catch (err) { alert(`Não foi possível baixar a música: ${err.message}`) }
+    finally { btn.disabled = false }
+  } }, icon('download'))
 }
 
 // The public-facing path stays stable; authentication is checked on opening.
@@ -448,6 +463,7 @@ const pages = {
   '/recommended-artist/:name': renderArtist,
   '/liked': renderLiked,
   '/history': renderHistory,
+  '/downloads': renderDownloads,
   '/queue': renderQueue,
   '/settings': renderSettings,
   '/admin': renderAdminPage,
@@ -1005,6 +1021,19 @@ async function renderHistory(container) {
   }
 }
 
+async function renderDownloads(container) {
+  container.innerHTML = ''
+  container.append(spinner())
+  try {
+    const entries = await endpoints.downloads()
+    const page = el('div', { class: 'page-padding' }, el('h1', { class: 'page-title' }, 'Downloads'), el('p', { class: 'detail-meta' }, 'Downloads iniciados nesta conta'))
+    if (!entries.length) page.append(emptyState('Nenhum download iniciado ainda.'))
+    else page.append(el('div', { class: 'track-list' }, ...entries.map(entry => el('div', { class: 'download-history-row' },
+      el('div', {}, el('p', { class: 'track-title' }, entry.title), el('p', { class: 'track-artist' }, `${entry.artist || 'Desconhecido'} · ${new Date(entry.downloadedAt).toLocaleString('pt-BR')}`)), entry.id ? downloadButton(entry) : el('span', { class: 'track-artist' }, 'Indisponível')))))
+    container.innerHTML = ''; container.append(el('div', { class: 'page' }, page))
+  } catch (err) { container.innerHTML = ''; container.append(emptyState(err.message)) }
+}
+
 // ---------- Queue ----------
 
 function renderQueue(container) {
@@ -1554,6 +1583,7 @@ function sidebarContent(onNavigate) {
       nav('/recommendations', 'Para você', 'heart'),
       nav('/liked', 'Curtidas', 'heart'),
       nav('/history', 'Histórico', 'clock'),
+      nav('/downloads', 'Downloads', 'download'),
       auth.user?.isAdmin ? nav('/admin', 'Administração', 'settings') : null,
     ),
     el('div', { class: 'sidebar-playlists-label' }, el('span', {}, 'Playlists'), el('span', { html: icons.list })),
@@ -1665,6 +1695,7 @@ function bottomBar(refs) {
         el('p', { class: 'now-playing-artist' }, current.artist || 'Desconhecido'),
       ),
       likeBtn,
+      downloadButton(current),
     ),
     el(
       'div',
@@ -1790,6 +1821,7 @@ function fullscreenPlayer(refs) {
         el(
           'div',
           { style: 'display:flex;gap:8px' },
+          downloadButton(current),
           el('button', { class: 'icon-btn', 'aria-label': 'Fila', onclick: () => navigate('/queue') }, icon('list')),
         ),
     ),

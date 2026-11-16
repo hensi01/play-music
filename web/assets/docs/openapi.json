@@ -4140,6 +4140,77 @@
           }
         }
       }
+    },
+    "/api/me/downloads": {
+      "get": {
+        "summary": "Histórico de downloads",
+        "operationId": "get_api_me_downloads",
+        "tags": [
+          "Conta"
+        ],
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado"
+          }
+        }
+      }
+    },
+    "/api/songs/{id}/download": {
+      "post": {
+        "summary": "Preparar download",
+        "operationId": "post_api_song_download",
+        "tags": [
+          "Conta"
+        ],
+        "security": [
+          {
+            "UserJWT": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   }
 }
