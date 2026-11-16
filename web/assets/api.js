@@ -113,6 +113,8 @@ export const endpoints = {
   liked: () => api.get('/api/me/liked'),
   like: (id) => api.put(`/api/me/liked/${id}`),
   unlike: (id) => api.del(`/api/me/liked/${id}`),
+  downloads: () => api.get('/api/me/downloads'),
+  download: (id) => api.post(`/api/songs/${encodeURIComponent(id)}/download`),
   history: () => api.get('/api/me/history'),
   registerPlay: (id) => api.post(`/api/me/history/${id}`),
 

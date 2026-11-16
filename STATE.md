@@ -1,3 +1,5 @@
+Run log: 2026-11-16 — L2: downloads de arquivos originais e histórico por conta implementados em ../play-music-downloads, branch codex/downloads-historico, baseada em origin/master c01745bc. Histórico registra solicitações iniciadas e preserva metadados de músicas excluídas; links assinados expiram em 15 minutos. Revisão independente sem bloqueios após correções. Antes: go test ./... e 8 testes Node passaram no checkout local. Depois: go test ./... e 21 testes Node passaram; teste de assinatura de URL aprovado e git diff --check limpo. Migração, isolamento entre contas e transferência real ainda não validados com PostgreSQL/MinIO e navegadores ou aparelhos. Sem commit, push, merge ou deploy.
+
 # Loop State — My Project
 
 Last run: 2026-08-11 — **Envs 100% fora do código (branch `feat/envs-only`, worktree play-music-envs, commit 34880b7e, aguardando aprovação de merge)**: .env fora do versionamento + .env.example; loja/baseURL injetados pelo backend via env

@@ -125,6 +125,15 @@ func (s *Storage) PresignedURL(ctx context.Context, key string, expiry time.Dura
 	return u.String(), nil
 }
 
+// DownloadURL signs an attachment response for the original object.
+func (s *Storage) DownloadURL(ctx context.Context, key, disposition string, expiry time.Duration) (string, error) {
+	u, err := s.client.PresignedGetObject(ctx, s.bucket, key, expiry, url.Values{"response-content-disposition": {disposition}})
+	if err != nil {
+		return "", err
+	}
+	return u.String(), nil
+}
+
 // Put uploads an object to the bucket (used by the admin song upload).
 func (s *Storage) Put(ctx context.Context, key string, size int64, contentType string, reader io.Reader) error {
 	if size < 0 {

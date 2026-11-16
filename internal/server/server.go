@@ -101,6 +101,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/me/liked", s.requireAuth(http.HandlerFunc(s.handleLiked)))
 	mux.Handle("PUT /api/me/liked/{id}", s.requireAuth(http.HandlerFunc(s.handleLike)))
 	mux.Handle("DELETE /api/me/liked/{id}", s.requireAuth(http.HandlerFunc(s.handleUnlike)))
+	mux.Handle("GET /api/me/downloads", s.requireAuth(http.HandlerFunc(s.handleDownloads)))
+	mux.Handle("POST /api/songs/{id}/download", s.requireAuth(http.HandlerFunc(s.handleDownload)))
 	mux.Handle("GET /api/me/history", s.requireAuth(http.HandlerFunc(s.handleHistory)))
 	mux.Handle("POST /api/me/history/{id}", s.requireAuth(http.HandlerFunc(s.handleRegisterPlay)))
 

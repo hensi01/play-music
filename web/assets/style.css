@@ -2612,3 +2612,10 @@ img {
 .notification-gate-status:empty { display: none; }
 .notification-gate::after { content: ''; min-height: 56px; }
 @media (min-width: 768px) { .notification-gate-brand { padding: 28px 36px; } .notification-gate-content { padding: 42px 38px; } }
+
+.download-history-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border-bottom: 1px solid var(--border, #333); }
+.download-history-row > div { min-width: 0; }
+
+.download-button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 6px; color: var(--subtext); background: transparent; border: 0; cursor: pointer; }
+.download-button:hover, .download-button:focus-visible { color: var(--accent); }
+.download-button:disabled { opacity: .5; cursor: wait; }
