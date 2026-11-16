@@ -1,4 +1,5 @@
 const { test, expect } = require('playwright/test')
+const { mockActivatedPush, tokenFor } = require('./push-fixture.cjs')
 test.use({ serviceWorkers: 'block' })
 
 function silentWav(seconds = 30) {
@@ -27,6 +28,7 @@ const songs = [
 ]
 
 test('player móvel e comandos Media Session mantêm faixa e posição sincronizadas', async ({ page }) => {
+  await mockActivatedPush(page, 'media-admin')
   const consoleErrors = []
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()) })
 
@@ -52,14 +54,15 @@ test('player móvel e comandos Media Session mantêm faixa e posição sincroniz
     window.__testMediaSession = state
   })
 
-  const token = 'test-token'
-  await page.route('**/auth/login', (route) => route.fulfill({
+  const token = tokenFor('media-admin')
+  await page.route('**/auth/admin/login', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
     body: JSON.stringify({ token, id: 'media-admin', username: 'teste', name: 'Admin de teste', isAdmin: true }),
   }))
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname
+    if (path === '/api/push/status') return route.fulfill({ json: { active: true } })
     if (path.startsWith('/api/stream/')) {
       return route.fulfill({ status: 200, contentType: 'audio/wav', headers: { 'Accept-Ranges': 'bytes' }, body: silentWav() })
     }
@@ -84,7 +87,7 @@ test('player móvel e comandos Media Session mantêm faixa e posição sincroniz
   const installOverlay = page.locator('.pwa-overlay')
   await installOverlay.waitFor({ state: 'visible', timeout: 7000 })
   await installOverlay.getByRole('button', { name: 'Agora não' }).click()
-  await page.getByRole('button', { name: 'Administrador' }).click()
+  await page.getByRole('link', { name: 'Acesso administrativo' }).click()
   await page.getByPlaceholder('Usuário ou e-mail').fill('teste')
   await page.getByPlaceholder('Senha').fill('teste')
   await page.getByRole('button', { name: 'Entrar' }).click()

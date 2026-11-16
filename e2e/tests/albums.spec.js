@@ -1,4 +1,5 @@
 const { test, expect } = require('playwright/test')
+const { mockActivatedPush, tokenFor } = require('./push-fixture.cjs')
 test.use({ serviceWorkers: 'block' })
 
 function silentWav(seconds = 30) {
@@ -37,14 +38,16 @@ const album = {
 
 test('cliente encontra álbuns, escolhe faixas e controla a fila', async ({ page }, testInfo) => {
   let albumSaved = false
+  await mockActivatedPush(page, 'u1')
   await page.addInitScript(() => sessionStorage.setItem('pm_pwa_seen', '1'))
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url())
     const path = url.pathname
     if (path === '/api/register') {
-      return route.fulfill({ json: { token: 'test-token', id: 'u1', name: 'Cliente', isAdmin: false } })
+      return route.fulfill({ json: { token: tokenFor('u1'), id: 'u1', name: 'Cliente', isAdmin: false } })
     }
     if (path === '/api/me') return route.fulfill({ json: { id: 'u1', name: 'Cliente', isAdmin: false } })
+    if (path === '/api/push/status') return route.fulfill({ json: { active: true } })
     if (path === '/api/home') return route.fulfill({ json: { sections: [] } })
     if (path === '/api/recommendations') return route.fulfill({ json: { songs: [], artists: [], tastes: [] } })
     if (path === '/api/albums') return route.fulfill({ json: [album] })
