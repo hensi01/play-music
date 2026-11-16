@@ -2154,7 +2154,7 @@ function fullscreenPlayer(refs) {
       ),
       el(
         'div',
-        { class: 'player-progress', style: 'max-width:384px' },
+        { class: 'player-progress' },
         curTime,
         el('div', { class: 'progress-track', role: 'slider', 'aria-valuemin': 0, 'aria-valuemax': totalDuration, 'aria-valuenow': safeProgress }, progressFill),
         durTime,
