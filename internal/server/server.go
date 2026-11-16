@@ -65,6 +65,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/register", s.handleRegister)
 
 	// API (JWT required).
+	mux.Handle("GET /api/push/config", s.requireAuth(http.HandlerFunc(s.handlePushConfig)))
+	mux.Handle("POST /api/push/subscriptions", s.requireAuth(http.HandlerFunc(s.handlePushSubscribe)))
+	mux.Handle("DELETE /api/push/subscriptions", s.requireAuth(http.HandlerFunc(s.handlePushUnsubscribe)))
+	mux.Handle("POST /api/admin/notifications", s.requireAdmin(http.HandlerFunc(s.handlePushSend)))
 	mux.Handle("GET /api/me", s.requireAuth(http.HandlerFunc(s.handleMe)))
 	mux.Handle("GET /api/settings", s.requireAuth(http.HandlerFunc(s.handleSettings)))
 	mux.Handle("GET /api/recommendations", s.requireAuth(http.HandlerFunc(s.handleRecommendations)))

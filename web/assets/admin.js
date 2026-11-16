@@ -1,6 +1,6 @@
 // Admin page: users, categories (songs per category) and song uploads.
 
-import { endpoints, artworkUrl, applyPhoneMask } from './api.js'
+import { api, endpoints, artworkUrl, applyPhoneMask } from './api.js'
 
 let adminTab = 'users'
 let adminState = { users: [], categories: [], songs: [], songCategoryIds: {}, categoryNames: {} }
@@ -22,6 +22,7 @@ export function renderAdmin() {
     el('button', { class: `tab-btn ${adminTab === 'users' ? 'active' : ''}`, onclick: () => { adminTab = 'users'; refresh() } }, 'Usuários'),
     el('button', { class: `tab-btn ${adminTab === 'categories' ? 'active' : ''}`, onclick: () => { adminTab = 'categories'; refresh() } }, 'Categorias'),
     el('button', { class: `tab-btn ${adminTab === 'songs' ? 'active' : ''}`, onclick: () => { adminTab = 'songs'; refresh() } }, 'Músicas'),
+    el('button', { class: `tab-btn ${adminTab === 'notifications' ? 'active' : ''}`, onclick: () => { adminTab = 'notifications'; refresh() } }, 'Notificações'),
   )
   page.append(el('h1', { class: 'page-title' }, 'Administração'), tabs)
 
@@ -34,10 +35,30 @@ export function renderAdmin() {
     if (adminTab === 'users') await renderUsers(wrap, seq)
     else if (adminTab === 'categories') await renderCategories(wrap, seq)
     else if (adminTab === 'songs') await renderSongs(wrap, seq)
+    else if (adminTab === 'notifications') renderNotifications(wrap)
   }
 
   refresh()
   return page
+}
+
+function renderNotifications(wrap) {
+  const title = el('input', { class: 'form-input', placeholder: 'Título', maxlength: '120', required: true })
+  const body = el('textarea', { class: 'form-input', placeholder: 'Mensagem', maxlength: '500', required: true })
+  const link = el('input', { class: 'form-input', placeholder: 'Link HTTPS opcional' })
+  const status = el('p', { role: 'status' })
+  const button = el('button', { class: 'btn-accent', type: 'submit' }, 'Enviar notificação')
+  const form = el('form', { onsubmit: async (event) => {
+    event.preventDefault()
+    if (!confirm('Enviar esta notificação a todos os dispositivos inscritos?')) return
+    button.disabled = true
+    try {
+      const result = await api.post('/api/admin/notifications', { title: title.value, body: body.value, url: link.value })
+      status.textContent = `${result.queued} de ${result.selected} dispositivos enfileirados. A exibição depende do dispositivo.`
+    } catch (err) { status.textContent = err.message + ' Confira os resultados antes de tentar novamente.' }
+    finally { button.disabled = false }
+  } }, el('h2', {}, 'Avisos e promoções'), title, body, link, button, status)
+  wrap.append(form)
 }
 
 function el(tag, attrs = {}, ...children) {

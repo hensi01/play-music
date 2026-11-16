@@ -1019,6 +1019,48 @@ function renderQueue(container) {
 
 // ---------- Settings ----------
 
+function notificationSettingsCard() {
+  const status = el('p', { class: 'settings-text' }, 'Ative para receber avisos e promoções neste dispositivo.')
+  const enable = el('button', { class: 'btn-accent', type: 'button' }, 'Ativar notificações')
+  const disable = el('button', { class: 'btn-secondary', type: 'button' }, 'Desativar notificações')
+  if (!('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext)) {
+    status.textContent = 'Notificações indisponíveis neste navegador. No iPhone ou iPad, instale o aplicativo na tela de início e abra-o por lá.'
+    enable.disabled = true; disable.disabled = true
+  }
+  let config = null
+  if (!enable.disabled) {
+    enable.disabled = true
+    api.get('/api/push/config').then(value => { config = value; enable.disabled = !value.enabled; if (!value.enabled) status.textContent = 'Notificações ainda não estão configuradas.' }).catch(() => { status.textContent = 'Não foi possível verificar as notificações.' })
+  }
+  enable.addEventListener('click', async () => {
+    try {
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') throw new Error('Permissão não concedida. Verifique as configurações do navegador.')
+      const reg = await navigator.serviceWorker.ready
+      let sub = await reg.pushManager.getSubscription()
+      if (!sub) {
+        const raw = atob(config.publicKey.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(config.publicKey.length / 4) * 4, '='))
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, c => c.charCodeAt(0)) })
+      }
+      await api.post('/api/push/subscriptions', sub.toJSON())
+      status.textContent = 'Notificações ativadas neste dispositivo.'
+    } catch (err) { status.textContent = err.message || 'Não foi possível ativar notificações.' }
+  })
+  disable.addEventListener('click', async () => {
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.getSubscription()
+      if (!sub) throw new Error('Inscrição não encontrada neste navegador. Entre em contato com o administrador para revisar o cadastro.')
+      if (sub) {
+        await api.fetch('/api/push/subscriptions', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint: sub.endpoint }) })
+        await sub.unsubscribe()
+      }
+      status.textContent = 'Notificações desativadas neste dispositivo.'
+    } catch (err) { status.textContent = err.message || 'Não foi possível desativar notificações.' }
+  })
+  return el('section', { class: 'settings-card' }, el('h2', {}, 'Notificações'), status, el('div', { class: 'settings-actions' }, enable, disable))
+}
+
 async function renderSettings(container) {
   container.innerHTML = ''
   container.append(spinner())
@@ -1072,6 +1114,7 @@ async function renderSettings(container) {
       el('div', { class: 'settings-page' },
         el('h1', { class: 'page-title' }, 'Minha Conta'),
         phoneCard,
+        notificationSettingsCard(),
         playlistsCard,
       ),
     )
@@ -1115,6 +1158,7 @@ async function renderSettings(container) {
     el('div', { class: 'settings-page' },
       el('h1', { class: 'page-title' }, 'Configurações'),
       accountCard,
+      notificationSettingsCard(),
       serverCard,
     ),
   )
