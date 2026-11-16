@@ -31,12 +31,14 @@ function harness(kind, delayed = false) {
   return { document, player, states, events, media: () => lastMedia, button: () => document.body.children[0].children.find((node) => node.tagName === 'BUTTON'), release: () => release(), advance: (seconds) => { now += seconds * 1000; tick?.() }, expire: () => timeout?.(), done: () => finished }
 }
 
-test('ad overlay has no title or pause button and labels the destination Saiba Mais', async () => {
+test('ad overlay has no pause control and labels the destination Saiba Mais', async () => {
   const h = harness('image'); await new Promise(setImmediate)
   const overlay = h.document.body.children[0]
   const destination = overlay.children.find((node) => node.className === 'ad-destination')
   assert.equal(overlay.attributes['aria-label'], 'Anúncio patrocinado')
   assert.equal(overlay.children.some((node) => node.tagName === 'H2'), false)
+  assert.equal(h.player.pause, undefined)
+  assert.equal(h.player.toggle, undefined)
   assert.equal(h.button().hidden, true)
   assert.equal(destination.children[0].textContent, 'Saiba Mais')
   h.media().dispatch('load')
@@ -44,11 +46,10 @@ test('ad overlay has no title or pause button and labels the destination Saiba M
   assert.equal(overlay.children.find((node) => node.attributes.role === 'status').textContent, '10 s')
 })
 
-test('image does not count until loaded and pause stops the clock', async () => {
+test('image does not count until loaded and then advances automatically', async () => {
   const h = harness('image'); await new Promise(setImmediate)
-  h.player.resume(); h.advance(20); assert.equal(h.done(), 0); assert.equal(h.events.length, 0)
-  h.media().dispatch('load'); h.advance(5); h.player.pause(); h.advance(20); assert.equal(h.done(), 0)
-  h.player.resume(); h.advance(5); assert.equal(h.done(), 1); assert.equal(h.events[0].type, 'impression')
+  h.advance(20); assert.equal(h.done(), 0); assert.equal(h.events.length, 0)
+  h.media().dispatch('load'); h.advance(10); assert.equal(h.done(), 1); assert.equal(h.events[0].type, 'impression')
 })
 
 test('video buffering stops the clock until playback resumes', async () => {
@@ -58,34 +59,22 @@ test('video buffering stops the clock until playback resumes', async () => {
   assert.ok(h.states.includes(false)); assert.ok(h.states.includes(true))
 })
 
-test('pausing during buffering prevents a late playing event from restarting the clock', async () => {
-  const h = harness('video'); await new Promise(setImmediate)
-  h.media().dispatch('playing'); h.advance(4); h.media().dispatch('waiting'); h.player.pause()
-  h.media().dispatch('playing'); h.advance(30); assert.equal(h.done(), 0)
-  h.player.resume(); h.media().dispatch('playing'); h.advance(6); assert.equal(h.done(), 1)
-})
-
-test('pausing before an image loads keeps it paused after loading', async () => {
+test('a media loading failure offers retry without a pause control', async () => {
   const h = harness('image'); await new Promise(setImmediate)
-  h.player.pause(); h.media().dispatch('load'); h.advance(20); assert.equal(h.done(), 0)
-  h.player.resume(); h.advance(10); assert.equal(h.done(), 1)
-})
-
-test('pausing while loading retains the timeout and offers retry', async () => {
-  const h = harness('image'); await new Promise(setImmediate)
-  h.player.pause(); h.expire()
+  h.expire()
   const button = h.button()
   assert.equal(button.disabled, false); assert.equal(button.textContent, 'Tentar novamente')
   assert.equal(button.hidden, false)
 })
 
-test('audio starts automatically, records impression, pauses and resumes without overlap', async () => {
+test('audio starts automatically, records one impression and finishes the slot', async () => {
   const h = harness('audio'); await new Promise(setImmediate)
   const audio = h.media(); assert.equal(audio.tagName, 'AUDIO'); assert.equal(audio.playCount, 1)
-  audio.dispatch('playing'); h.advance(4); h.player.pause(); assert.equal(audio.pauseCount, 1)
-  h.advance(20); assert.equal(h.done(), 0); h.player.resume(); assert.equal(audio.playCount, 2)
-  audio.dispatch('playing'); h.advance(6); assert.equal(h.done(), 1); assert.equal(h.events.filter((e) => e.type === 'impression').length, 1)
-  assert.equal(audio.pauseCount, 2)
+  assert.equal(audio.controls, false)
+  assert.equal(audio.disablePictureInPicture, true)
+  assert.equal(audio.disableRemotePlayback, true)
+  audio.dispatch('playing'); h.advance(10); assert.equal(h.done(), 1)
+  assert.equal(h.events.filter((e) => e.type === 'impression').length, 1)
 })
 
 test('audio buffering and failure wait for user action', async () => {
@@ -95,15 +84,14 @@ test('audio buffering and failure wait for user action', async () => {
   assert.ok(audio.pauseCount > 0)
 })
 
-test('pausing while the ad request is pending prevents audio autoplay', async () => {
-  const h = harness('audio', true); h.player.pause(); h.release(); await new Promise(setImmediate)
-  const audio = h.media(); assert.equal(audio.playCount, 0)
-  const button = h.document.body.children[0].children[3]; assert.equal(button.disabled, false)
-  h.player.resume(); assert.equal(audio.playCount, 1)
+test('audio starts automatically when the ad request finishes', async () => {
+  const h = harness('audio', true); h.release(); await new Promise(setImmediate)
+  const audio = h.media(); assert.equal(audio.playCount, 1)
+  assert.equal(h.player.pause, undefined)
 })
 
-test('an ended event after pausing does not restart the ad clock', async () => {
+test('media ending continues the ad slot timer until the configured duration', async () => {
   const h = harness('audio'); await new Promise(setImmediate)
-  h.media().dispatch('playing'); h.advance(4); h.player.pause(); h.media().dispatch('ended')
-  h.advance(20); assert.equal(h.done(), 0); h.player.resume(); h.advance(6); assert.equal(h.done(), 1)
+  h.media().dispatch('playing'); h.advance(4); h.media().dispatch('ended')
+  h.advance(6); assert.equal(h.done(), 1)
 })

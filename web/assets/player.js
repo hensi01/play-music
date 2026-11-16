@@ -37,17 +37,13 @@ audio.addEventListener('seeked', resetListenAnchor)
 // browser fires a `pause` event during the media load algorithm, so those
 // events must not overwrite the real play state.
 let switching = false
-let adGate = false, adPlayer = null, adGeneration = 0, songsSinceAd = 0, adIndex = 0, gateOverlay = null, gatePaused = false, pendingGateStart = null
-
-function pauseAdGate() { gatePaused = true; adPlayer?.pause() }
-function resumeAdGate() { gatePaused = false; if (adPlayer) adPlayer.resume(); else if (pendingGateStart) { const start = pendingGateStart; pendingGateStart = null; start() } }
+let adGate = false, adPlayer = null, adGeneration = 0, songsSinceAd = 0, adIndex = 0, gateOverlay = null
 
 async function afterSong() {
   if (adGate) return
   const hasNext = state.repeat || state.currentIndex + 1 < state.queue.length || (state.shuffle && state.queue.length > 1)
   if (!hasNext) { next(); return }
   adGate = true
-  gatePaused = false; pendingGateStart = null
   const generation = ++adGeneration
   songsSinceAd++
   set({ playing: false })
@@ -55,7 +51,7 @@ async function afterSong() {
   if ('mediaSession' in navigator) { try { navigator.mediaSession.setPositionState() } catch { /* unsupported */ } }
   const proceed = () => {
     if (generation !== adGeneration) return
-    adGate = false; adPlayer = null; pendingGateStart = null; gateOverlay?.remove(); gateOverlay = null
+    adGate = false; adPlayer = null; gateOverlay?.remove(); gateOverlay = null
     if (state.repeat) { if (state.current) startListening(state.current); audio.currentTime = 0; playAudio() }
     else next()
     updateMediaSession()
@@ -80,8 +76,7 @@ async function afterSong() {
           try { navigator.mediaSession.metadata = new MediaMetadata({ title: 'Publicidade', artist: ad.name }) } catch { /* unsupported */ }
         }
       }
-      if (gatePaused) { pendingGateStart = start; message.textContent = 'Reprodução pausada.'; retry.textContent = 'Continuar'; retry.hidden = false; retry.onclick = resumeAdGate }
-      else start()
+      start()
     } catch {
       if (generation !== adGeneration) return
       message.textContent = 'Não foi possível carregar a publicidade.'; retry.textContent = 'Tentar novamente'; retry.onclick = load; retry.hidden = false
@@ -217,8 +212,8 @@ function updateMediaSession() {
   } catch {
     // Metadata support differs by browser; playback controls can still work.
   }
-  setMediaSessionAction('play', () => { if (adGate) resumeAdGate(); else playAudio() })
-  setMediaSessionAction('pause', () => { if (adGate) pauseAdGate(); else audio.pause() })
+  setMediaSessionAction('play', () => { if (!adGate) playAudio() })
+  setMediaSessionAction('pause', () => { if (!adGate) audio.pause() })
   setMediaSessionAction('previoustrack', () => prev())
   setMediaSessionAction('nexttrack', () => next())
   setMediaSessionAction('seekbackward', (d) => {
@@ -322,7 +317,7 @@ export function addToQueue(song) {
 
 // Clear playback and listening state when the account changes.
 export function clearSession() {
-  adGeneration++; adGate = false; adPlayer?.cleanup(); adPlayer = null; gateOverlay?.remove(); gateOverlay = null; songsSinceAd = 0; adIndex = 0; gatePaused = false; pendingGateStart = null
+  adGeneration++; adGate = false; adPlayer?.cleanup(); adPlayer = null; gateOverlay?.remove(); gateOverlay = null; songsSinceAd = 0; adIndex = 0
   listenTracker = null
   switching = false
   audio.pause()
@@ -333,7 +328,7 @@ export function clearSession() {
 }
 
 export function togglePlay() {
-  if (adGate) { if (adPlayer) adPlayer.toggle(); else if (gatePaused) resumeAdGate(); else pauseAdGate(); return }
+  if (adGate) return
   if (!state.current) return
   if (state.playing) audio.pause()
   else playAudio()

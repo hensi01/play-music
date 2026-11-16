@@ -13,7 +13,7 @@ export function showAd(ad, onDone, onPlaybackState = () => {}) {
   const destination = document.createElement('div'); destination.className = 'ad-destination'
   overlay.append(slot, status, button, destination)
   document.body.append(overlay)
-  let media, timer, mediaTimeout, running = false, desiredPlaying = true, ended = false, elapsed = 0, anchor = 0, destroyed = false, loading = false, ready = false, impressed = false, mediaGeneration = 0
+  let media, timer, mediaTimeout, running = false, ended = false, elapsed = 0, anchor = 0, destroyed = false, loading = false, ready = false, impressed = false, mediaGeneration = 0
   const event = (type) => fetch(`${origin}/api/v1/events`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ adId: id, type, instanceId }), keepalive: true }).catch(() => {})
   const impression = () => { if (!impressed) { impressed = true; event('impression') } }
   const update = () => {
@@ -23,18 +23,16 @@ export function showAd(ad, onDone, onPlaybackState = () => {}) {
   }
   const startClock = () => { if (running || destroyed) return; running = true; button.hidden = true; onPlaybackState(true); anchor = performance.now(); update(); if (!destroyed) timer = setInterval(update, 250) }
   const stopClock = () => { if (running) elapsed += (performance.now() - anchor) / 1000; running = false; onPlaybackState(false); clearInterval(timer) }
-  const fail = () => { if (destroyed) return; desiredPlaying = false; clearTimeout(mediaTimeout); stopClock(); status.textContent = 'Não foi possível reproduzir o anúncio. Toque para tentar novamente.'; button.textContent = 'Tentar novamente'; button.disabled = false; button.hidden = false }
+  const fail = () => { if (destroyed) return; clearTimeout(mediaTimeout); stopClock(); status.textContent = 'Não foi possível reproduzir o anúncio. Toque para tentar novamente.'; button.textContent = 'Tentar novamente'; button.disabled = false; button.hidden = false }
   const isPlayable = (node) => node?.tagName === 'VIDEO' || node?.tagName === 'AUDIO'
   const cleanup = () => { destroyed = true; mediaGeneration++; clearTimeout(mediaTimeout); clearInterval(timer); if (isPlayable(media)) { media.pause(); media.removeAttribute('src'); media.load() }; overlay.remove() }
-  const resume = () => {
-    desiredPlaying = true
+  const retryPlayback = () => {
     if (!media) { load(); return }
     if (!ready && !isPlayable(media)) return
     if (isPlayable(media) && !ended) { const generation = mediaGeneration; media.play().catch(() => { if (!destroyed && generation === mediaGeneration) fail() }) }
     else startClock()
   }
-  const pause = () => { desiredPlaying = false; if (ready) clearTimeout(mediaTimeout); stopClock(); if (isPlayable(media)) media.pause(); status.textContent = 'Anúncio pausado.' }
-  button.onclick = () => { if (button.disabled) return; button.hidden = true; resume() }
+  button.onclick = () => { if (button.disabled) return; button.hidden = true; retryPlayback() }
   async function load() {
     if (loading || destroyed) return
     loading = true; button.disabled = true; button.hidden = true; status.textContent = 'Carregando anúncio…'
@@ -58,24 +56,22 @@ export function showAd(ad, onDone, onPlaybackState = () => {}) {
       media.alt = data.altText || 'Anúncio'
       current.addEventListener('error', mediaFail)
       mediaTimeout = setTimeout(mediaFail, 15000)
-      if (data.kind === 'image') current.addEventListener('load', () => { if (generation !== mediaGeneration || destroyed) return; clearTimeout(mediaTimeout); ready = true; button.disabled = false; button.hidden = true; impression(); if (desiredPlaying) startClock() }, { once: true })
+      if (data.kind === 'image') current.addEventListener('load', () => { if (generation !== mediaGeneration || destroyed) return; clearTimeout(mediaTimeout); ready = true; button.disabled = false; button.hidden = true; impression(); startClock() }, { once: true })
       else {
-        current.playsInline = true; current.preload = 'auto'
-        current.addEventListener('playing', () => { if (generation !== mediaGeneration || destroyed) return; clearTimeout(mediaTimeout); ready = true; button.disabled = false; button.hidden = true; if (!desiredPlaying) { current.pause(); return }; impression(); startClock() })
+        current.controls = false; current.disablePictureInPicture = true; current.disableRemotePlayback = true; current.playsInline = true; current.preload = 'auto'
+        current.addEventListener('playing', () => { if (generation !== mediaGeneration || destroyed) return; clearTimeout(mediaTimeout); ready = true; button.disabled = false; button.hidden = true; impression(); startClock() })
         const waitForMedia = () => { if (generation !== mediaGeneration || destroyed) return; stopClock(); clearTimeout(mediaTimeout); mediaTimeout = setTimeout(mediaFail, 15000) }
         current.addEventListener('waiting', waitForMedia)
         current.addEventListener('stalled', () => { if (current.readyState < 3) waitForMedia() })
-        current.addEventListener('pause', () => { if (generation === mediaGeneration && !ended) stopClock() })
-        current.addEventListener('ended', () => { if (generation !== mediaGeneration || destroyed) return; ended = true; if (desiredPlaying) startClock() })
+        current.addEventListener('ended', () => { if (generation !== mediaGeneration || destroyed) return; ended = true; startClock() })
       }
       slot.replaceChildren(current)
       current.src = mediaURL.href
       if (isPlayable(current)) {
-        if (!desiredPlaying) { button.disabled = false; button.hidden = true; status.textContent = 'Anúncio pausado.' }
-        else current.play().catch(() => { if (!destroyed && generation === mediaGeneration) { clearTimeout(mediaTimeout); ready = true; fail() } })
+        current.play().catch(() => { if (!destroyed && generation === mediaGeneration) { clearTimeout(mediaTimeout); ready = true; fail() } })
       }
     } catch { fail() } finally { loading = false }
   }
   load()
-  return { cleanup, toggle: () => { if (desiredPlaying) pause(); else resume() }, pause, resume }
+  return { cleanup }
 }

@@ -29,9 +29,9 @@ test('a shuffled queue checks for ads after its last indexed song', async () => 
   assert.equal(h.queries(), 1); assert.equal(h.shown(), 1)
 })
 
-test('pause during configuration fetch waits for resume before starting ad', async () => {
+test('playback controls cannot pause the ad while its configuration loads', async () => {
   const h = setup(true); const { sandbox } = h
   sandbox.player.playContext([{ id: '1' }, { id: '2' }], 0)
   h.sound().dispatch('ended'); sandbox.player.togglePlay(); h.release(); await new Promise(setImmediate)
-  assert.equal(h.shown(), 0); sandbox.player.togglePlay(); assert.equal(h.shown(), 1)
+  assert.equal(h.shown(), 1)
 })
