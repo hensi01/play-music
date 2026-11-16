@@ -53,3 +53,14 @@ Run log: 2026-08-10 — botão alternar paisagem/vertical nos 2 players + 50px n
 Run log: 2026-08-10 — feature Karaoke – Vídeos implementada e validada (branch feat/karaoke-videos): migration 0009 aplicada, backend (store/rotas/stream/artwork/scanner) + frontend (player vídeo fullscreen, /#/karaoke, seção home, aba admin, modal categoria) + 3 testes Go; validação funcional Playwright com upload real MP4 (thumb, player, teclado, 201 com metadados); reviewer PASS; aguardando aprovação de merge e restart do :4533.
 Run log: 2026-08-10 — fix karaoke landscape+spacing (branch fix/karaoke-landscape-spacing, worktree play-music-karaoke-ls): manifest "orientation": "portrait" removido (PWA instalado voltou a girar); karaoke.js trava paisagem no Android via screen.orientation.lock('landscape') (após fullscreen ativo; unlock no close e ao sair do fullscreen com player aberto; iOS/desktop: no-op silencioso); controles mobile com padding-bottom calc(16px + env(safe-area-inset-bottom)) (era 0 → barra colada na borda); sw.js pm-shell-v2. Validação :4534 mobile 375×812: paddingBottom=16px, orientation=landscape-primary, 0 console errors, manifest sem orientation; desktop 1280×720 sem regressão; go test verde. PR #29 aguardando aprovação de merge/restart do :4533.
 Run log: 2026-08-09 — verificação foto/capa de categoria: diagnóstico (loja sem capa, artwork exige JWT, cache sujo) + teste e2e de upload na "Cristão" (OK, foto deixada aplicada) + fix backend rota pública + fix loja + 2 testes novos + suíte 57 passed/1 skipped/0 failed em :4534. Branch fix/categoria-foto-loja aguardando aprovação de merge/restart do :4533.
+
+## Android — 2026-11-09
+L2 autorizado. Worktree ../play-music-android, branch codex/android-play-music, criada a partir de 7c6d3ea9. Implementação ainda não iniciada. go test ./... falhou em internal/server: tabelas karaokes e category_karaokes ausentes no banco de teste. Node, npm e adb encontrados; Java, Gradle e SDK Android não encontrados nas verificações iniciais. Conta Play Console ainda não criada.
+
+
+Atualização 2026-11-10: usuário informou que criou a conta Google Play Console. JDK 21 encontrado instalado; SDK Android e dispositivo conectado não encontrados na verificação. Implementação Android pendente.
+
+
+## PWA Rust migration — 2026-11-10
+Usuário alterou o objetivo: sem publicação na loja; deseja PWA Android/iOS com frontend e backend migrados de Go/JS para Rust/WASM, preservando funções. Mudanças isoladas em worktree ../play-music-android (branch codex/android-play-music): protótipos rust-backend/ e frontend-rust/ em andamento; Android nativo não é mais o alvo. Rust 1.99.1 e wasm32-unknown-unknown instalados. Visual Studio Build Tools + Windows SDK 10.0.26100.0 instalados parcialmente; cargo test está avançando após configuração de INCLUDE/LIB, compilação ainda pendente. PWA original permanece intacto em web/assets. Limitações do PWA em iOS para áudio em segundo plano foram comunicadas. Sem deploy.
+
