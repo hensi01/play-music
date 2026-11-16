@@ -116,6 +116,8 @@ function icon(name) {
 // ---------- Auth state ----------
 
 let auth = { user: null, loading: true }
+let notificationGate = { userId: null, status: 'checking' }
+let notificationGateSeq = 0
 
 let sessionEpoch = 0
 function setAuth(patch) {
@@ -132,8 +134,9 @@ function setAuth(patch) {
     player.clearSession()
   }
   auth = { ...auth, ...patch }
+  if (previousId !== nextId) { notificationGateSeq++; notificationGate = { userId: nextId, status: 'checking' } }
   render()
-  if (previousId !== nextId && nextId) { void loadPlaylists(); void reconcilePushSubscription(nextId) }
+  if (previousId !== nextId && nextId) void reconcilePushSubscription(nextId).finally(() => { if (auth.user?.id === nextId) void verifyNotificationGate(nextId) })
 }
 
 // Lê a claim `exp` de um JWT (header.payload.signature, base64url) sem
@@ -1019,6 +1022,17 @@ function renderQueue(container) {
 
 // ---------- Settings ----------
 
+// Avoid leaving the activation screen stuck if registration fails.
+async function pushServiceWorker() {
+  let timer
+  try {
+    return await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('O aplicativo não ficou pronto. Atualize a página e tente novamente.')), 8000) }),
+    ])
+  } finally { clearTimeout(timer) }
+}
+
 // Serialize device operations so an opt-out always runs after an in-flight update.
 let pushOperation = Promise.resolve()
 function queuePushOperation(action) {
@@ -1042,8 +1056,15 @@ function ensurePushAccount(userId) {
   if (auth.user?.id !== userId || tokenUser !== userId) throw new Error('A conta mudou. Entre novamente para concluir a operação.')
 }
 
+async function pushRequest(path, method = 'GET', body) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8000)
+  try {
+    return await api.fetch(path, { method, signal: controller.signal, ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) })
+  } finally { clearTimeout(timer) }
+}
 async function removePushEndpoint(endpoint) {
-  await api.fetch('/api/push/subscriptions', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint }) })
+  await pushRequest('/api/push/subscriptions', 'DELETE', { endpoint })
 }
 async function reconcilePushSubscription(userId) {
   return queuePushOperation(async () => {
@@ -1053,7 +1074,7 @@ async function reconcilePushSubscription(userId) {
     if (!navigator.locks && state.enabled) return
     if (!('serviceWorker' in navigator) || !('Notification' in window)) return
     try {
-      const registration = await navigator.serviceWorker.ready
+      const registration = await pushServiceWorker()
       const current = await registration.pushManager.getSubscription()
       ensurePushAccount(userId)
       state = readPushState(userId)
@@ -1087,7 +1108,7 @@ async function reconcilePushSubscription(userId) {
         ensurePushAccount(userId)
       }
       if (!readPushState(userId).enabled) return
-      await api.post('/api/push/subscriptions', current.toJSON())
+      await pushRequest('/api/push/subscriptions', 'POST', current.toJSON())
       ensurePushAccount(userId)
       state = readPushState(userId)
       if (state.enabled) writePushState(userId, { enabled: true, endpoint: current.endpoint })
@@ -1095,7 +1116,53 @@ async function reconcilePushSubscription(userId) {
   })
 }
 
-function notificationSettingsCard() {
+async function verifyNotificationGate(userId) {
+  if (auth.user?.id !== userId) return
+  const seq = ++notificationGateSeq
+  notificationGate = { userId, status: 'checking' }
+  if (auth.user?.id === userId) render()
+  let allowed = false
+  try {
+    ensurePushAccount(userId)
+    if (!window.isSecureContext || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window) || !navigator.locks || Notification.permission !== 'granted') throw new Error('Permissão necessária')
+    const state = readPushState(userId)
+    if (!state.enabled || !state.endpoint || state.pendingEndpoint || localStorage.getItem('pm_push_owner') !== userId) throw new Error('Inscrição necessária')
+    const registration = await pushServiceWorker()
+    const subscription = await registration.pushManager.getSubscription()
+    ensurePushAccount(userId)
+    if (!subscription || subscription.endpoint !== state.endpoint) throw new Error('Inscrição alterada')
+    const result = await pushRequest('/api/push/status', 'POST', { endpoint: subscription.endpoint })
+    ensurePushAccount(userId)
+    allowed = result.active === true && Notification.permission === 'granted' && readPushState(userId).enabled === true
+  } catch { /* Stay on the activation screen until verification succeeds. */ }
+  if (seq !== notificationGateSeq || auth.user?.id !== userId) return
+  notificationGate = { userId, status: allowed ? 'allowed' : 'required' }
+  if (!allowed) player.clearSession()
+  render()
+  if (allowed) void loadPlaylists()
+}
+function installButton() {
+  if (window.isPlayMusicInstalled?.()) return null
+  return el('button', { class: 'install-app-btn', type: 'button', onclick: () => window.installPlayMusic?.() }, 'Instalar aplicativo')
+}
+function renderNotificationGate() {
+  root.innerHTML = ''
+  const checking = notificationGate.status === 'checking'
+  root.append(el('main', { class: 'notification-gate' },
+    el('header', { class: 'notification-gate-header' }, el('strong', {}, 'Play Music'), installButton()),
+    el('section', { class: 'notification-gate-content' },
+      el('h1', {}, checking ? 'Verificando notificações…' : 'Ative as notificações para continuar'),
+      checking ? spinner() : el('p', { class: 'settings-text' }, 'As notificações são necessárias para usar o aplicativo neste dispositivo.'),
+      checking ? null : notificationSettingsCard(true),
+      checking ? null : el('button', { class: 'btn-secondary', type: 'button', onclick: () => verifyNotificationGate(auth.user.id) }, 'Tentar novamente'),
+      el('button', { class: 'btn-secondary', type: 'button', onclick: doLogout }, 'Sair'))))
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && auth.user) void verifyNotificationGate(auth.user.id)
+})
+window.addEventListener('appinstalled', () => render())
+
+function notificationSettingsCard(required = false) {
   const status = el('p', { class: 'settings-text' }, 'Ative para receber avisos e promoções neste dispositivo.')
   const enable = el('button', { class: 'btn-accent', type: 'button' }, 'Ativar notificações')
   const disable = el('button', { class: 'btn-secondary', type: 'button' }, 'Desativar notificações')
@@ -1108,7 +1175,7 @@ function notificationSettingsCard() {
   let config = null
   if (!enable.disabled) {
     enable.disabled = true
-    api.get('/api/push/config').then(value => { config = value; enable.disabled = !value.enabled; if (!value.enabled) status.textContent = 'Notificações ainda não estão configuradas.' }).catch(() => { status.textContent = 'Não foi possível verificar as notificações.' })
+    pushRequest('/api/push/config').then(value => { config = value; enable.disabled = !value.enabled; if (!value.enabled) status.textContent = 'Notificações ainda não estão configuradas.' }).catch(() => { status.textContent = 'Não foi possível verificar as notificações.' })
   }
   enable.addEventListener('click', async () => {
     const intent = `${Date.now()}-${Math.random()}`
@@ -1126,7 +1193,7 @@ function notificationSettingsCard() {
         const owner = localStorage.getItem('pm_push_owner')
         if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela e desative as notificações primeiro.')
         localStorage.setItem('pm_push_owner', userId)
-        const reg = await navigator.serviceWorker.ready
+        const reg = await pushServiceWorker()
         let sub = await reg.pushManager.getSubscription()
         ensurePushAccount(userId)
         if (!readPushState(userId).enabled) return
@@ -1142,12 +1209,13 @@ function notificationSettingsCard() {
         if (!next.enabled) return
         if (next.endpoint && next.endpoint !== sub.endpoint) { await removePushEndpoint(next.endpoint); ensurePushAccount(userId) }
         if (!readPushState(userId).enabled) return
-        await api.post('/api/push/subscriptions', sub.toJSON())
+        await pushRequest('/api/push/subscriptions', 'POST', sub.toJSON())
         ensurePushAccount(userId)
         next = readPushState(userId)
         if (next.enabled) writePushState(userId, { enabled: true, endpoint: sub.endpoint })
       })
       status.textContent = readPushState(userId).enabled ? 'Notificações ativadas neste dispositivo.' : 'Cancelamento em andamento.'
+      if (typeof verifyNotificationGate === 'function') void verifyNotificationGate(userId)
     } catch (err) { status.textContent = err.message || 'Não foi possível ativar notificações.' }
   })
   disable.addEventListener('click', async () => {
@@ -1157,13 +1225,14 @@ function notificationSettingsCard() {
       if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela para desativar as notificações.')
       // Record opt-out synchronously, before waiting for any earlier network call.
       writePushState(userId, { ...readPushState(userId), enabled: false, intent: '' })
+      if (typeof verifyNotificationGate === 'function') void verifyNotificationGate(userId)
       await queuePushOperation(async () => {
         ensurePushAccount(userId)
         const owner = localStorage.getItem('pm_push_owner')
         if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela para desativar as notificações.')
         const state = readPushState(userId)
         if (owner !== userId && !state.endpoint && !state.pendingEndpoint) throw new Error('Não foi possível confirmar a conta desta inscrição. Entre na conta que ativou as notificações.')
-        const reg = await navigator.serviceWorker.ready
+        const reg = await pushServiceWorker()
         const sub = await reg.pushManager.getSubscription()
         ensurePushAccount(userId)
         const endpoints = [...new Set([state.endpoint, state.pendingEndpoint, sub?.endpoint].filter(Boolean))]
@@ -1176,7 +1245,7 @@ function notificationSettingsCard() {
       status.textContent = 'Notificações desativadas neste dispositivo.'
     } catch (err) { status.textContent = err.message || 'Não foi possível desativar notificações. Tente novamente.' }
   })
-  return el('section', { class: 'settings-card' }, el('h2', {}, 'Notificações'), status, el('div', { class: 'settings-actions' }, enable, disable))
+  return el('section', { class: 'settings-card' }, el('h2', {}, 'Notificações'), status, el('div', { class: 'settings-actions' }, enable, required ? null : disable))
 }
 
 async function renderSettings(container) {
@@ -1720,6 +1789,8 @@ function render() {
     return
   }
 
+  if (notificationGate.userId !== auth.user.id || notificationGate.status !== 'allowed') { renderNotificationGate(); return }
+
   const onNavigate = () => {
     menuOpen = false
     render()
@@ -1738,8 +1809,9 @@ function render() {
         el(
           'div',
           { class: 'mobile-topbar' },
-          el('button', { class: 'icon-btn', 'aria-label': 'Abrir menu', onclick: () => { menuOpen = true; render() } }, icon('menu')),
+          el('button', { class: 'icon-btn topbar-menu', 'aria-label': 'Abrir menu', onclick: () => { menuOpen = true; render() } }, icon('menu')),
           el('span', {}, icon('music'), 'Play Music'),
+          installButton(),
         ),
         el('div', { class: 'page', id: 'page-content' }),
       ),

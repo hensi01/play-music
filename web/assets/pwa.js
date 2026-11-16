@@ -23,7 +23,6 @@
   let deferredPrompt = null
 
   window.addEventListener('beforeinstallprompt', (e) => {
-    if (pwaSeen()) return
     e.preventDefault()
     deferredPrompt = e
     const button = document.querySelector('.pwa-overlay [data-act="install"]')
@@ -137,8 +136,8 @@
     return card
   }
 
-  function show() {
-    if (isInstalled() || document.querySelector('.pwa-overlay') || pwaSeen()) return
+  function show(force = false) {
+    if (isInstalled() || document.querySelector('.pwa-overlay') || (!force && pwaSeen())) return
     const overlay = document.createElement('div')
     overlay.className = 'pwa-overlay'
     overlay.appendChild(buildCard())
@@ -147,6 +146,16 @@
     })
     document.body.appendChild(overlay)
   }
+
+  window.installPlayMusic = function () {
+    if (isInstalled()) return
+    if (deferredPrompt) {
+      const prompt = deferredPrompt
+      deferredPrompt = null
+      prompt.prompt().catch(() => show(true))
+    } else show(true)
+  }
+  window.isPlayMusicInstalled = isInstalled
 
   // App aberto no navegador (não instalado): mostra uma única vez por sessão.
   window.addEventListener('load', () => {

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const vm = require('node:vm')
 const fs = require('node:fs')
 const source = fs.readFileSync('web/assets/app.js', 'utf8')
-const code = source.slice(source.indexOf('// Serialize device operations'), source.indexOf('\nasync function renderSettings(container)'))
+const code = source.slice(source.indexOf('// Avoid leaving the activation screen'), source.indexOf('\nasync function renderSettings(container)'))
 function fixture() {
   const data = new Map(), calls = [], nodes = []
   let failPost = false, release, started
@@ -11,14 +11,14 @@ function fixture() {
   const storage = { getItem:k=>data.has(k)?data.get(k):null, setItem:(k,v)=>data.set(k,String(v)), removeItem:k=>data.delete(k) }
   const subscription = { endpoint:'https://push.test/new', toJSON(){return {endpoint:this.endpoint,keys:{auth:'a',p256dh:'b'}}}, async unsubscribe(){calls.push('unsubscribe')} }
   const registration = {pushManager:{ async getSubscription(){return subscription} }}
-  const api={async get(){return {enabled:true,publicKey:'AQ'}}, async fetch(_path,options){calls.push('delete:'+JSON.parse(options.body).endpoint)},async post(){calls.push('post');if(hold)await new Promise(r=>{release=r;started()});if(failPost)throw Error('offline')}}
+  const api={async get(){return {enabled:true,publicKey:'AQ'}}, async fetch(path,options){if(options.method==='GET') return this.get(path);if(options.method==='POST') return this.post(path,JSON.parse(options.body));calls.push('delete:'+JSON.parse(options.body).endpoint)},async post(path){if(path === '/api/push/status') return {active:true};calls.push('post');if(hold)await new Promise(r=>{release=r;started()});if(failPost)throw Error('offline')}}
   const auth={user:{id:'alice'}}
   function el(tag,attrs,...children){const n={tag,attrs,children,disabled:false,addEventListener(type,fn){this[type]=fn}};nodes.push(n);return n}
   const navigator={serviceWorker:{ready:Promise.resolve(registration)}, locks:{request:async(_name,fn)=>fn()}}
   const Notification={permission:'granted',requestPermission:async()=> 'granted'}
   let tokenUser = null
   const getToken=()=>`header.${Buffer.from(JSON.stringify({uid:tokenUser || auth.user.id})).toString('base64url')}.signature`
-  const ctx={auth,api,el,getToken,localStorage:storage,navigator,Notification,window:{PushManager:function(){},Notification,isSecureContext:true},atob:s=>Buffer.from(s,'base64').toString('binary'),Uint8Array,Promise,Set,Error}
+  const ctx={auth,api,el,getToken,localStorage:storage,setTimeout,clearTimeout,AbortController,navigator,Notification,document:{addEventListener(){}},window:{PushManager:function(){},Notification,isSecureContext:true,addEventListener(){}}, notificationGateSeq:0,notificationGate:{},render(){},player:{clearSession(){}},loadPlaylists:async()=>{},atob:s=>Buffer.from(s,'base64').toString('binary'),Uint8Array,Promise,Set,Error}
   vm.createContext(ctx);vm.runInContext(code,ctx)
   return {ctx,data,calls,nodes,auth,Notification,setTokenUser(v){tokenUser=v},setFail(v){failPost=v},holdPost(){hold=true;return new Promise(r=>started=r)},release(){release()}}
 }
@@ -58,4 +58,29 @@ test('revogação remove endpoint anterior e pendente',async()=>{
 test('token de outra conta não autoriza reconciliação da aba anterior',async()=>{
  const f=fixture();f.data.set('pm_push_owner','alice');f.data.set(key('alice'),JSON.stringify({enabled:true,endpoint:'https://push.test/old'}));f.setTokenUser('bob')
  await f.ctx.reconcilePushSubscription('alice');assert.equal(f.calls.length,0);assert.equal(JSON.parse(f.data.get(key('alice'))).endpoint,'https://push.test/old')
+})
+
+
+test('acesso só é liberado após verificar inscrição do aparelho', async () => {
+ const f=fixture(); f.data.set('pm_push_owner','alice'); f.data.set(key('alice'),JSON.stringify({enabled:true,endpoint:'https://push.test/new'}))
+ await f.ctx.verifyNotificationGate('alice'); assert.equal(f.ctx.notificationGate.status,'allowed')
+ f.Notification.permission='denied'; await f.ctx.verifyNotificationGate('alice'); assert.equal(f.ctx.notificationGate.status,'required')
+})
+
+test('verificação antiga não substitui estado da conta atual', async () => {
+ const f=fixture(); f.auth.user.id='bob'; f.ctx.notificationGate={userId:'bob',status:'allowed'}
+ await f.ctx.verifyNotificationGate('alice'); assert.equal(f.ctx.notificationGate.userId,'bob'); assert.equal(f.ctx.notificationGate.status,'allowed')
+})
+
+test('service worker indisponível devolve tela recuperável', async () => {
+ const f=fixture(); f.data.set('pm_push_owner','alice'); f.data.set(key('alice'),JSON.stringify({enabled:true,endpoint:'https://push.test/new'}))
+ f.ctx.navigator.serviceWorker.ready=new Promise(()=>{}); f.ctx.setTimeout=(fn)=>{fn();return 1}; f.ctx.clearTimeout=()=>{}
+ await f.ctx.verifyNotificationGate('alice'); assert.equal(f.ctx.notificationGate.status,'required')
+})
+
+test('falha de rede durante verificação devolve tela recuperável', async () => {
+ const f=fixture(); f.data.set('pm_push_owner','alice'); f.data.set(key('alice'),JSON.stringify({enabled:true,endpoint:'https://push.test/new'}))
+ f.ctx.api.fetch=(_path,opts)=>new Promise((_,reject)=>opts.signal.addEventListener('abort',()=>reject(new Error('timeout'))))
+ f.ctx.setTimeout=(fn)=>{queueMicrotask(fn);return 1}; f.ctx.clearTimeout=()=>{}
+ await f.ctx.verifyNotificationGate('alice'); assert.equal(f.ctx.notificationGate.status,'required')
 })

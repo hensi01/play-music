@@ -59,6 +59,41 @@ func (s *Server) relay(ctx context.Context, method, path, auth string, body any,
 	}
 	return resp.StatusCode, e
 }
+
+// Account-level protection complements the device permission check in the UI.
+func (s *Server) pushAccessAllowed(w http.ResponseWriter, r *http.Request, userID string) bool {
+	if r.URL.Path == "/api/me" || strings.HasPrefix(r.URL.Path, "/api/push/") {
+		return true
+	}
+	var enabled bool
+	err := s.store.Pool().QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM push_subscriptions WHERE user_id=$1 AND active)", userID).Scan(&enabled)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "Não foi possível verificar notificações")
+		return false
+	}
+	if !enabled {
+		writeError(w, http.StatusPreconditionRequired, "Ative as notificações para usar o aplicativo")
+		return false
+	}
+	return true
+}
+func (s *Server) handlePushStatus(w http.ResponseWriter, r *http.Request) {
+	var v struct {
+		Endpoint string `json:"endpoint"`
+	}
+	if !pushRead(w, r, &v) {
+		return
+	}
+	var enabled bool
+	err := s.store.Pool().QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM push_subscriptions WHERE endpoint=$1 AND user_id=$2 AND active)", v.Endpoint, userIDOf(r.Context())).Scan(&enabled)
+	if err != nil {
+		writeError(w, 503, "Não foi possível verificar notificações")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, 200, map[string]bool{"active": enabled})
+}
+
 func (s *Server) handlePushConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, 200, map[string]any{"enabled": s.pushEnabled(), "publicKey": s.cfg.RelayVapidPublicKey})

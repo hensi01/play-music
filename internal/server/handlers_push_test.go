@@ -60,3 +60,13 @@ func TestPushSendRejectsUnsafeLinksBeforeDatabase(t *testing.T) {
 	}
 }
 func mustJSON(v string) []byte { b, _ := json.Marshal(v); return b }
+
+func TestPushEnrollmentRoutesRemainAvailableBeforeActivation(t *testing.T) {
+	s := &Server{}
+	for _, path := range []string{"/api/me", "/api/push/config", "/api/push/status", "/api/push/subscriptions"} {
+		w := httptest.NewRecorder()
+		if !s.pushAccessAllowed(w, httptest.NewRequest("GET", path, nil), "user") {
+			t.Fatalf("enrollment route unexpectedly blocked: %s", path)
+		}
+	}
+}

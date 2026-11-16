@@ -65,6 +65,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/register", s.handleRegister)
 
 	// API (JWT required).
+	mux.Handle("POST /api/push/status", s.requireAuth(http.HandlerFunc(s.handlePushStatus)))
 	mux.Handle("GET /api/push/config", s.requireAuth(http.HandlerFunc(s.handlePushConfig)))
 	mux.Handle("POST /api/push/subscriptions", s.requireAuth(http.HandlerFunc(s.handlePushSubscribe)))
 	mux.Handle("DELETE /api/push/subscriptions", s.requireAuth(http.HandlerFunc(s.handlePushUnsubscribe)))
@@ -152,6 +153,9 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "Não autenticado")
 			return
 		}
+		if !s.pushAccessAllowed(w, r, claims.UserID) {
+			return
+		}
 		if s.auth.NeedsRefresh(claims) {
 			if fresh, err := s.auth.Sign(r.Context(), modelUserFromClaims(claims)); err == nil {
 				w.Header().Set(auth.HeaderName, fresh)
@@ -178,6 +182,9 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 		}
 		if !claims.IsAdmin {
 			writeError(w, http.StatusForbidden, "Sem permissão")
+			return
+		}
+		if !s.pushAccessAllowed(w, r, claims.UserID) {
 			return
 		}
 		if s.auth.NeedsRefresh(claims) {

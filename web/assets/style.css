@@ -2541,3 +2541,13 @@ img {
 @media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
   .bottom-bar { height: 80px; }
 }
+/* Installation and required notification activation */
+.mobile-topbar { display: flex; }
+.mobile-topbar .install-app-btn { margin-left: auto; }
+.topbar-menu { display: none; }
+.install-app-btn { border: 1px solid var(--accent); border-radius: 999px; background: transparent; color: var(--text); padding: 8px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.notification-gate { min-height: 100dvh; background: var(--bg); color: var(--text); }
+.notification-gate-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px; }
+.notification-gate-content { max-width: 540px; margin: 8vh auto; padding: 20px; }
+.notification-gate-content .settings-card { margin: 20px 0; }
+@media (max-width: 768px) { .topbar-menu { display: inline-flex; } .install-app-btn { font-size: 12px; padding: 7px 9px; } }

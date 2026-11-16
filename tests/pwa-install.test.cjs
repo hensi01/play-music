@@ -22,10 +22,11 @@ function setup() {
   }
   const navigator = { userAgent: 'Android', platform: '', maxTouchPoints: 0 }
   const window = { navigator, matchMedia: () => ({ matches: false }), addEventListener(name, fn) { listeners[name] = fn } }
-  const sessionStorage = { getItem: () => null, setItem() {} }
+  const saved = new Map()
+  const sessionStorage = { getItem: (k) => saved.get(k) || null, setItem(k,v) { saved.set(k,v) } }
   vm.runInNewContext(fs.readFileSync('web/assets/pwa.js', 'utf8'), { window, document, navigator, sessionStorage, setTimeout: (fn) => fn() })
   listeners.load()
-  return { listeners, buttons, steps, overlay }
+  return { listeners, buttons, steps, overlay, window }
 }
 
 test('evento tardio abre o diálogo e remove o aviso após aceitação', async () => {
@@ -42,4 +43,13 @@ test('sem diálogo nativo ou após recusa mantém instruções acessíveis', asy
   s.listeners.beforeinstallprompt({ preventDefault() {}, prompt() { return Promise.resolve() }, userChoice: Promise.resolve({ outcome: 'dismissed' }) })
   await s.buttons.install.click()
   assert.match(s.steps.textContent, /menu/); assert.notEqual(s.overlay.removed, true)
+})
+
+
+test('botão do cabeçalho abre instalação após dispensar aviso', async () => {
+  const s = setup(); let calls = 0
+  s.buttons.dismiss.click()
+  s.listeners.beforeinstallprompt({ preventDefault() {}, prompt() { calls++; return Promise.resolve() }, userChoice: Promise.resolve({ outcome: 'accepted' }) })
+  s.window.installPlayMusic()
+  assert.equal(calls, 1)
 })
