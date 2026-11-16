@@ -2561,11 +2561,16 @@ img {
 .notification-gate-status:empty { display: none; }
 .notification-gate::after { content: ''; min-height: 56px; }
 @media (min-width: 768px) { .notification-gate-brand { padding: 28px 36px; } .notification-gate-content { padding: 42px 38px; } }
-.ad-overlay { position: fixed; inset: 0; z-index: 10000; background: #111; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; }
-.ad-overlay h2, .ad-overlay p { margin: 0; }
-.ad-overlay a { color: #72e6a1; }
-.ad-media { width: min(100%, 800px); max-height: 65vh; display: flex; align-items: center; justify-content: center; }
-.ad-media img, .ad-media video { display: block; max-width: 100%; max-height: 65vh; object-fit: contain; }
+.ad-overlay { position: fixed; inset: 0; z-index: 10000; isolation: isolate; overflow: hidden; width: 100%; height: 100vh; height: 100dvh; box-sizing: border-box; background: #000; color: #fff; text-align: center; }
+.ad-overlay p { margin: 0; }
+.ad-overlay [hidden] { display: none !important; }
+.ad-media { position: absolute; inset: 0; z-index: 0; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+.ad-media img, .ad-media video { display: block; width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; object-position: center; }
+.ad-overlay [role="status"] { position: absolute; z-index: 2; top: calc(env(safe-area-inset-top) + 16px); right: 16px; padding: 8px 12px; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 999px; background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; backdrop-filter: blur(10px); }
+.ad-overlay > .btn-primary { position: absolute; z-index: 3; top: 50%; left: 50%; min-width: 180px; min-height: 48px; padding: 12px 20px; transform: translate(-50%, -50%); }
+.ad-destination { position: absolute; z-index: 2; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 24px); left: 16px; display: flex; justify-content: center; pointer-events: none; }
+.ad-destination a { display: inline-flex; align-items: center; justify-content: center; min-width: min(220px, 100%); min-height: 48px; padding: 10px 24px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 999px; background: #1ed760; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4); color: #06130a; font-size: 16px; font-weight: 700; text-decoration: none; pointer-events: auto; }
+.ad-destination a:focus-visible, .ad-overlay > .btn-primary:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 
 .download-history-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border-bottom: 1px solid var(--border, #333); }
 .download-history-row > div { min-width: 0; }
@@ -2640,10 +2645,10 @@ img {
   .modal-actions { flex-direction: column; }
   .modal-actions > button { width: 100%; min-height: 48px; }
 
-  .ad-overlay { padding: max(16px, env(safe-area-inset-top)) 12px max(16px, env(safe-area-inset-bottom)); }
-  .ad-media { max-height: 55dvh; }
-  .ad-media img, .ad-media video { max-height: 55dvh; }
-  .ad-overlay .btn-primary { min-height: 48px; }
+  .ad-overlay [role="status"] { top: calc(env(safe-area-inset-top) + 12px); right: 12px; }
+  .ad-destination { right: 12px; bottom: calc(env(safe-area-inset-bottom) + 16px); left: 12px; }
+  .ad-destination a { width: min(100%, 360px); }
+  .ad-overlay > .btn-primary { width: min(calc(100% - 32px), 320px); min-height: 48px; }
 }
 
 @media (max-width: 480px) {

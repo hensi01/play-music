@@ -7,8 +7,8 @@ function harness(kind, delayed = false) {
   let now = 0, tick, lastMedia, timeout, release
   const events = []
   class Element {
-    constructor(tag) { this.tagName = tag.toUpperCase(); this.children = []; this.listeners = {}; this.disabled = false; this.playCount = 0; this.pauseCount = 0; if (['img', 'video', 'audio'].includes(tag)) lastMedia = this }
-    setAttribute() {}
+    constructor(tag) { this.tagName = tag.toUpperCase(); this.children = []; this.listeners = {}; this.disabled = false; this.hidden = false; this.attributes = {}; this.playCount = 0; this.pauseCount = 0; if (['img', 'video', 'audio'].includes(tag)) lastMedia = this }
+    setAttribute(name, value) { this.attributes[name] = value }
     removeAttribute() {}
     append(...children) { this.children.push(...children) }
     replaceChildren(...children) { this.children = children }
@@ -28,8 +28,21 @@ function harness(kind, delayed = false) {
   let finished = 0
   const states = []
   const player = sandbox.showAd({ embedUrl: 'https://ads.nuvexaia.online/embed/abc', duration: 10 }, () => finished++, (v) => states.push(v))
-  return { document, player, states, events, media: () => lastMedia, release: () => release(), advance: (seconds) => { now += seconds * 1000; tick?.() }, expire: () => timeout?.(), done: () => finished }
+  return { document, player, states, events, media: () => lastMedia, button: () => document.body.children[0].children.find((node) => node.tagName === 'BUTTON'), release: () => release(), advance: (seconds) => { now += seconds * 1000; tick?.() }, expire: () => timeout?.(), done: () => finished }
 }
+
+test('ad overlay has no title or pause button and labels the destination Saiba Mais', async () => {
+  const h = harness('image'); await new Promise(setImmediate)
+  const overlay = h.document.body.children[0]
+  const destination = overlay.children.find((node) => node.className === 'ad-destination')
+  assert.equal(overlay.attributes['aria-label'], 'Anúncio patrocinado')
+  assert.equal(overlay.children.some((node) => node.tagName === 'H2'), false)
+  assert.equal(h.button().hidden, true)
+  assert.equal(destination.children[0].textContent, 'Saiba Mais')
+  h.media().dispatch('load')
+  assert.equal(h.button().hidden, true)
+  assert.equal(overlay.children.find((node) => node.attributes.role === 'status').textContent, '10 s')
+})
 
 test('image does not count until loaded and pause stops the clock', async () => {
   const h = harness('image'); await new Promise(setImmediate)
@@ -61,8 +74,9 @@ test('pausing before an image loads keeps it paused after loading', async () => 
 test('pausing while loading retains the timeout and offers retry', async () => {
   const h = harness('image'); await new Promise(setImmediate)
   h.player.pause(); h.expire()
-  const button = h.document.body.children[0].children[3]
+  const button = h.button()
   assert.equal(button.disabled, false); assert.equal(button.textContent, 'Tentar novamente')
+  assert.equal(button.hidden, false)
 })
 
 test('audio starts automatically, records impression, pauses and resumes without overlap', async () => {
@@ -77,7 +91,7 @@ test('audio starts automatically, records impression, pauses and resumes without
 test('audio buffering and failure wait for user action', async () => {
   const h = harness('audio'); await new Promise(setImmediate)
   const audio = h.media(); audio.dispatch('playing'); h.advance(3); audio.dispatch('waiting'); h.advance(20); assert.equal(h.done(), 0)
-  h.expire(); assert.equal(h.document.body.children[0].children[3].textContent, 'Tentar novamente')
+  h.expire(); assert.equal(h.button().textContent, 'Tentar novamente')
   assert.ok(audio.pauseCount > 0)
 })
 
