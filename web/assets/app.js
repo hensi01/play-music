@@ -1502,6 +1502,7 @@ function notificationSettingsCard(required = false) {
   }
   enable.addEventListener('click', async () => {
     const intent = `${Date.now()}-${Math.random()}`
+    let pushServiceRegistrationFailed = false
     try {
       ensurePushAccount(userId)
       if (!config?.enabled) {
@@ -1528,7 +1529,12 @@ function notificationSettingsCard(required = false) {
         if (!readPushState(userId).enabled) return
         if (!sub) {
           const raw = atob(config.publicKey.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(config.publicKey.length / 4) * 4, '='))
-          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, c => c.charCodeAt(0)) })
+          try {
+            sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, c => c.charCodeAt(0)) })
+          } catch (err) {
+            pushServiceRegistrationFailed = true
+            throw err
+          }
         }
         ensurePushAccount(userId)
         let next = readPushState(userId)
@@ -1545,7 +1551,19 @@ function notificationSettingsCard(required = false) {
       })
       status.textContent = readPushState(userId).enabled ? 'Notificações ativadas neste dispositivo.' : 'Cancelamento em andamento.'
       if (typeof verifyNotificationGate === 'function') void verifyNotificationGate(userId)
-    } catch (err) { status.textContent = err.message || 'Não foi possível ativar notificações.' }
+    } catch (err) {
+      if (pushServiceRegistrationFailed) {
+        await queuePushOperation(async () => {
+          const state = readPushState(userId)
+          if (state.intent !== intent) return
+          writePushState(userId, { ...state, enabled: false, intent: '' })
+          if (!state.endpoint && !state.pendingEndpoint && localStorage.getItem('pm_push_owner') === userId) localStorage.removeItem('pm_push_owner')
+        }).catch(() => undefined)
+        status.textContent = 'O navegador não conseguiu se conectar ao serviço de notificações. Verifique sua conexão e tente novamente mais tarde.'
+      } else {
+        status.textContent = err.message || 'Não foi possível ativar notificações.'
+      }
+    }
   })
   disable.addEventListener('click', async () => {
     try {
