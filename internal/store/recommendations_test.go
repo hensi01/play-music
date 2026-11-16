@@ -33,12 +33,48 @@ func TestRecommendationsFallbackAndOldHistory(t *testing.T) {
 	now := time.Now()
 	songs := []model.Song{{ID: "older", CreatedAt: now.Add(-time.Hour)}, {ID: "newer", CreatedAt: now}}
 	got := rankRecommendations(songs, nil, []listenSignal{{SongID: "older", At: now.Add(-91 * 24 * time.Hour)}}, nil, now)
-	if got.Personalized || len(got.Songs) != 2 || got.Songs[0].ID != "newer" {
-		t.Fatalf("unexpected fallback: %+v", got)
+	if !got.Personalized || len(got.Songs) != 2 || got.Songs[0].ID != "older" {
+		t.Fatalf("old history should still contribute: %+v", got)
 	}
 	empty := rankRecommendations(nil, nil, nil, nil, now)
 	if empty.Songs == nil || empty.Artists == nil || empty.Tastes == nil {
 		t.Fatal("empty lists must be JSON arrays")
+	}
+}
+
+func TestRecommendationsUseAlbumAndNormalizeGenres(t *testing.T) {
+	now := time.Now()
+	songs := []model.Song{
+		{ID: "heard", Artist: "Band", Album: "First", Genre: " Rock "},
+		{ID: "album", Artist: "Band", Album: "First", Genre: "rock"},
+		{ID: "other", Artist: "Band", Album: "Second", Genre: "ROCK"},
+		{ID: "jazz", Artist: "Other", Album: "Jazz", Genre: "jazz"},
+	}
+	got := rankRecommendations(songs, nil, []listenSignal{{SongID: "heard", At: now}}, nil, now)
+	if got.Songs[0].ID != "album" || got.Songs[len(got.Songs)-1].ID != "jazz" {
+		t.Fatalf("album and genre affinity missing: %+v", got.Songs)
+	}
+}
+
+func TestRecommendationsRecentHistoryAndRepeatedPlays(t *testing.T) {
+	now := time.Now()
+	songs := []model.Song{{ID: "old", Artist: "Old"}, {ID: "new", Artist: "New"}, {ID: "old-match", Artist: "Old"}, {ID: "new-match", Artist: "New"}}
+	plays := []listenSignal{{SongID: "old", At: now.Add(-365 * 24 * time.Hour)}}
+	for i := 0; i < 10; i++ {
+		plays = append(plays, listenSignal{SongID: "new", At: now.Add(-time.Hour)})
+	}
+	got := rankRecommendations(songs, nil, plays, nil, now)
+	if got.Songs[0].ID != "new-match" {
+		t.Fatalf("recent listening preference not reflected: %+v", got.Songs)
+	}
+}
+
+func TestRecommendationsHandleUnknownMetadataAndMissingSongs(t *testing.T) {
+	now := time.Now()
+	songs := []model.Song{{ID: "heard"}, {ID: "other"}}
+	got := rankRecommendations(songs, nil, []listenSignal{{SongID: "deleted", At: now}, {SongID: "heard", At: now.Add(-8 * 24 * time.Hour)}}, nil, now)
+	if !got.Personalized || got.Songs[0].ID != "heard" {
+		t.Fatalf("metadata-free song should use personal history: %+v", got)
 	}
 }
 func TestRecommendationsLimitArtistRepetition(t *testing.T) {

@@ -61,6 +61,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Auth (public).
 	mux.HandleFunc("POST /auth/login", s.handleLogin)
+	mux.HandleFunc("POST /auth/admin/login", s.handleAdminLogin)
 
 	mux.HandleFunc("POST /api/register", s.handleRegister)
 

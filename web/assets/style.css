@@ -1074,6 +1074,50 @@ img {
   opacity: 0.4;
 }
 
+.login-admin-link {
+  display: block;
+  width: fit-content;
+  margin: 20px auto 0;
+  color: var(--subtext);
+  font-size: 13px;
+  text-align: center;
+  text-decoration: none;
+  transition: color var(--dur-fast, 0.15s) var(--ease, ease);
+}
+
+.login-admin-link:hover,
+.login-admin-link:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.login-screen.admin-login-screen {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% -5%, rgba(176, 136, 75, 0.16), transparent 70%),
+    linear-gradient(to bottom, rgba(26, 26, 31, 0.6), var(--bg));
+}
+
+.admin-login-box { max-width: 420px; }
+.admin-login-box .login-brand { margin-bottom: 26px; }
+.admin-login-box .login-brand svg {
+  color: #f1c77b;
+  background: linear-gradient(135deg, #775a2c, #b0884b);
+}
+.admin-login-form { border-color: color-mix(in srgb, #b0884b 55%, var(--outline, #6d6d75)); }
+.admin-login-form:focus-within { box-shadow: var(--shadow-3), 0 0 0 1px #b0884b; }
+.admin-login-form .login-submit {
+  background: linear-gradient(135deg, #8d6935, #b0884b);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(176, 136, 75, 0.22);
+}
+.admin-login-form .login-submit:hover:not(:disabled) { box-shadow: 0 10px 24px rgba(176, 136, 75, 0.32); }
+.admin-login-back { margin-top: 22px; }
+
+@media (max-width: 480px) {
+  .admin-login-box { max-width: 100%; }
+  .admin-login-form { padding: 20px; }
+}
+
 /* ---------- Search ---------- */
 
 .search-bar {

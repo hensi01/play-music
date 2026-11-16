@@ -8,6 +8,11 @@ tela cheia, playlists, curtidas, histórico, busca e letras sincronizadas.
 usuário autenticado pode acessar todas as músicas e categorias. Playlists,
 curtidas, histórico e recomendações são individuais. A tela Para você usa
 escutas qualificadas e curtidas, com sugestões recentes quando não há histórico.
+O perfil usa até 5.000 escutas mais recentes da própria conta, com peso maior
+para audições recentes e limite gradual para repetições da mesma música. Artista,
+álbum, gênero e categorias ajudam a encontrar músicas relacionadas; faixas
+ouvidas nos últimos sete dias recebem redução temporária para dar espaço a
+descobertas. Curtidas também influenciam o resultado.
 
 Este repositório contém:
 
@@ -64,9 +69,12 @@ indexa o bucket (músicas + capas + playlists `.m3u`). O servidor escuta em
 
 ## API
 
-Autenticação: `POST /auth/login` com `{username, password}` (administrador) ou
-`{phone}` (cliente — **somente o telefone**, aceito com ou sem máscara;
-desconhecido → 401)
+Autenticação de clientes: `POST /auth/login` com `{phone}` (**somente o telefone**,
+aceito com ou sem máscara; desconhecido → 401). O login administrativo fica em
+uma página separada (`/admin/login`) e usa `POST /auth/admin/login` com
+`{username, password}`.
+Por compatibilidade, integrações antigas ainda podem enviar credenciais
+administrativas a `POST /auth/login`.
 → `{token, id, name, phone, isAdmin}`. O JWT viaja no header
 `X-ND-Authorization: Bearer <token>` (ou `?jwt=` em URLs de `<img>`/`<audio>`);
 o header de resposta pode trazer um token renovado.

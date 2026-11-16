@@ -53,7 +53,7 @@ func (s *Store) Recommendations(ctx context.Context, userID string) (Recommendat
 	if err != nil {
 		return Recommendations{}, err
 	}
-	rows, err = s.pool.Query(ctx, `SELECT song_id,listened_at FROM qualified_listens WHERE user_id=$1 AND listened_at >= now()-interval '90 days' ORDER BY listened_at DESC LIMIT 5000`, userID)
+	rows, err = s.pool.Query(ctx, `SELECT song_id,listened_at FROM qualified_listens WHERE user_id=$1 ORDER BY listened_at DESC LIMIT 5000`, userID)
 	if err != nil {
 		return Recommendations{}, err
 	}
@@ -99,33 +99,49 @@ func rankRecommendations(songs []model.Song, categories map[string][]string, pla
 	for _, song := range songs {
 		byID[song.ID] = song
 	}
-	artistWeight, genreWeight, categoryWeight := map[string]float64{}, map[string]float64{}, map[string]float64{}
+	artistWeight, albumWeight, genreWeight, categoryWeight := map[string]float64{}, map[string]float64{}, map[string]float64{}, map[string]float64{}
+	labels := map[string]string{}
+	rememberLabel := func(key, value string) {
+		value = strings.TrimSpace(value)
+		if previous, ok := labels[key]; !ok || value < previous {
+			labels[key] = value
+		}
+	}
 	recent := map[string]bool{}
 	add := func(song model.Song, weight float64) {
 		if key := recommendationArtistKey(song); key != "" {
 			artistWeight[key] += weight
 		}
-		if g := strings.TrimSpace(song.Genre); g != "" {
+		if key := recommendationAlbumKey(song); key != "" {
+			albumWeight[key] += weight
+		}
+		if g := recommendationLabelKey(song.Genre); g != "" {
 			genreWeight[g] += weight
+			rememberLabel(g, song.Genre)
 		}
 		for _, c := range categories[song.ID] {
-			categoryWeight[c] += weight
+			if key := recommendationLabelKey(c); key != "" {
+				categoryWeight[key] += weight
+				rememberLabel(key, c)
+			}
 		}
 	}
+	listenWeight := map[string]float64{}
 	for _, p := range plays {
-		song, ok := byID[p.SongID]
-		if !ok {
+		if _, ok := byID[p.SongID]; !ok {
 			continue
 		}
 		days := math.Max(0, now.Sub(p.At).Hours()/24)
-		if days > 90 {
-			continue
-		}
-		add(song, 1/(1+days/30))
+		listenWeight[p.SongID] += math.Exp2(-days / 90)
 		if days < 7 {
 			recent[p.SongID] = true
 		}
 		result.Personalized = true
+	}
+	// Aggregate plays per track before applying a logarithm so repeatedly
+	// playing one song cannot overwhelm an otherwise varied profile.
+	for id, weight := range listenWeight {
+		add(byID[id], math.Log1p(weight)/math.Ln2)
 	}
 	for id, likedAt := range likes {
 		if song, ok := byID[id]; ok {
@@ -141,10 +157,12 @@ func rankRecommendations(songs []model.Song, categories map[string][]string, pla
 	rankedSongs := make([]ranked, 0, len(songs))
 	for _, song := range songs {
 		_, song.Liked = likes[song.ID]
-		score := 3*artistWeight[recommendationArtistKey(song)] + 2*genreWeight[strings.TrimSpace(song.Genre)]
+		score := 3*artistWeight[recommendationArtistKey(song)] + 1.5*albumWeight[recommendationAlbumKey(song)] + 2*genreWeight[recommendationLabelKey(song.Genre)]
 		for _, c := range categories[song.ID] {
-			score += categoryWeight[c]
+			score += categoryWeight[recommendationLabelKey(c)]
 		}
+		// A known favorite remains relevant even if it has no usable metadata.
+		score += math.Log1p(listenWeight[song.ID])
 		if recent[song.ID] {
 			score *= 0.35
 		}
@@ -205,19 +223,38 @@ func rankRecommendations(songs []model.Song, categories map[string][]string, pla
 	for k, v := range categoryWeight {
 		tastes[k] += v
 	}
+	keys := make([]string, 0, len(tastes))
 	for k := range tastes {
-		result.Tastes = append(result.Tastes, k)
+		keys = append(keys, k)
 	}
-	sort.Slice(result.Tastes, func(i, j int) bool {
-		if tastes[result.Tastes[i]] != tastes[result.Tastes[j]] {
-			return tastes[result.Tastes[i]] > tastes[result.Tastes[j]]
+	sort.Slice(keys, func(i, j int) bool {
+		if tastes[keys[i]] != tastes[keys[j]] {
+			return tastes[keys[i]] > tastes[keys[j]]
 		}
-		return result.Tastes[i] < result.Tastes[j]
+		return keys[i] < keys[j]
 	})
-	if len(result.Tastes) > 8 {
-		result.Tastes = result.Tastes[:8]
+	for _, key := range keys {
+		result.Tastes = append(result.Tastes, labels[key])
+		if len(result.Tastes) == 8 {
+			break
+		}
 	}
 	return result
+}
+
+func recommendationLabelKey(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func recommendationAlbumKey(song model.Song) string {
+	if song.AlbumID != "" {
+		return "id:" + song.AlbumID
+	}
+	album, artist := recommendationLabelKey(song.Album), recommendationArtistKey(song)
+	if album == "" || artist == "" {
+		return ""
+	}
+	return "name:" + artist + ":" + album
 }
 
 func recommendationArtistKey(song model.Song) string {

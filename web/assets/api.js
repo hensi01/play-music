@@ -19,17 +19,18 @@ function resolve(path) {
 }
 
 export async function apiFetch(path, options = {}) {
-  const token = getToken()
+  const token = options.anonymous ? null : getToken()
   const headers = new Headers(options.headers)
   if (token) headers.set(AUTH_HEADER, `Bearer ${token}`)
 
-  const res = await fetch(resolve(path), { ...options, headers })
+  const { anonymous, ...fetchOptions } = options
+  const res = await fetch(resolve(path), { ...fetchOptions, headers })
 
   const refreshed = res.headers.get(AUTH_HEADER)
   if (refreshed && token === getToken()) setToken(refreshed)
 
   if (res.status === 401) {
-    if (token === getToken()) {
+    if (!anonymous && token === getToken()) {
       setToken(null)
       window.dispatchEvent(new Event('pm:unauthorized'))
     }
