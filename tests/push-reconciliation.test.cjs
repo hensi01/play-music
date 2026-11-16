@@ -18,7 +18,7 @@ function fixture() {
   const Notification={permission:'granted',requestPermission:async()=> 'granted'}
   let tokenUser = null
   const getToken=()=>`header.${Buffer.from(JSON.stringify({uid:tokenUser || auth.user.id})).toString('base64url')}.signature`
-  const ctx={auth,api,el,getToken,localStorage:storage,setTimeout,clearTimeout,AbortController,navigator,Notification,document:{addEventListener(){}},window:{PushManager:function(){},Notification,isSecureContext:true,location:{hash:'#/'},addEventListener(){}}, notificationGateSeq:0,notificationGateNeedsRedirect:false,notificationGate:{},navigate(path){ calls.push('navigate:'+path) },render(){},player:{clearSession(){}},loadPlaylists:async()=>{},atob:s=>Buffer.from(s,'base64').toString('binary'),Uint8Array,Promise,Set,Error}
+  const ctx={auth,api,el,getToken,localStorage:storage,setTimeout,clearTimeout,AbortController,navigator,Notification,document:{addEventListener(){}},window:{PushManager:function(){},Notification,isSecureContext:true,location:{hash:'#/'},addEventListener(){}}, notificationGateSeq:0,notificationGateNeedsRedirect:false,notificationGate:{},navigate(path){ calls.push('navigate:'+path) },render(){},player:{clearSession(){calls.push('clearPlayer')}},loadPlaylists:async()=>{},atob:s=>Buffer.from(s,'base64').toString('binary'),Uint8Array,Promise,Set,Error}
   vm.createContext(ctx);vm.runInContext(code,ctx)
   return {ctx,data,calls,nodes,auth,Notification,setTokenUser(v){tokenUser=v},setFail(v){failPost=v},holdPost(){hold=true;return new Promise(r=>started=r)},release(){release()}}
 }
@@ -66,6 +66,12 @@ test('acesso só é liberado após verificar inscrição do aparelho', async () 
  const f=fixture(); f.data.set('pm_push_owner','alice'); f.data.set(key('alice'),JSON.stringify({enabled:true,endpoint:'https://push.test/new'}))
  await f.ctx.verifyNotificationGate('alice'); assert.equal(f.ctx.notificationGate.status,'allowed')
  f.Notification.permission='denied'; await f.ctx.verifyNotificationGate('alice'); assert.equal(f.ctx.notificationGate.status,'required')
+})
+
+test('administrador sem notificações não tem reprodução interrompida', async () => {
+ const f=fixture(); f.auth.user.isAdmin=true; f.Notification.permission='denied'
+ await f.ctx.verifyNotificationGate('alice')
+ assert.equal(f.ctx.notificationGate.status,'required'); assert(!f.calls.includes('clearPlayer'))
 })
 
 test('verificação antiga não substitui estado da conta atual', async () => {

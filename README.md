@@ -1,6 +1,6 @@
-# Play Music — Backend + UI
+# Mi Ritmo — Backend + UI
 
-Play Music é um player web de música estilo Spotify, self-hosted, com interface
+Mi Ritmo é um player web de música estilo Spotify, self-hosted, com interface
 em português brasileiro, tema escuro, sidebar, player inferior fixo, player em
 tela cheia, playlists, curtidas, histórico, busca e letras sincronizadas.
 
@@ -174,7 +174,7 @@ criar e revogar outras chaves. Ao revogar uma chave comprometida, revise e revog
 separadamente quaisquer outras chaves que possam ter sido criadas por ela.
 
 Uma chave deixa de funcionar se for revogada, se seu proprietário deixar de ser
-administrador, se a conta for removida ou se não houver uma inscrição ativa de
-notificações para essa conta. Ela não autentica as rotas de usuário. Para testar
+administrador ou se a conta for removida. Administradores não precisam ativar
+notificações para acessar o aplicativo ou usar chaves. Ela não autentica as rotas de usuário. Para testar
 no Swagger, clique em **Authorize** e informe a chave no campo `X-API-Key`.
 As rotas públicas de login e cadastro continuam públicas.

@@ -35,9 +35,9 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, model.Settings{
-		AppName:     "Play Music",
+		AppName:     "Mi Ritmo",
 		Version:     version.Version,
-		LibraryName: "Play Music",
+		LibraryName: "Mi Ritmo",
 	})
 }
 

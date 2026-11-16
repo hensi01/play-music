@@ -88,7 +88,7 @@
     const tips = [
       'Acesso em 1 toque pela tela de início',
       'Abre em tela cheia, sem a barra do navegador',
-      'Ícone próprio do Play Music no seu dispositivo',
+      'Ícone próprio do Mi Ritmo no seu dispositivo',
     ]
     const steps = stepsFor()
 
@@ -97,7 +97,7 @@
     card.innerHTML =
       '<div class="pwa-header">' +
         '<span class="pwa-icon">' + musicIcon + '</span>' +
-        '<h2>Instale o Play Music</h2>' +
+        '<h2>Instale o Mi Ritmo</h2>' +
       '</div>' +
       '<p class="pwa-desc">Ouça suas músicas como um aplicativo:</p>' +
       '<ul class="pwa-tips">' + tips.map((t) => '<li>' + t + '</li>').join('') + '</ul>' +
@@ -137,7 +137,7 @@
   }
 
   function show(force = false) {
-    if (isInstalled() || document.querySelector('.pwa-overlay') || (!force && (pwaSeen() || document.querySelector('.notification-gate')))) return
+    if (isInstalled() || document.querySelector('.pwa-overlay') || (!force && (window.__pmAdmin || window.location?.pathname?.replace(/\/+$/, '') === '/admin/login' || pwaSeen() || document.querySelector('.notification-gate')))) return
     const overlay = document.createElement('div')
     overlay.className = 'pwa-overlay'
     overlay.appendChild(buildCard())

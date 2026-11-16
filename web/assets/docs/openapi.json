@@ -1,9 +1,9 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Play Music API",
+    "title": "Mi Ritmo API",
     "version": "1.0.0",
-    "description": "Referência interativa da API Play Music. As rotas administrativas aceitam chave de integração ou JWT de administrador. A conta proprietária precisa ter notificações ativas. As rotas de usuário utilizam JWT."
+    "description": "Referência interativa da API Mi Ritmo. As rotas administrativas aceitam chave de integração ou JWT de administrador. As rotas de usuário utilizam JWT."
   },
   "servers": [
     {
@@ -46,7 +46,7 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-API-Key",
-        "description": "Chave de integração com acesso administrativo. Guarde como uma senha. Se a chave for inválida, revogada, o dono não for mais administrador ou não tiver notificações ativas, a API retorna 401."
+        "description": "Chave de integração com acesso administrativo. Guarde como uma senha. Se a chave for inválida, revogada, o dono não for mais administrador, a API retorna 401."
       }
     },
     "schemas": {
@@ -926,9 +926,6 @@
           "403": {
             "description": "Sem permissão"
           },
-          "428": {
-            "description": "Ative notificações na conta"
-          },
           "201": {
             "description": "Criado",
             "content": {
@@ -1006,9 +1003,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           }
         },
         "security": [
@@ -1038,9 +1032,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           },
           "204": {
             "description": "Concluído sem conteúdo"
@@ -2560,9 +2551,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           }
         },
         "security": [
@@ -2590,9 +2578,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           },
           "201": {
             "description": "Criado",
@@ -2668,9 +2653,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           },
           "204": {
             "description": "Concluído sem conteúdo"
@@ -2748,9 +2730,6 @@
           "403": {
             "description": "Sem permissão"
           },
-          "428": {
-            "description": "Ative notificações na conta"
-          },
           "204": {
             "description": "Concluído sem conteúdo"
           }
@@ -2805,9 +2784,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           }
         },
         "security": [
@@ -2835,9 +2811,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           },
           "201": {
             "description": "Criado",
@@ -2916,9 +2889,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           }
         },
         "security": [
@@ -2956,9 +2926,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           },
           "204": {
             "description": "Concluído sem conteúdo"
@@ -3021,9 +2988,6 @@
           "403": {
             "description": "Sem permissão"
           },
-          "428": {
-            "description": "Ative notificações na conta"
-          },
           "204": {
             "description": "Concluído sem conteúdo"
           }
@@ -3078,9 +3042,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           }
         },
         "security": [
@@ -3123,9 +3084,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           }
         },
         "security": [
@@ -3165,9 +3123,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           }
         },
         "security": [
@@ -3195,9 +3150,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           },
           "201": {
             "description": "Criado",
@@ -3270,9 +3222,6 @@
           "403": {
             "description": "Sem permissão"
           },
-          "428": {
-            "description": "Ative notificações na conta"
-          },
           "204": {
             "description": "Concluído sem conteúdo"
           }
@@ -3332,9 +3281,6 @@
           "403": {
             "description": "Sem permissão"
           },
-          "428": {
-            "description": "Ative notificações na conta"
-          },
           "204": {
             "description": "Concluído sem conteúdo"
           }
@@ -3376,9 +3322,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           },
           "204": {
             "description": "Concluído sem conteúdo"
@@ -3439,9 +3382,6 @@
           "403": {
             "description": "Sem permissão"
           },
-          "428": {
-            "description": "Ative notificações na conta"
-          },
           "204": {
             "description": "Concluído sem conteúdo"
           }
@@ -3483,9 +3423,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           },
           "204": {
             "description": "Concluído sem conteúdo"
@@ -3546,9 +3483,6 @@
           "403": {
             "description": "Sem permissão"
           },
-          "428": {
-            "description": "Ative notificações na conta"
-          },
           "204": {
             "description": "Concluído sem conteúdo"
           }
@@ -3590,9 +3524,6 @@
           },
           "403": {
             "description": "Sem permissão"
-          },
-          "428": {
-            "description": "Ative notificações na conta"
           },
           "202": {
             "description": "Varredura iniciada",
@@ -3655,9 +3586,6 @@
           },
           "403": {
             "description": "Administrador necessário"
-          },
-          "428": {
-            "description": "Ative notificações"
           }
         },
         "operationId": "get_api_admin_api_keys",
@@ -3724,9 +3652,6 @@
           },
           "403": {
             "description": "Administrador necessário"
-          },
-          "428": {
-            "description": "Ative notificações"
           }
         },
         "operationId": "post_api_admin_api_keys"
@@ -3768,9 +3693,6 @@
           },
           "403": {
             "description": "Administrador necessário"
-          },
-          "428": {
-            "description": "Ative notificações"
           }
         },
         "operationId": "delete_api_admin_api_keys_id",

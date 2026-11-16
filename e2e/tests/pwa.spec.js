@@ -35,7 +35,7 @@ test.describe('PWA', () => {
     await page.goto('/')
     const overlay = page.locator('.pwa-overlay')
     await expect(overlay).toBeVisible({ timeout: 7000 })
-    await expect(overlay.locator('h2')).toHaveText('Instale o Play Music')
+    await expect(overlay.locator('h2')).toHaveText('Instale o Mi Ritmo')
     await overlay.getByRole('button', { name: 'Agora não' }).click()
     await expect(overlay).toBeHidden({ timeout: 5000 })
     // The app underneath still works after the dismiss.

@@ -1,5 +1,5 @@
 const { test, expect } = require('playwright/test')
-const { mockActivatedPush, tokenFor } = require('./push-fixture.cjs')
+const { tokenFor } = require('./push-fixture.cjs')
 test.use({ serviceWorkers: 'block' })
 
 function silentWav(seconds = 30) {
@@ -28,7 +28,6 @@ const songs = [
 ]
 
 test('player móvel e comandos Media Session mantêm faixa e posição sincronizadas', async ({ page }) => {
-  await mockActivatedPush(page, 'media-admin')
   const consoleErrors = []
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()) })
 
@@ -92,6 +91,9 @@ test('player móvel e comandos Media Session mantêm faixa e posição sincroniz
   await page.getByPlaceholder('Senha').fill('teste')
   await page.getByRole('button', { name: 'Entrar' }).click()
   await page.locator('.app-shell').waitFor({ state: 'visible', timeout: 15000 })
+  await expect(page.locator('.notification-gate')).toHaveCount(0)
+  await expect(page.locator('.pwa-overlay')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Início' }).click()
   await page.locator('.card-play').first().click()
   await expect(page.locator('.bottom-bar')).toBeVisible()
   await expect(page.locator('.now-playing-open')).toHaveAttribute('aria-label', 'Abrir player: Faixa de teste 1')

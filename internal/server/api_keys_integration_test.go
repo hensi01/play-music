@@ -14,6 +14,7 @@ import (
 	"play-music/internal/auth"
 	"play-music/internal/config"
 	"play-music/internal/db"
+	"play-music/internal/model"
 	"play-music/internal/store"
 )
 
@@ -37,16 +38,43 @@ func TestAPIKeyLifecyclePostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _, _ = pool.Exec(context.Background(), "DELETE FROM users WHERE id=$1", id) }()
-	_, err = pool.Exec(ctx, `INSERT INTO push_subscriptions(endpoint,user_id,relay_id,management_token,subscription_data,active) VALUES($1,$2,$3,'token','{}',true)`, "https://example.invalid/"+id, id, "test-"+id)
-	if err != nil {
-		t.Fatal(err)
-	}
 	st := store.New(pool)
 	authService, err := auth.New(ctx, &config.Config{}, st)
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := &Server{store: st, auth: authService}
+	adminToken, err := authService.Sign(ctx, model.User{ID: id, IsAdmin: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, middleware := range []func(http.Handler) http.Handler{s.requireAuth, s.requireAdmin} {
+		called := false
+		handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { called = true; w.WriteHeader(http.StatusNoContent) }))
+		request := httptest.NewRequest("GET", "/api/songs", nil)
+		request.Header.Set(auth.HeaderName, "Bearer "+adminToken)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNoContent || !called {
+			t.Fatalf("admin sem notificações: %d", response.Code)
+		}
+	}
+	clientID := store.NewID()
+	if _, err := pool.Exec(ctx, `INSERT INTO users(id,name,password_hash,is_admin) VALUES($1,'client','unused',false)`, clientID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(context.Background(), "DELETE FROM users WHERE id=$1", clientID) }()
+	clientToken, err := authService.Sign(ctx, model.User{ID: clientID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientRequest := httptest.NewRequest("GET", "/api/songs", nil)
+	clientRequest.Header.Set(auth.HeaderName, "Bearer "+clientToken)
+	clientResponse := httptest.NewRecorder()
+	s.requireAuth(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("cliente sem notificações passou") })).ServeHTTP(clientResponse, clientRequest)
+	if clientResponse.Code != http.StatusPreconditionRequired {
+		t.Fatalf("cliente sem notificações: %d", clientResponse.Code)
+	}
 	r := httptest.NewRequest("POST", "/api/admin/api-keys", strings.NewReader(`{"name":"test"}`))
 	r = r.WithContext(context.WithValue(r.Context(), ctxUserID, id))
 	w := httptest.NewRecorder()
@@ -105,16 +133,8 @@ func TestAPIKeyLifecyclePostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = pool.Exec(ctx, "UPDATE push_subscriptions SET active=false WHERE user_id=$1", id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if code := upload(); code != 401 || called {
-		t.Fatalf("inactive notifications: %d", code)
-	}
-	_, err = pool.Exec(ctx, "UPDATE push_subscriptions SET active=true WHERE user_id=$1", id)
-	if err != nil {
-		t.Fatal(err)
+	if code := upload(); code != 204 || !called {
+		t.Fatalf("admin without notifications: %d", code)
 	}
 	revoke := httptest.NewRequest("DELETE", "/api/admin/api-keys/"+key.ID, nil)
 	revoke.SetPathValue("id", key.ID)

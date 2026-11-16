@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const vm = require('node:vm')
 const fs = require('node:fs')
 
-function setup(gateActive = false) {
+function setup(gateActive = false, isAdmin = false) {
   const listeners = {}, buttons = {}, steps = { textContent: '', scrollIntoView() {} }
   let overlay
   const card = {
@@ -21,7 +21,7 @@ function setup(gateActive = false) {
     body: { appendChild() {} },
   }
   const navigator = { userAgent: 'Android', platform: '', maxTouchPoints: 0 }
-  const window = { navigator, matchMedia: () => ({ matches: false }), addEventListener(name, fn) { listeners[name] = fn } }
+  const window = { navigator, __pmAdmin: isAdmin, matchMedia: () => ({ matches: false }), addEventListener(name, fn) { listeners[name] = fn } }
   const saved = new Map()
   const sessionStorage = { getItem: (k) => saved.get(k) || null, setItem(k,v) { saved.set(k,v) } }
   vm.runInNewContext(fs.readFileSync('web/assets/pwa.js', 'utf8'), { window, document, navigator, sessionStorage, setTimeout: (fn) => fn() })
@@ -57,4 +57,9 @@ test('botão do cabeçalho abre instalação após dispensar aviso', async () =>
 
 test('aviso automático de instalação não cobre a ativação obrigatória', () => {
   const s=setup(true); assert.equal(s.overlay, undefined)
+})
+
+test('administrador não recebe aviso automático, mas pode solicitar instalação', () => {
+  const s=setup(false, true); assert.equal(s.overlay, undefined)
+  s.window.installPlayMusic(); assert.equal(typeof s.buttons.install.click, 'function')
 })

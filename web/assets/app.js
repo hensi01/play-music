@@ -1,4 +1,4 @@
-// Play Music web UI — vanilla JS, hash-based router.
+// Mi Ritmo web UI — vanilla JS, hash-based router.
 
 import { api, endpoints, artworkUrl, getToken, setToken, readAppConfig, applyPhoneMask, phoneMask } from './api.js'
 import * as player from './player.js'
@@ -150,6 +150,8 @@ function setAuth(patch) {
     player.clearSession()
   }
   auth = { ...auth, ...patch }
+  window.__pmAdmin = !!auth.user?.isAdmin
+  if (window.__pmAdmin) document.querySelector('.pwa-overlay')?.remove()
   if (previousId !== nextId) { notificationGateSeq++; notificationGateNeedsRedirect = false; notificationGate = { userId: nextId, status: 'checking' } }
   render()
   if (previousId !== nextId && nextId) void reconcilePushSubscription(nextId).finally(() => { if (auth.user?.id === nextId) void verifyNotificationGate(nextId) })
@@ -1378,7 +1380,7 @@ async function verifyNotificationGate(userId) {
   } catch { /* Stay on the activation screen until verification succeeds. */ }
   if (seq !== notificationGateSeq || auth.user?.id !== userId) return
   notificationGate = { userId, status: allowed ? 'allowed' : 'required' }
-  if (!allowed) { notificationGateNeedsRedirect = true; player.clearSession() }
+  if (!allowed && !auth.user.isAdmin) { notificationGateNeedsRedirect = true; player.clearSession() }
   if (allowed && notificationGateNeedsRedirect) {
     notificationGateNeedsRedirect = false
     if (window.location.hash !== '#/') navigate('/')
@@ -1396,12 +1398,12 @@ function renderNotificationGate() {
   const checking = notificationGate.status === 'checking'
   const bell = el('span', { class: 'notification-gate-icon', 'aria-hidden': 'true', html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>' })
   root.append(el('main', { class: 'notification-gate' },
-    el('div', { class: 'notification-gate-brand' }, icon('music'), el('strong', {}, 'Play Music')),
+    el('div', { class: 'notification-gate-brand' }, icon('music'), el('strong', {}, 'Mi Ritmo')),
     el('section', { class: 'notification-gate-content', 'aria-labelledby': 'notification-gate-title' },
       bell,
       el('p', { class: 'notification-gate-eyebrow' }, 'FIQUE POR DENTRO'),
       el('h1', { id: 'notification-gate-title' }, checking ? 'Verificando notificações' : 'Ative as notificações'),
-      el('p', { class: 'notification-gate-description' }, checking ? 'Estamos preparando seu acesso.' : 'Permita as notificações para continuar e receber avisos e novidades do Play Music.'),
+      el('p', { class: 'notification-gate-description' }, checking ? 'Estamos preparando seu acesso.' : 'Permita as notificações para continuar e receber avisos e novidades do Mi Ritmo.'),
       checking ? spinner('Só um instante…') : notificationSettingsCard(true))))
 }
 
@@ -1685,7 +1687,7 @@ function renderLogin(container) {
           'div',
           { class: 'login-brand' },
           icon('music'),
-          el('h1', {}, 'Play Music'),
+          el('h1', {}, 'Mi Ritmo'),
           el('p', {}, loginMode === 'register' ? 'Crie sua conta gratuita' : 'Entre com seu telefone para ouvir'),
         ),
         form,
@@ -1767,7 +1769,7 @@ function sidebarContent(onNavigate) {
     el(
       'div',
       { class: 'sidebar-header' },
-      el('span', { class: 'sidebar-brand' }, icon('music'), 'Play Music'),
+      el('span', { class: 'sidebar-brand' }, icon('music'), 'Mi Ritmo'),
       el('button', { class: 'sidebar-close', 'aria-label': 'Fechar', onclick: onNavigate }, icon('x')),
     ),
     el(
@@ -2127,7 +2129,7 @@ function render() {
     return
   }
 
-  if (notificationGate.userId !== auth.user.id || notificationGate.status !== 'allowed') { renderNotificationGate(); return }
+  if (!auth.user.isAdmin && (notificationGate.userId !== auth.user.id || notificationGate.status !== 'allowed')) { renderNotificationGate(); return }
 
   const onNavigate = () => {
     menuOpen = false
@@ -2148,7 +2150,7 @@ function render() {
           'div',
           { class: 'mobile-topbar' },
           el('button', { class: 'icon-btn topbar-menu', 'aria-label': 'Abrir menu', onclick: () => { menuOpen = true; render() } }, icon('menu')),
-          el('span', {}, icon('music'), 'Play Music'),
+          el('span', {}, icon('music'), 'Mi Ritmo'),
           installButton(),
         ),
         el('div', { class: 'page', id: 'page-content' }),

@@ -167,7 +167,7 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "Não autenticado")
 			return
 		}
-		if !s.pushAccessAllowed(w, r, claims.UserID) {
+		if !claims.IsAdmin && !s.pushAccessAllowed(w, r, claims.UserID) {
 			return
 		}
 		if s.auth.NeedsRefresh(claims) {
@@ -201,9 +201,6 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 		}
 		if !claims.IsAdmin {
 			writeError(w, http.StatusForbidden, "Sem permissão")
-			return
-		}
-		if !s.pushAccessAllowed(w, r, claims.UserID) {
 			return
 		}
 		if s.auth.NeedsRefresh(claims) {

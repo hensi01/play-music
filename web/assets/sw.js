@@ -1,4 +1,4 @@
-// Play Music service worker — PWA install + app shell cache.
+// Mi Ritmo service worker — PWA install + app shell cache.
 //
 // Safety rules:
 //  - NEVER intercept /api/* or /auth/* (stream redirects, JWTs, range
@@ -7,7 +7,7 @@
 //    stale-while-revalidate.
 //  - On activate, stale caches from previous versions are removed.
 
-const CACHE_NAME = 'pm-shell-v6'
+const CACHE_NAME = 'pm-shell-v7'
 const SHELL = ['./', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png']
 
 self.addEventListener('install', (event) => {
@@ -84,7 +84,7 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('push', (event) => {
   let data = {}
   try { data = event.data ? event.data.json() : {} } catch { /* malformed payload */ }
-  const title = typeof data.title === 'string' && data.title ? data.title : 'Play Music'
+  const title = typeof data.title === 'string' && data.title ? data.title : 'Mi Ritmo'
   const body = typeof data.body === 'string' ? data.body : ''
   let target = '/'
   try {

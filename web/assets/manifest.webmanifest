@@ -1,6 +1,6 @@
 {
-  "name": "Play Music",
-  "short_name": "Play Music",
+  "name": "Mi Ritmo",
+  "short_name": "Mi Ritmo",
   "description": "Player web de música por categorias",
   "start_url": "/",
   "scope": "/",

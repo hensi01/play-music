@@ -30,7 +30,7 @@ func (s *Server) requireAdminAPIKey(next http.Handler) http.Handler {
 		}
 		hash := sha256.Sum256([]byte(key))
 		var id, user string
-		err := s.store.Pool().QueryRow(r.Context(), `UPDATE api_integration_keys k SET last_used_at=now() FROM users u WHERE k.key_hash=$1 AND k.revoked_at IS NULL AND u.id=k.owner_id AND u.is_admin=true AND EXISTS (SELECT 1 FROM push_subscriptions ps WHERE ps.user_id=u.id AND ps.active) RETURNING k.id,k.owner_id`, hash[:]).Scan(&id, &user)
+		err := s.store.Pool().QueryRow(r.Context(), `UPDATE api_integration_keys k SET last_used_at=now() FROM users u WHERE k.key_hash=$1 AND k.revoked_at IS NULL AND u.id=k.owner_id AND u.is_admin=true RETURNING k.id,k.owner_id`, hash[:]).Scan(&id, &user)
 		if err != nil {
 			if err == pgx.ErrNoRows {
 				writeError(w, 401, "Chave de API inválida")
