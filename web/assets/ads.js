@@ -67,7 +67,7 @@ export function showAd(ad, onDone, onPlaybackState = () => {}) {
         current.addEventListener('waiting', waitForMedia)
         current.addEventListener('stalled', () => { if (current.readyState < 3) waitForMedia() })
         current.addEventListener('pause', () => { if (generation === mediaGeneration && !ended) stopClock() })
-        current.addEventListener('ended', () => { if (generation !== mediaGeneration || destroyed) return; ended = true; startClock() })
+        current.addEventListener('ended', () => { if (generation !== mediaGeneration || destroyed) return; ended = true; if (desiredPlaying) startClock() })
       }
       slot.replaceChildren(current)
       current.src = mediaURL.href

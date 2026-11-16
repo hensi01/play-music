@@ -87,3 +87,9 @@ test('pausing while the ad request is pending prevents audio autoplay', async ()
   const button = h.document.body.children[0].children[3]; assert.equal(button.disabled, false)
   h.player.resume(); assert.equal(audio.playCount, 1)
 })
+
+test('an ended event after pausing does not restart the ad clock', async () => {
+  const h = harness('audio'); await new Promise(setImmediate)
+  h.media().dispatch('playing'); h.advance(4); h.player.pause(); h.media().dispatch('ended')
+  h.advance(20); assert.equal(h.done(), 0); h.player.resume(); h.advance(6); assert.equal(h.done(), 1)
+})
