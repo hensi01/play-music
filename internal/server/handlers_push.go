@@ -19,6 +19,8 @@ import (
 
 var pushHTTP = &http.Client{Timeout: 12 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
+const pushUnavailableHeader = "X-Mi-Ritmo-Push-Unavailable"
+
 func (s *Server) pushEnabled() bool {
 	c := s.cfg
 	return c.PushProvider == "relay" && c.RelayAppID != "" && c.RelayAppSecret != "" && c.RelayVapidPublicKey != ""
@@ -63,6 +65,13 @@ func (s *Server) relay(ctx context.Context, method, path, auth string, body any,
 // Account-level protection complements the device permission check in the UI.
 func (s *Server) pushAccessAllowed(w http.ResponseWriter, r *http.Request, userID string) bool {
 	if r.URL.Path == "/api/me" || strings.HasPrefix(r.URL.Path, "/api/push/") {
+		return true
+	}
+	// The ChatGPT link mode bypasses the push prerequisite for this session;
+	// authentication is still required by the surrounding middleware.
+	if r.Header.Get(pushUnavailableHeader) == "1" ||
+		(r.URL.Query().Get("pushUnavailable") == "1" &&
+			(strings.HasPrefix(r.URL.Path, "/api/stream/") || strings.HasPrefix(r.URL.Path, "/api/artwork/"))) {
 		return true
 	}
 	var enabled bool

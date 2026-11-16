@@ -1,5 +1,4 @@
-﻿// PWA: service worker registration, manifest link in the HTML and the
-// install overlay (appears ~1.5s after load) closed with "Agora não".
+// PWA: service worker registration, manifest link and native installation prompt.
 
 const { test, expect } = require('playwright/test')
 const { trackConsole, expectClean } = require('./helpers')
@@ -13,8 +12,8 @@ test.describe('PWA', () => {
     await expect(manifest).toHaveCount(1)
     await expect(manifest).toHaveAttribute('href', /manifest/)
 
-    // Registration happens on window load; wait for an active/installing
-    // registration. The controller may not be set on the very first visit.
+    // Registration happens on window load; the controller may not be set on
+    // the very first visit.
     await expect
       .poll(
         () =>
@@ -29,17 +28,30 @@ test.describe('PWA', () => {
     expectClean(testInfo, clean)
   })
 
-  test('overlay PWA aparece e "Agora não" fecha', async ({ page }) => {
+  test('popup mostra somente Instalar PWA e abre a confirmação nativa', async ({ page }) => {
     const testInfo = test.info()
     const clean = trackConsole(page)
+    await page.addInitScript(() => {
+      window.__nativePwaPromptCalls = 0
+      window.addEventListener('load', () => setTimeout(() => {
+        const event = new Event('beforeinstallprompt', { cancelable: true })
+        event.prompt = () => {
+          window.__nativePwaPromptCalls++
+          return Promise.resolve()
+        }
+        event.userChoice = Promise.resolve({ outcome: 'accepted' })
+        window.dispatchEvent(event)
+      }, 0))
+    })
     await page.goto('/')
     const overlay = page.locator('.pwa-overlay')
     await expect(overlay).toBeVisible({ timeout: 7000 })
-    await expect(overlay.locator('h2')).toHaveText('Instale o Mi Ritmo')
-    await overlay.getByRole('button', { name: 'Agora não' }).click()
-    await expect(overlay).toBeHidden({ timeout: 5000 })
-    // The app underneath still works after the dismiss.
-    await expect(page.locator('.login-screen')).toBeVisible()
+    await expect(overlay.getByRole('button')).toHaveCount(1)
+    await expect(overlay.getByRole('button')).toHaveText('Instalar PWA')
+    expect(await overlay.locator('.pwa-card').evaluate((card) => card.children.length)).toBe(1)
+    await overlay.getByRole('button', { name: 'Instalar PWA' }).click()
+    await expect.poll(() => page.evaluate(() => window.__nativePwaPromptCalls)).toBe(1)
+    await expect(overlay).toHaveCount(0)
     expectClean(testInfo, clean)
   })
 })

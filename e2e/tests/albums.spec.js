@@ -76,7 +76,7 @@ test('cliente encontra álbuns, escolhe faixas e controla a fila', async ({ page
   })
 
   await page.goto('/')
-  await page.locator('.login-toggle').getByRole('button', { name: 'Criar conta' }).click()
+  await page.getByRole('button', { name: 'Criar conta' }).click()
   await page.getByPlaceholder('Telefone (99) 99999-9999').fill('11987654321')
   await page.locator('.login-submit').click()
   await expect(page.locator('.app-shell')).toBeVisible()

@@ -311,6 +311,30 @@ function trackRow(song, index, opts = {}) {
       )
     : null
 
+  const downloadBtn = downloadButton(song)
+  const moreToggle = el('button', {
+    class: 'track-more-toggle',
+    type: 'button',
+    'aria-label': `Mais opções para ${song.title}`,
+    'aria-expanded': 'false',
+    onclick: () => toggleTrackMore(moreActions, moreToggle),
+  }, 'Mais')
+  const moreMenu = el('div', { class: 'track-more-menu', 'aria-label': 'Ações da música' })
+  const moreActions = el('div', { class: 'track-more' }, moreToggle, moreMenu)
+  const optionLabels = new Map([
+    [queueBtn, 'Adicionar à fila'],
+    [addBtn, 'Adicionar à playlist'],
+    [shareBtn, 'Copiar link da música'],
+    [downloadBtn, 'Baixar música'],
+  ])
+  for (const [button, label] of optionLabels) {
+    if (!button) continue
+    button.classList.add('track-more-option')
+    button.append(el('span', { class: 'track-action-label' }, label))
+    button.addEventListener('click', () => closeTrackMore(moreActions))
+    moreMenu.append(button)
+  }
+
   return el(
     'div',
     { class: `track-row${isCurrent ? ' playing' : ''}`, 'data-song-id': song.id },
@@ -329,9 +353,36 @@ function trackRow(song, index, opts = {}) {
         el('p', { class: 'track-artist' }, song.artist || 'Desconhecido'),
       ),
     ),
-    el('div', { class: 'track-actions' }, likeBtn, queueBtn, addBtn, shareBtn, downloadButton(song), el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
+    el('div', { class: 'track-actions' }, likeBtn, moreActions, el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
   )
 }
+
+function closeTrackMore(menu) {
+  menu.classList.remove('open')
+  menu.querySelector('.track-more-toggle')?.setAttribute('aria-expanded', 'false')
+}
+
+function toggleTrackMore(menu, toggle) {
+  const shouldOpen = !menu.classList.contains('open')
+  document.querySelectorAll('.track-more.open').forEach(closeTrackMore)
+  if (!shouldOpen) return
+  menu.classList.add('open')
+  toggle.setAttribute('aria-expanded', 'true')
+}
+
+document.addEventListener('pointerdown', (event) => {
+  if (event.target.closest?.('.track-more')) return
+  document.querySelectorAll('.track-more.open').forEach(closeTrackMore)
+})
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return
+  const menu = document.querySelector('.track-more.open')
+  if (!menu) return
+  const toggle = menu.querySelector('.track-more-toggle')
+  closeTrackMore(menu)
+  toggle?.focus()
+})
 
 function downloadButton(song) {
   return el('button', { class: 'download-button', 'aria-label': 'Baixar música', title: 'Baixar música', onclick: async (e) => {
@@ -1276,6 +1327,16 @@ async function pushServiceWorker() {
   } finally { clearTimeout(timer) }
 }
 
+function isChatGPTBrowser() {
+  return new URLSearchParams(window.location.search).get('chatgpt') === '1' ||
+    /ChatGPT|Codex Browser/i.test(navigator.userAgent || '')
+}
+
+function supportsPushNotifications() {
+  return window.isSecureContext === true && 'serviceWorker' in navigator &&
+    'PushManager' in window && 'Notification' in window && !!navigator.locks
+}
+
 // Serialize device operations so an opt-out always runs after an in-flight update.
 let pushOperation = Promise.resolve()
 function queuePushOperation(action) {
@@ -1362,6 +1423,12 @@ async function reconcilePushSubscription(userId) {
 async function verifyNotificationGate(userId) {
   if (auth.user?.id !== userId) return
   const seq = ++notificationGateSeq
+  if (isChatGPTBrowser()) {
+    notificationGate = { userId, status: 'unsupported' }
+    notificationGateNeedsRedirect = false
+    if (seq === notificationGateSeq && auth.user?.id === userId) render()
+    return
+  }
   notificationGate = { userId, status: 'checking' }
   if (auth.user?.id === userId) render()
   let allowed = false
@@ -1419,7 +1486,10 @@ function notificationSettingsCard(required = false) {
   const status = el('p', { class: required ? 'notification-gate-status' : 'settings-text', role: 'status', 'aria-live': 'polite' }, required ? '' : active ? 'As notificações já estão ativadas neste dispositivo.' : 'Ative para receber avisos e promoções neste dispositivo.')
   const enable = el('button', { class: 'btn-accent', type: 'button' }, 'Ativar notificações')
   const disable = el('button', { class: 'btn-secondary', type: 'button' }, 'Desativar notificações')
-  if (!('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext)) {
+  if (isChatGPTBrowser()) {
+    status.textContent = 'As notificações não são exigidas no modo ChatGPT.'
+    enable.disabled = true; disable.disabled = true
+  } else if (!supportsPushNotifications()) {
     const ios = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
     status.textContent = ios ? 'No iPhone ou iPad, abra no Safari, toque em Compartilhar e em Adicionar à Tela de Início. Depois, abra o aplicativo instalado.' : 'As notificações não estão disponíveis neste navegador. Abra o aplicativo em um navegador compatível.'
     enable.disabled = true; disable.disabled = true
@@ -1628,17 +1698,11 @@ async function createPlaylist() {
 let loginMode = 'client' // client, register
 
 function renderLogin(container) {
-  const toggle = el(
-    'div',
-    { class: 'login-toggle' },
-    el('button', { class: `login-toggle-btn ${loginMode === 'client' ? 'active' : ''}`, 'aria-pressed': loginMode === 'client' ? 'true' : 'false', onclick: () => { loginMode = 'client'; render() } }, 'Cliente'),
-    el('button', { class: `login-toggle-btn ${loginMode === 'register' ? 'active' : ''}`, 'aria-pressed': loginMode === 'register' ? 'true' : 'false', onclick: () => { loginMode = 'register'; render() } }, 'Criar conta'),
-  )
-
   const phoneInput = el('input', { class: 'form-input', type: 'tel', inputmode: 'numeric', placeholder: 'Telefone (99) 99999-9999', autofocus: true, autocomplete: 'tel', required: true })
   phoneInput.addEventListener('input', () => applyPhoneMask(phoneInput))
   const errorEl = el('p', { class: 'login-error' })
   const submitBtn = el('button', { class: 'login-submit', type: 'submit' }, loginMode === 'register' ? 'Criar conta' : 'Entrar')
+  const switchBtn = el('button', { class: 'login-mode-link', type: 'button', onclick: () => { loginMode = loginMode === 'client' ? 'register' : 'client'; render() } }, loginMode === 'client' ? 'Criar conta' : 'Já tenho conta · Entrar')
 
   const form = el(
     'form',
@@ -1652,6 +1716,7 @@ function renderLogin(container) {
           return
         }
         submitBtn.disabled = true
+        switchBtn.disabled = true
         submitBtn.textContent = 'Aguarde…'
         try {
           if (loginMode === 'client') await doLogin('client', phoneInput.value.trim())
@@ -1665,13 +1730,15 @@ function renderLogin(container) {
           errorEl.textContent = err instanceof Error ? err.message : 'Erro ao entrar'
         } finally {
           submitBtn.disabled = false
-          submitBtn.textContent = 'Entrar'
+          switchBtn.disabled = false
+          submitBtn.textContent = loginMode === 'register' ? 'Criar conta' : 'Entrar'
         }
       },
     },
     phoneInput,
     errorEl,
     submitBtn,
+    switchBtn,
   )
 
   container.innerHTML = ''
@@ -1682,7 +1749,6 @@ function renderLogin(container) {
       el(
         'div',
         { class: 'login-box' },
-        toggle,
         el(
           'div',
           { class: 'login-brand' },
@@ -2127,7 +2193,8 @@ function render() {
     return
   }
 
-  if (!auth.user.isAdmin && (notificationGate.userId !== auth.user.id || notificationGate.status !== 'allowed')) { renderNotificationGate(); return }
+  const notificationsSatisfied = notificationGate.status === 'allowed' || notificationGate.status === 'unsupported'
+  if (!auth.user.isAdmin && (notificationGate.userId !== auth.user.id || !notificationsSatisfied)) { renderNotificationGate(); return }
 
   const onNavigate = () => {
     menuOpen = false

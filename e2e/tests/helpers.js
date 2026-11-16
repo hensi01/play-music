@@ -61,23 +61,26 @@ function randomPhone() {
   return `(${ddd}) ${s.slice(0, 5)}-${s.slice(5)}`
 }
 
-// ---------- PWA overlay (B5) ----------
+// ---------- PWA overlay ----------
 
-// Closes the PWA install overlay. Returns true if it was present and closed.
+// Simulates a browser that supports the native install prompt, then closes the
+// one-button overlay by clicking its backdrop. Returns true if it was closed.
 async function dismissPwa(page, { timeout = 6000 } = {}) {
+  await page.evaluate(() => {
+    const event = new Event('beforeinstallprompt', { cancelable: true })
+    event.prompt = () => Promise.resolve()
+    event.userChoice = Promise.resolve({ outcome: 'dismissed' })
+    window.dispatchEvent(event)
+  }).catch(() => {})
   const overlay = page.locator('.pwa-overlay')
   try {
     await overlay.waitFor({ state: 'visible', timeout })
   } catch {
     return false
   }
-  const btn = overlay.locator('[data-act="dismiss"]')
-  if (await btn.count()) {
-    await btn.click()
-    await overlay.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {})
-    return true
-  }
-  return false
+  await overlay.click({ position: { x: 1, y: 1 } })
+  await overlay.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {})
+  return true
 }
 
 // ---------- console error tracking (asserted zero per test) ----------

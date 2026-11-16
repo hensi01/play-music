@@ -13,7 +13,7 @@ test('navegação responsiva mantém acesso ao catálogo e ao player', async ({ 
     return route.fulfill({ json: [] })
   })
   await page.goto('/')
-  await page.locator('.login-toggle').getByRole('button', { name: 'Criar conta' }).click()
+  await page.getByRole('button', { name: 'Criar conta' }).click()
   await page.getByPlaceholder('Telefone (99) 99999-9999').fill('11987654321')
   await page.locator('.login-submit').click()
   await expect(page.getByText('Música teste').first()).toBeVisible()

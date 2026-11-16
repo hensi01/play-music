@@ -62,6 +62,27 @@ test('o login comum mostra telefone sem links administrativos ou de documentaç�
   assert.equal(links.some((link) => link.attrs.href === '/docs/'), false)
 })
 
+test('criação de conta aparece abaixo de entrar e permite voltar ao login', async () => {
+  const f = fixture()
+  vm.runInContext('renderLogin(root)', f.context)
+  let form = walk(f.root, (node) => node.tag === 'form')[0]
+  let buttons = walk(form, (node) => node.tag === 'button')
+  assert.deepEqual(buttons.map((button) => button.children[0]), ['Entrar', 'Criar conta'])
+  assert.equal(buttons[1].attrs.type, 'button')
+  buttons[1].listeners.click()
+  f.root.children = []; vm.runInContext('renderLogin(root)', f.context)
+  form = walk(f.root, (node) => node.tag === 'form')[0]
+  buttons = walk(form, (node) => node.tag === 'button')
+  assert.deepEqual(buttons.map((button) => button.children[0]), ['Criar conta', 'Já tenho conta · Entrar'])
+  walk(form, (node) => node.tag === 'input')[0].value = '11999999999'
+  f.context.endpoints.register = async () => { throw new Error('Falha') }
+  await form.listeners.submit({ preventDefault() {} })
+  assert.equal(buttons[0].textContent, 'Criar conta')
+  buttons[1].listeners.click()
+  f.root.children = []; vm.runInContext('renderLogin(root)', f.context)
+  assert.equal(walk(f.root, (node) => node.tag === 'button' && node.attrs.class === 'login-submit')[0].children[0], 'Entrar')
+})
+
 test('a página administrativa tem formulário próprio e leva ao painel após login', async () => {
   const f = fixture()
   vm.runInContext('renderAdminLogin(root)', f.context)

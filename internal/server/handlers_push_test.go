@@ -70,3 +70,28 @@ func TestPushEnrollmentRoutesRemainAvailableBeforeActivation(t *testing.T) {
 		}
 	}
 }
+
+func TestChatGPTModeCanUsePlayerWithoutSubscription(t *testing.T) {
+	s := &Server{}
+	cases := []struct {
+		name   string
+		path   string
+		header bool
+	}{
+		{name: "API requests", path: "/api/songs", header: true},
+		{name: "audio element", path: "/api/stream/song-1?pushUnavailable=1"},
+		{name: "artwork image", path: "/api/artwork/song-1?pushUnavailable=1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			if tc.header {
+				req.Header.Set(pushUnavailableHeader, "1")
+			}
+			w := httptest.NewRecorder()
+			if !s.pushAccessAllowed(w, req, "user") || w.Code != http.StatusOK {
+				t.Fatalf("unsupported client was blocked: status=%d body=%s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
