@@ -2165,7 +2165,7 @@ function fullscreenPlayer(refs) {
         el('button', { class: `player-btn ${shuffle ? 'active' : ''}`, 'aria-label': 'Aleatório', 'aria-pressed': shuffle ? 'true' : 'false', onclick: player.toggleShuffle }, icon('shuffle')),
         el('button', { class: 'player-btn', 'aria-label': 'Anterior', onclick: player.prev }, icon('prev')),
         el('button', { class: 'player-btn', 'aria-label': 'Retroceder 5 segundos', onclick: () => player.seekBy(-5) }, icon('rewind5')),
-        el('button', { class: 'fullscreen-btn-main', 'aria-label': playing ? 'Pausar' : 'Tocar', 'aria-pressed': playing ? 'true' : 'false', onclick: player.togglePlay }, playing ? icon('pause') : icon('play')),
+        el('button', { class: `fullscreen-btn-main ${playing ? 'is-playing' : ''}`, 'aria-label': playing ? 'Pausar' : 'Tocar', 'aria-pressed': playing ? 'true' : 'false', onclick: player.togglePlay }, playing ? icon('pause') : icon('play')),
         el('button', { class: 'player-btn', 'aria-label': 'Avançar 5 segundos', onclick: () => player.seekBy(5) }, icon('forward5')),
         el('button', { class: 'player-btn', 'aria-label': 'Próxima', onclick: player.next }, icon('next')),
         el('button', { class: `player-btn ${repeat ? 'active' : ''}`, 'aria-label': 'Repetir', 'aria-pressed': repeat ? 'true' : 'false', onclick: player.toggleRepeat }, icon('repeat')),

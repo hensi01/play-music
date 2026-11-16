@@ -3270,3 +3270,36 @@ img {
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.32);
   opacity: 1;
 }
+
+.fullscreen-btn-main.is-playing {
+  position: relative;
+  isolation: isolate;
+  background: #1ed760;
+  color: #06130a;
+  box-shadow: 0 0 0 1px rgba(30, 215, 96, 0.35), 0 0 24px rgba(30, 215, 96, 0.32);
+}
+
+.fullscreen-btn-main.is-playing::after {
+  position: absolute;
+  z-index: 0;
+  inset: -6px;
+  border: 2px solid rgba(30, 215, 96, 0.6);
+  border-radius: inherit;
+  content: '';
+  pointer-events: none;
+  animation: fullscreen-playing-pulse 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.fullscreen-btn-main.is-playing > svg {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes fullscreen-playing-pulse {
+  0% { transform: scale(0.9); opacity: 0.75; }
+  100% { transform: scale(1.24); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fullscreen-btn-main.is-playing::after { display: none; }
+}
