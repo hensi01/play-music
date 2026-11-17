@@ -40,8 +40,15 @@ export function renderAdmin() {
   page.append(wrap)
 
   async function refresh() {
+    const names = ['users', 'categories', 'songs', 'notifications', 'ads', 'api-keys']
+    tabs.querySelectorAll('button').forEach((tab, index) => {
+      const selected = names[index] === adminTab
+      tab.classList.toggle('active', selected)
+      tab.setAttribute('aria-pressed', String(selected))
+    })
     const seq = ++adminRefreshSeq
     wrap.innerHTML = ''
+    wrap.className = ''
     if (adminTab === 'users') await renderUsers(wrap, seq)
     else if (adminTab === 'categories') await renderCategories(wrap, seq)
     else if (adminTab === 'songs') await renderSongs(wrap, seq)
@@ -55,6 +62,7 @@ export function renderAdmin() {
 }
 
 async function renderAds(wrap, seq) {
+  wrap.className = 'admin-section admin-ads'
   if (adSavePending) { try { await adSavePending } catch { /* show current saved configuration */ } }
   if (!isAdminRefreshCurrent(seq)) return
   let config
@@ -106,6 +114,7 @@ function apiKeyTokenUser(token) {
 }
 
 function renderAPIKeys(wrap) {
+  wrap.className = 'admin-section admin-api-keys'
   const name = el('input', { class: 'form-input', placeholder: 'Nome da integração', maxlength: '80', required: true })
   const status = el('p', { role: 'status' }, apiKeyMessage)
   const secret = el('div', { class: 'settings-card' })
@@ -155,9 +164,10 @@ function renderAPIKeys(wrap) {
 }
 
 function renderNotifications(wrap) {
-  const title = el('input', { class: 'form-input', placeholder: 'Título', maxlength: '120', required: true })
-  const body = el('textarea', { class: 'form-input', placeholder: 'Mensagem', maxlength: '500', required: true })
-  const link = el('input', { class: 'form-input', placeholder: 'Link HTTPS opcional' })
+  wrap.className = 'admin-section admin-notifications'
+  const title = el('input', { class: 'form-input', placeholder: 'Título', 'aria-label': 'Título da notificação', maxlength: '120', required: true })
+  const body = el('textarea', { class: 'form-input', placeholder: 'Mensagem', 'aria-label': 'Mensagem da notificação', maxlength: '500', required: true })
+  const link = el('input', { class: 'form-input', placeholder: 'Link HTTPS ou caminho do aplicativo (opcional)', 'aria-label': 'Link da notificação' })
   const date = el('input', { class: 'form-input', type: 'datetime-local', 'aria-label': 'Data e hora do envio' })
   const status = el('p', { role: 'status' })
   const list = el('div', { class: 'admin-table' })
@@ -186,12 +196,15 @@ function renderNotifications(wrap) {
   const form = el('form', { onsubmit: async (event) => {
     event.preventDefault()
     const scheduledAt = date.value ? new Date(date.value) : new Date()
+    if (!title.value.trim() || !body.value.trim()) { status.textContent = 'Preencha o título e a mensagem.'; return }
     if (Number.isNaN(scheduledAt.getTime())) { status.textContent = 'Informe uma data válida.'; return }
-    if (!confirm(`Programar envio para ${scheduledAt.toLocaleString()}?`)) return
+    if (date.value && scheduledAt.getTime() < Date.now() - 60000) { status.textContent = 'Escolha uma data e hora futuras.'; return }
+    if (button.disabled) return
+    if (!confirm(date.value ? `Programar envio para ${scheduledAt.toLocaleString()}?` : 'Enviar notificação agora?')) return
     button.disabled = true
     try {
-      await api.post('/api/admin/notifications', { title: title.value, body: body.value, url: link.value, scheduledAt: scheduledAt.toISOString() })
-      status.textContent = 'Notificação programada. O enfileiramento não confirma a exibição no dispositivo.'
+      await api.post('/api/admin/notifications', { title: title.value.trim(), body: body.value.trim(), url: link.value.trim(), scheduledAt: scheduledAt.toISOString() })
+      status.textContent = 'Notificação registrada. Acompanhe o processamento no histórico; o enfileiramento não confirma a exibição no dispositivo.'
       form.reset(); await load()
     } catch (err) { status.textContent = err.message }
     finally { button.disabled = false }

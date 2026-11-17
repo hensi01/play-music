@@ -1116,26 +1116,8 @@ img {
   text-decoration: underline;
 }
 
-.login-screen.admin-login-screen {
-  background:
-    radial-gradient(ellipse 70% 55% at 50% -5%, rgba(176, 136, 75, 0.16), transparent 70%),
-    linear-gradient(to bottom, rgba(26, 26, 31, 0.6), var(--bg));
-}
-
 .admin-login-box { max-width: 420px; }
 .admin-login-box .login-brand { margin-bottom: 26px; }
-.admin-login-box .login-brand svg {
-  color: #f1c77b;
-  background: linear-gradient(135deg, #775a2c, #b0884b);
-}
-.admin-login-form { border-color: color-mix(in srgb, #b0884b 55%, var(--outline, #6d6d75)); }
-.admin-login-form:focus-within { box-shadow: var(--shadow-3), 0 0 0 1px #b0884b; }
-.admin-login-form .login-submit {
-  background: linear-gradient(135deg, #8d6935, #b0884b);
-  color: #fff;
-  box-shadow: 0 8px 20px rgba(176, 136, 75, 0.22);
-}
-.admin-login-form .login-submit:hover:not(:disabled) { box-shadow: 0 10px 24px rgba(176, 136, 75, 0.32); }
 .admin-login-back { margin-top: 22px; }
 
 @media (max-width: 480px) {
@@ -3577,4 +3559,20 @@ button:focus-visible {
 @media (max-width: 400px) {
   .track-row, .album-track-list .track-row { grid-template-columns: minmax(0, 1fr) auto; }
   .track-row .track-number, .track-row .track-art { display: none; }
+}
+
+/* Administrative forms share the app's spacing and color tokens. */
+.admin-section { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.admin-section > h2, .admin-section > h3, .admin-section > p { margin: 0; }
+.admin-section > form { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.admin-section > form > h2, .admin-section > form > p { margin: 0; }
+.admin-section .form-input { width: 100%; box-sizing: border-box; }
+.admin-section textarea.form-input { min-height: 110px; resize: vertical; }
+.admin-section > button, .admin-section > form > button { align-self: flex-start; }
+.admin-section [role="status"]:empty { display: none; }
+.admin-section .settings-card:not([hidden]) { display: flex; flex-direction: column; gap: 12px; }
+.admin-section .admin-table { min-width: 0; }
+@media (max-width: 480px) {
+  .admin-section > button, .admin-section > form > button { align-self: stretch; }
+  .admin-section .admin-row { flex-wrap: wrap; }
 }
