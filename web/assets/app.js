@@ -86,6 +86,7 @@ function showToast(message) {
 // ---------- Icons (inline SVG) ----------
 
 const icons = {
+  bell: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>',
   home: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
   search: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
   library: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg>',
@@ -2198,6 +2199,44 @@ function fullscreenPlayer(refs) {
   )
 }
 
+// ---------- Notification inbox ----------
+function notificationInbox() {
+  let requestSeq = 0
+  const panel = el('section', { class: 'notification-inbox', 'aria-label': 'Notificações', hidden: true })
+  const content = el('div', { class: 'notification-inbox-list', 'aria-live': 'polite' })
+  const button = el('button', { class: 'icon-btn notification-bell', type: 'button', 'aria-label': 'Notificações', 'aria-expanded': 'false' }, icon('bell'))
+  button.addEventListener('click', async () => {
+    const sequence = ++requestSeq
+    const opening = panel.hidden
+    panel.hidden = !opening
+    button.setAttribute('aria-expanded', String(opening))
+    if (!opening) return
+    const owner = auth.user?.id
+    content.replaceChildren(el('p', { class: 'settings-text' }, 'Carregando notificações…'))
+    try {
+      const items = await api.get('/api/notifications')
+      if (sequence !== requestSeq || !panel.isConnected || auth.user?.id !== owner || panel.hidden) return
+      content.replaceChildren()
+      if (!items.length) content.append(el('p', { class: 'settings-text' }, 'Nenhuma notificação por enquanto.'))
+      for (const item of items) {
+        const card = el('article', { class: 'notification-inbox-item' }, el('strong', {}, item.title), el('p', {}, item.body), el('time', { datetime: item.publishedAt }, new Date(item.publishedAt).toLocaleString()))
+        try {
+          const target = new URL(item.url, window.location.origin)
+          const safeLocal = item.url.startsWith('/') && !item.url.startsWith('//') && !item.url.includes('\\') && target.origin === window.location.origin
+          const safeExternal = target.protocol === 'https:' && !target.username && !target.password
+          if (item.url !== '/' && (safeLocal || (safeExternal && /^https:\/\//i.test(item.url)))) card.append(el('a', { href: target.href, target: '_blank', rel: 'noopener noreferrer' }, 'Abrir link'))
+        } catch { /* Invalid links are not displayed. */ }
+        content.append(card)
+      }
+    } catch (error) {
+      if (sequence === requestSeq && panel.isConnected && auth.user?.id === owner && !panel.hidden) content.replaceChildren(el('p', { class: 'settings-text' }, error.message || 'Não foi possível carregar as notificações.'))
+    }
+  })
+  panel.append(el('div', { class: 'notification-inbox-heading' }, el('h2', {}, 'Notificações'), el('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Fechar notificações', onclick: () => { requestSeq++; panel.hidden = true; button.setAttribute('aria-expanded', 'false'); button.focus() } }, icon('x'))), content)
+  panel.addEventListener('keydown', event => { if (event.key === 'Escape') { requestSeq++; panel.hidden = true; button.setAttribute('aria-expanded', 'false'); button.focus() } })
+  return el('div', { class: 'notification-inbox-wrap' }, button, panel)
+}
+
 // ---------- Render ----------
 
 function render() {
@@ -2241,6 +2280,7 @@ function render() {
           el('button', { class: 'icon-btn topbar-menu', 'aria-label': 'Abrir menu', onclick: () => { menuOpen = true; render() } }, icon('menu')),
           el('span', {}, icon('music'), 'Mi Ritmo'),
           installButton(),
+          notificationInbox(),
         ),
         el('div', { class: 'page', id: 'page-content' }),
       ),

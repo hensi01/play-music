@@ -733,6 +733,15 @@
         "description": "Verificar inscrição do dispositivo."
       }
     },
+    "/api/notifications": {
+      "get": {
+        "summary": "Lista até 100 avisos publicados",
+        "description": "Retorna avisos globais publicados, inclusive os com envio push incerto.",
+        "responses": {
+          "200": { "description": "Lista de avisos", "content": { "application/json": { "schema": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string" }, "title": { "type": "string" }, "body": { "type": "string" }, "url": { "type": "string" }, "publishedAt": { "type": "string", "format": "date-time" } } } } } } }
+        }
+      }
+    },
     "/api/push/config": {
       "get": {
         "summary": "Configuração pública de notificações",

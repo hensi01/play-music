@@ -169,6 +169,7 @@ function renderNotifications(wrap) {
   const body = el('textarea', { class: 'form-input', placeholder: 'Mensagem', 'aria-label': 'Mensagem da notificação', maxlength: '500', required: true })
   const link = el('input', { class: 'form-input', placeholder: 'Link HTTPS ou caminho do aplicativo (opcional)', 'aria-label': 'Link da notificação' })
   const date = el('input', { class: 'form-input', type: 'datetime-local', 'aria-label': 'Data e hora do envio' })
+  const repeat = el('input', { class: 'form-input', type: 'number', min: '1', max: '8760', step: '1', placeholder: 'Repetir a cada quantas horas? (opcional)', 'aria-label': 'Intervalo de repetição em horas' })
   const status = el('p', { role: 'status' })
   const list = el('div', { class: 'admin-table' })
   const configStatus = el('p', { class: 'settings-text' }, 'Verificando serviço de notificações…')
@@ -182,12 +183,12 @@ function renderNotifications(wrap) {
       for (const item of campaigns) {
         const row = el('div', { class: 'admin-row' }, el('div', { class: 'admin-row-main' },
           el('p', { class: 'admin-row-title' }, item.title),
-          el('p', { class: 'admin-row-sub' }, `${new Date(item.scheduledAt).toLocaleString()} · ${labels[item.status] || item.status} · ${item.queued}/${item.selected} enfileiradas`),
+          el('p', { class: 'admin-row-sub' }, `${new Date(item.scheduledAt).toLocaleString()} · ${labels[item.status] || item.status} · ${item.queued}/${item.selected} enfileiradas${item.repeatHours ? ` · Repete a cada ${item.repeatHours} h` : ''}`),
           item.detail ? el('p', { class: 'admin-row-sub' }, item.detail) : null))
-        if (item.status === 'pending') row.append(el('button', { class: 'btn-secondary', type: 'button', onclick: async () => {
-          if (!confirm('Cancelar esta notificação agendada?')) return
+        if (item.status === 'pending' || (item.status === 'sending' && item.repeatHours)) row.append(el('button', { class: 'btn-secondary', type: 'button', onclick: async () => {
+          if (!confirm(item.repeatHours ? 'Interromper os próximos envios desta notificação?' : 'Cancelar esta notificação agendada?')) return
           try { await api.del(`/api/admin/notifications/${encodeURIComponent(item.id)}`); await load() } catch (err) { status.textContent = err.message }
-        } }, 'Cancelar'))
+        } }, item.repeatHours ? 'Parar repetição' : 'Cancelar'))
         list.append(row)
       }
       if (!campaigns.length) list.append(el('p', { class: 'settings-text' }, 'Nenhuma notificação programada.'))
@@ -199,16 +200,19 @@ function renderNotifications(wrap) {
     if (!title.value.trim() || !body.value.trim()) { status.textContent = 'Preencha o título e a mensagem.'; return }
     if (Number.isNaN(scheduledAt.getTime())) { status.textContent = 'Informe uma data válida.'; return }
     if (date.value && scheduledAt.getTime() < Date.now() - 60000) { status.textContent = 'Escolha uma data e hora futuras.'; return }
+    const repeatHours = repeat.value === '' ? 0 : Number(repeat.value)
+    if (!Number.isInteger(repeatHours) || repeatHours < 0 || repeatHours > 8760 || (repeat.value !== '' && repeatHours === 0)) { status.textContent = 'Informe um intervalo inteiro entre 1 e 8760 horas.'; return }
     if (button.disabled) return
-    if (!confirm(date.value ? `Programar envio para ${scheduledAt.toLocaleString()}?` : 'Enviar notificação agora?')) return
+    const confirmation = date.value ? `Programar envio para ${scheduledAt.toLocaleString()}?` : 'Enviar notificação agora?'
+    if (!confirm(confirmation + (repeatHours ? ` A notificação será repetida a cada ${repeatHours} hora(s) até ser interrompida.` : ''))) return
     button.disabled = true
     try {
-      await api.post('/api/admin/notifications', { title: title.value.trim(), body: body.value.trim(), url: link.value.trim(), scheduledAt: scheduledAt.toISOString() })
+      await api.post('/api/admin/notifications', { title: title.value.trim(), body: body.value.trim(), url: link.value.trim(), scheduledAt: scheduledAt.toISOString(), repeatHours })
       status.textContent = 'Notificação registrada. Acompanhe o processamento no histórico; o enfileiramento não confirma a exibição no dispositivo.'
       form.reset(); await load()
     } catch (err) { status.textContent = err.message }
     finally { button.disabled = false }
-  } }, el('h2', {}, 'Avisos e promoções'), el('p', { class: 'settings-text' }, 'Escolha a data e a hora local. Deixe em branco para enviar agora.'), title, body, link, date, button, status)
+  } }, el('h2', {}, 'Avisos e promoções'), el('p', { class: 'settings-text' }, 'Escolha a data e a hora local. Deixe em branco para enviar agora.'), title, body, link, date, el('label', { class: 'settings-text' }, 'Repetição em horas (opcional)', repeat), el('p', { class: 'settings-text' }, 'A repetição começa após cada envio concluído e pode ser interrompida no histórico.'), button, status)
   wrap.append(configStatus, form, el('h2', {}, 'Histórico e agendamentos'), list)
   void load()
 }

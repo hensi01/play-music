@@ -16,6 +16,9 @@ func TestCampaignValidation(t *testing.T) {
 		{"script destination", pushCampaign{Title: "Aviso", Body: "Mensagem", URL: "javascript:alert(1)"}, false},
 		{"external protocol relative", pushCampaign{Title: "Aviso", Body: "Mensagem", URL: "//example.test"}, false},
 		{"oversized unicode", pushCampaign{Title: "Aviso", Body: strings.Repeat("🔥", 500), URL: "/" + strings.Repeat("x", 999)}, false},
+		{"repeat valid", pushCampaign{Title: "Aviso", Body: "Mensagem", RepeatHours: 2}, true},
+		{"repeat negative", pushCampaign{Title: "Aviso", Body: "Mensagem", RepeatHours: -1}, false},
+		{"repeat too large", pushCampaign{Title: "Aviso", Body: "Mensagem", RepeatHours: 8761}, false},
 		{"blank title", pushCampaign{Title: " ", Body: "Mensagem"}, false},
 	}
 	for _, tc := range cases {

@@ -1,0 +1,1 @@
+ALTER TABLE push_campaigns ADD COLUMN repeat_hours INTEGER NOT NULL DEFAULT 0 CHECK (repeat_hours BETWEEN 0 AND 8760);

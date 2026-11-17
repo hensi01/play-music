@@ -3576,3 +3576,19 @@ button:focus-visible {
   .admin-section > button, .admin-section > form > button { align-self: stretch; }
   .admin-section .admin-row { flex-wrap: wrap; }
 }
+
+/* Notification inbox */
+.notification-inbox-wrap { flex: none; }
+.notification-bell { width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; }
+.notification-inbox { position: fixed; z-index: 60; top: calc(56px + env(safe-area-inset-top)); right: 8px; width: min(400px, calc(100vw - 16px)); max-height: min(70vh, 600px); overflow: auto; background: var(--surface, #202124); color: var(--text, #fff); border: 1px solid var(--border-soft, #555); border-radius: 12px; box-shadow: 0 12px 32px #0008; padding: 16px; }
+.notification-inbox[hidden] { display: none; }
+.notification-inbox-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.notification-inbox-heading h2 { margin: 0; font-size: 18px; }
+.notification-inbox-heading button { width: 48px; height: 48px; }
+.notification-inbox-item { padding: 14px 0; border-top: 1px solid var(--border-soft, #555); overflow-wrap: anywhere; }
+.notification-inbox-item p { white-space: pre-wrap; margin: 8px 0; }
+.notification-inbox-item time { display: block; color: var(--text-muted, #aaa); font-size: 12px; }
+.notification-inbox-item a { display: inline-block; padding: 12px 0; color: var(--accent); }
+@media (max-width: 400px) { .mobile-topbar { gap: 4px; } .mobile-topbar > span { font-size: 12px; gap: 4px; } }
+
+@media (max-width: 400px) { .mobile-topbar .install-app-btn { font-size: 11px; padding: 7px 6px; } .notification-bell { width: 44px; } }

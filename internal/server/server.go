@@ -67,6 +67,7 @@ func (s *Server) Handler() http.Handler {
 
 	// API (JWT required).
 	mux.Handle("POST /api/push/status", s.requireAuth(http.HandlerFunc(s.handlePushStatus)))
+	mux.Handle("GET /api/notifications", s.requireAuth(http.HandlerFunc(s.handleNotificationInbox)))
 	mux.Handle("GET /api/push/config", s.requireAuth(http.HandlerFunc(s.handlePushConfig)))
 	mux.Handle("POST /api/push/subscriptions", s.requireAuth(http.HandlerFunc(s.handlePushSubscribe)))
 	mux.Handle("DELETE /api/push/subscriptions", s.requireAuth(http.HandlerFunc(s.handlePushUnsubscribe)))

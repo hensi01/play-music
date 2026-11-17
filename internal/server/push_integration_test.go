@@ -147,3 +147,68 @@ func TestSharedPushSubscriptionPostgres(t *testing.T) {
 		t.Fatalf("last active=%v err=%v", active, err)
 	}
 }
+
+func TestCampaignRepeatPostgres(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("dedicated PostgreSQL required")
+	}
+	ctx := context.Background()
+	pool, err := db.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err = db.Migrate(ctx, pool, slog.New(slog.NewTextHandler(io.Discard, nil))); err != nil {
+		t.Fatal(err)
+	}
+	id := store.NewID()
+	_, err = pool.Exec(ctx, `INSERT INTO push_campaigns(id,title,body,url,scheduled_at,status,repeat_hours) VALUES($1,'Test','Test','/',now(),'pending',2)`, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Exec(ctx, `DELETE FROM push_campaigns WHERE id=$1`, id)
+	s := &Server{store: store.New(pool), cfg: &config.Config{PushProvider: "relay", RelayAppID: "test", RelayAppSecret: "test", RelayVapidPublicKey: "test"}}
+	s.runPushCampaign(ctx)
+	var published int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM notification_inbox WHERE title='Test' AND body='Test'`).Scan(&published); err != nil || published != 1 {
+		t.Fatalf("published=%d err=%v", published, err)
+	}
+	inbox := httptest.NewRecorder()
+	s.handleNotificationInbox(inbox, httptest.NewRequest("GET", "/api/notifications", nil))
+	if inbox.Code != 200 || !strings.Contains(inbox.Body.String(), `"title":"Test"`) {
+		t.Fatalf("inbox=%d %s", inbox.Code, inbox.Body.String())
+	}
+	var status string
+	var hours int
+	var future bool
+	err = pool.QueryRow(ctx, `SELECT status,repeat_hours,scheduled_at > now() + interval '119 minutes' FROM push_campaigns WHERE id=$1`, id).Scan(&status, &hours, &future)
+	if err != nil || status != "pending" || hours != 2 || !future {
+		t.Fatalf("status=%s hours=%d future=%v err=%v", status, hours, future, err)
+	}
+	_, err = pool.Exec(ctx, `UPDATE push_campaigns SET status='sending' WHERE id=$1`, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("DELETE", "/", nil)
+	req.SetPathValue("id", id)
+	w := httptest.NewRecorder()
+	s.handleCancelCampaign(w, req)
+	if w.Code != 204 {
+		t.Fatalf("cancel: %d", w.Code)
+	}
+	s.finishCampaign(id, "completed", 0, 0, "")
+	err = pool.QueryRow(ctx, `SELECT status,repeat_hours FROM push_campaigns WHERE id=$1`, id).Scan(&status, &hours)
+	if err != nil || status != "completed" || hours != 0 {
+		t.Fatalf("status=%s hours=%d err=%v", status, hours, err)
+	}
+	_, err = pool.Exec(ctx, `UPDATE push_campaigns SET status='sending',repeat_hours=2 WHERE id=$1`, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.finishCampaign(id, "unknown", 0, 0, "uncertain")
+	err = pool.QueryRow(ctx, `SELECT status,repeat_hours FROM push_campaigns WHERE id=$1`, id).Scan(&status, &hours)
+	if err != nil || status != "unknown" || hours != 0 {
+		t.Fatalf("status=%s hours=%d err=%v", status, hours, err)
+	}
+}

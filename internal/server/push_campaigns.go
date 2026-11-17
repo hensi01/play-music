@@ -16,6 +16,7 @@ import (
 )
 
 type pushCampaign struct {
+	RepeatHours int       `json:"repeatHours"`
 	ID          string    `json:"id"`
 	Title       string    `json:"title"`
 	Body        string    `json:"body"`
@@ -28,6 +29,9 @@ type pushCampaign struct {
 }
 
 func validCampaign(c *pushCampaign) error {
+	if c.RepeatHours < 0 || c.RepeatHours > 8760 {
+		return errors.New("Intervalo deve estar entre 1 e 8760 horas")
+	}
 	c.Title = strings.TrimSpace(c.Title)
 	c.Body = strings.TrimSpace(c.Body)
 	c.URL = strings.TrimSpace(c.URL)
@@ -69,7 +73,7 @@ func (s *Server) handleCreateCampaign(w http.ResponseWriter, r *http.Request) {
 	}
 	c.ID = store.NewID()
 	c.Status = "pending"
-	_, err := s.store.Pool().Exec(r.Context(), `INSERT INTO push_campaigns(id,created_by,title,body,url,scheduled_at,status) VALUES($1,$2,$3,$4,$5,$6,'pending')`, c.ID, userIDOf(r.Context()), c.Title, c.Body, c.URL, c.ScheduledAt)
+	_, err := s.store.Pool().Exec(r.Context(), `INSERT INTO push_campaigns(id,created_by,title,body,url,scheduled_at,status,repeat_hours) VALUES($1,$2,$3,$4,$5,$6,'pending',$7)`, c.ID, userIDOf(r.Context()), c.Title, c.Body, c.URL, c.ScheduledAt, c.RepeatHours)
 	if err != nil {
 		writeError(w, 500, "Não foi possível agendar")
 		return
@@ -77,7 +81,7 @@ func (s *Server) handleCreateCampaign(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, c)
 }
 func (s *Server) handleListCampaigns(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.store.Pool().Query(r.Context(), `SELECT id,title,body,url,scheduled_at,status,selected,queued,detail FROM push_campaigns ORDER BY created_at DESC LIMIT 100`)
+	rows, err := s.store.Pool().Query(r.Context(), `SELECT id,title,body,url,scheduled_at,status,selected,queued,detail,repeat_hours FROM push_campaigns WHERE (repeat_hours > 0 AND status IN ('pending','sending')) OR id IN (SELECT id FROM push_campaigns ORDER BY created_at DESC LIMIT 100) ORDER BY created_at DESC`)
 	if err != nil {
 		writeError(w, 500, "Não foi possível consultar notificações")
 		return
@@ -86,7 +90,7 @@ func (s *Server) handleListCampaigns(w http.ResponseWriter, r *http.Request) {
 	var all []pushCampaign
 	for rows.Next() {
 		var c pushCampaign
-		if rows.Scan(&c.ID, &c.Title, &c.Body, &c.URL, &c.ScheduledAt, &c.Status, &c.Selected, &c.Queued, &c.Detail) != nil {
+		if rows.Scan(&c.ID, &c.Title, &c.Body, &c.URL, &c.ScheduledAt, &c.Status, &c.Selected, &c.Queued, &c.Detail, &c.RepeatHours) != nil {
 			writeError(w, 500, "Não foi possível consultar notificações")
 			return
 		}
@@ -99,7 +103,7 @@ func (s *Server) handleListCampaigns(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, all)
 }
 func (s *Server) handleCancelCampaign(w http.ResponseWriter, r *http.Request) {
-	tag, err := s.store.Pool().Exec(r.Context(), `UPDATE push_campaigns SET status='cancelled',finished_at=now() WHERE id=$1 AND status='pending'`, r.PathValue("id"))
+	tag, err := s.store.Pool().Exec(r.Context(), `UPDATE push_campaigns SET status=CASE WHEN status='pending' THEN 'cancelled' ELSE status END, finished_at=CASE WHEN status='pending' THEN now() ELSE finished_at END, repeat_hours=0 WHERE id=$1 AND (status='pending' OR (status='sending' AND repeat_hours>0))`, r.PathValue("id"))
 	if err != nil {
 		writeError(w, 500, "Não foi possível cancelar")
 		return
@@ -141,9 +145,9 @@ func (s *Server) runPushCampaign(ctx context.Context) {
 	if !s.pushEnabled() {
 		return
 	}
-	_, _ = s.store.Pool().Exec(ctx, `UPDATE push_campaigns SET status='unknown',detail='Envio interrompido; verifique antes de reenviar',finished_at=now() WHERE status='sending' AND started_at < now()-interval '5 minutes'`)
+	_, _ = s.store.Pool().Exec(ctx, `UPDATE push_campaigns SET status='unknown',repeat_hours=0,detail='Envio interrompido; repetição encerrada. Verifique antes de reenviar',finished_at=now() WHERE status='sending' AND started_at < now()-interval '5 minutes'`)
 	var c pushCampaign
-	err := s.store.Pool().QueryRow(ctx, `UPDATE push_campaigns SET status='sending',started_at=now() WHERE id=(SELECT id FROM push_campaigns WHERE status='pending' AND scheduled_at<=now() ORDER BY scheduled_at,id FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING id,title,body,url,scheduled_at,status`).Scan(&c.ID, &c.Title, &c.Body, &c.URL, &c.ScheduledAt, &c.Status)
+	err := s.store.Pool().QueryRow(ctx, `WITH claimed AS (UPDATE push_campaigns SET status='sending',started_at=now() WHERE id=(SELECT id FROM push_campaigns WHERE status='pending' AND scheduled_at<=now() ORDER BY scheduled_at,id FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING id,title,body,url,scheduled_at,status), published AS (INSERT INTO notification_inbox(id,title,body,url,published_at) SELECT $1,title,body,url,now() FROM claimed RETURNING id) SELECT claimed.id,claimed.title,claimed.body,claimed.url,claimed.scheduled_at,claimed.status FROM claimed CROSS JOIN published`, store.NewID()).Scan(&c.ID, &c.Title, &c.Body, &c.URL, &c.ScheduledAt, &c.Status)
 	if errors.Is(err, pgx.ErrNoRows) || err != nil {
 		return
 	}
@@ -202,7 +206,7 @@ func (s *Server) runPushCampaign(ctx context.Context) {
 func (s *Server) finishCampaign(id, status string, selected, queued int, detail string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _ = s.store.Pool().Exec(ctx, `UPDATE push_campaigns SET status=$2,selected=$3,queued=$4,detail=$5,finished_at=now() WHERE id=$1 AND status='sending'`, id, status, selected, queued, detail)
+	_, _ = s.store.Pool().Exec(ctx, `UPDATE push_campaigns SET status=CASE WHEN $2='completed' AND repeat_hours>0 THEN 'pending' ELSE $2 END, scheduled_at=CASE WHEN $2='completed' AND repeat_hours>0 THEN now() + repeat_hours * interval '1 hour' ELSE scheduled_at END, selected=$3,queued=$4,detail=$5,finished_at=now(), started_at=NULL, repeat_hours=CASE WHEN $2='completed' THEN repeat_hours ELSE 0 END WHERE id=$1 AND status='sending'`, id, status, selected, queued, detail)
 }
 
 // cleanupInactivePush keeps opt-outs disabled locally while revoking them remotely.
