@@ -17,6 +17,10 @@ import (
 	"play-music/internal/store"
 )
 
+type relayRequestError struct{ category string }
+
+func (e *relayRequestError) Error() string { return "relay rejected request" }
+
 var pushHTTP = &http.Client{Timeout: 12 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
 const pushUnavailableHeader = "X-Mi-Ritmo-Push-Unavailable"
@@ -54,7 +58,18 @@ func (s *Server) relay(ctx context.Context, method, path, auth string, body any,
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return resp.StatusCode, errors.New("relay rejected request")
+		category := "request_failed"
+		if resp.StatusCode == http.StatusUnprocessableEntity {
+			category = "invalid_subscription"
+			var failure struct {
+				Error string `json:"error"`
+				Code  string `json:"code"`
+			}
+			if json.NewDecoder(io.LimitReader(resp.Body, 16384)).Decode(&failure) == nil && failure.Code == "VALIDATION_ERROR" && failure.Error == "The push endpoint is not a supported browser Web Push provider" {
+				category = "unsupported_provider"
+			}
+		}
+		return resp.StatusCode, &relayRequestError{category: category}
 	}
 	if result != nil {
 		e = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(result)
@@ -195,7 +210,12 @@ func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	status, err := s.relay(r.Context(), "POST", path+"/enrollment-ticket", "", sub, &ticket)
 	if err != nil {
-		s.pushRelayError(w, "enrollment_ticket", status, "request_failed")
+		reason := "request_failed"
+		var relayErr *relayRequestError
+		if errors.As(err, &relayErr) {
+			reason = relayErr.category
+		}
+		s.pushRelayError(w, "enrollment_ticket", status, reason)
 		return
 	}
 	if ticket.Data.Token == "" {
@@ -235,6 +255,14 @@ func mustMarshalSubscription(sub pushSubscription) []byte { b, _ := json.Marshal
 func (s *Server) pushRelayError(w http.ResponseWriter, stage string, status int, reason string) {
 	if s.log != nil {
 		s.log.Warn("push relay request failed", "stage", stage, "upstream_status", status, "reason", reason)
+	}
+	if stage == "enrollment_ticket" && status == http.StatusUnprocessableEntity {
+		if reason == "unsupported_provider" {
+			writeError(w, 422, "Este navegador usa um serviço de notificações não aceito. Abra o aplicativo no Chrome, Firefox, Safari ou Edge atualizado e tente novamente.")
+		} else {
+			writeError(w, 422, "Não foi possível validar a inscrição deste dispositivo. Atualize o navegador e tente ativar as notificações novamente.")
+		}
+		return
 	}
 	if status == 429 {
 		writeError(w, 429, "Limite de inscrições ou de envios atingido; tente novamente mais tarde")
