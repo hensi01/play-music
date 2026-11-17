@@ -291,7 +291,7 @@ function trackRow(song, index, opts = {}) {
 
   const addBtn = compactActions ? null : el(
     'button',
-    { class: 'track-add', 'aria-label': 'Adicionar à playlist', onclick: (e) => { e.stopPropagation(); openPlaylistPicker(song) } },
+    { class: 'track-add', 'aria-label': 'Adicionar à playlist', title: 'Adicionar à playlist', onclick: (e) => { e.stopPropagation(); openPlaylistPicker(song) } },
     icon('plus'),
   )
 

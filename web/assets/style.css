@@ -1950,7 +1950,7 @@ select:disabled { cursor: not-allowed; opacity: 0.6; }
 .login-toggle-btn:hover:not(.active) { color: var(--text, #f0f0f4); }
 
 .track-add {
-  display: none;
+  display: inline-flex;
   border: none;
   background: transparent;
   color: var(--subtext, #9a9aa5);
