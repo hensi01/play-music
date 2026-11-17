@@ -72,7 +72,7 @@
     const button = activeOverlay?.querySelector('[data-act="install"]')
     if (button) {
       button.disabled = false
-      button.textContent = 'Instalar PWA'
+      button.textContent = 'Instalar aplicativo'
     }
   })
 
@@ -88,7 +88,11 @@
     card.setAttribute('aria-modal', 'true')
     card.setAttribute('aria-label', 'Instalar Mi Ritmo')
     card.innerHTML =
-      '<button type="button" class="pwa-btn primary" data-act="install">Instalar PWA</button>'
+      '<span class="notification-gate-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 6v9m-3-3 3 3 3-3M10 19h4"/></svg></span>' +
+      '<p class="notification-gate-eyebrow">TENHA O MI RITMO SEMPRE COM VOCÊ</p>' +
+      '<h1>Instale o Mi Ritmo</h1>' +
+      '<p class="notification-gate-description">Instale o aplicativo para acessar suas músicas diretamente pela tela inicial.</p>' +
+      '<button type="button" class="pwa-btn primary" data-act="install">Instalar aplicativo</button>'
 
     card.querySelector('[data-act="install"]').addEventListener('click', async (event) => {
       const button = event.currentTarget
