@@ -87,10 +87,11 @@ function installEvent(prompt, outcome = 'accepted') {
   }
 }
 
-test('popup contém somente o botão Instalar PWA', () => {
+test('popup contém um botão Instalar aplicativo', () => {
   const s = setup()
-  assert.equal(s.button.textContent, 'Instalar PWA')
-  assert.match(s.card.innerHTML, /^<button[^>]*>Instalar PWA<\/button>$/)
+  assert.equal(s.button.textContent, 'Instalar aplicativo')
+  assert.equal((s.card.innerHTML.match(/<button\b/g) || []).length, 1)
+  assert.match(s.card.innerHTML, /<button[^>]*>Instalar aplicativo<\/button>/)
   assert.equal(s.card.innerHTML.includes('<h2'), false)
   assert.equal(s.card.innerHTML.includes('Agora não'), false)
 })
@@ -119,7 +120,7 @@ test('sem prompt nativo, o mesmo botão informa o caminho manual', async () => {
   assert.match(s.button.textContent, /menu do navegador/)
   assert.equal(s.overlay.removed, undefined)
   s.listeners.beforeinstallprompt(installEvent(() => Promise.resolve()))
-  assert.equal(s.button.textContent, 'Instalar PWA')
+  assert.equal(s.button.textContent, 'Instalar aplicativo')
 })
 
 test('botão do cabeçalho também aciona diretamente o prompt nativo', () => {

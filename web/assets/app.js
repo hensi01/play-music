@@ -1385,8 +1385,6 @@ async function removePushEndpoint(endpoint) {
 async function reconcilePushSubscription(userId) {
   return queuePushOperation(async () => {
     let state = readPushState(userId)
-    const owner = localStorage.getItem('pm_push_owner')
-    if (owner !== userId) return
     if (!navigator.locks && state.enabled) return
     if (!('serviceWorker' in navigator) || !('Notification' in window)) return
     try {
@@ -1395,13 +1393,10 @@ async function reconcilePushSubscription(userId) {
       ensurePushAccount(userId)
       state = readPushState(userId)
       if (!state.enabled) {
-        if (localStorage.getItem('pm_push_owner') !== userId) return
         const endpoints = [...new Set([state.endpoint, state.pendingEndpoint].filter(Boolean))]
         for (const endpoint of endpoints) { await removePushEndpoint(endpoint); ensurePushAccount(userId) }
-        if (current) await current.unsubscribe()
         ensurePushAccount(userId)
         writePushState(userId, { enabled: false })
-        localStorage.removeItem('pm_push_owner')
         return
       }
       if (Notification.permission !== 'granted' || !current) {
@@ -1411,7 +1406,6 @@ async function reconcilePushSubscription(userId) {
         state = readPushState(userId)
         if (state.enabled) {
           writePushState(userId, { enabled: false })
-          if (localStorage.getItem('pm_push_owner') === userId) localStorage.removeItem('pm_push_owner')
         }
         return
       }
@@ -1448,7 +1442,7 @@ async function verifyNotificationGate(userId) {
     ensurePushAccount(userId)
     if (!window.isSecureContext || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window) || !navigator.locks || Notification.permission !== 'granted') throw new Error('Permissão necessária')
     const state = readPushState(userId)
-    if (!state.enabled || !state.endpoint || state.pendingEndpoint || localStorage.getItem('pm_push_owner') !== userId) throw new Error('Inscrição necessária')
+    if (!state.enabled || !state.endpoint || state.pendingEndpoint) throw new Error('Inscrição necessária')
     const registration = await pushServiceWorker()
     const subscription = await registration.pushManager.getSubscription()
     ensurePushAccount(userId)
@@ -1494,7 +1488,7 @@ window.addEventListener('appinstalled', () => render())
 function notificationSettingsCard(required = false) {
   const userId = auth.user?.id
   const pushState = readPushState(userId)
-  const active = !required && notificationGate.userId === userId && notificationGate.status === 'allowed' && window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && !!navigator.locks && Notification.permission === 'granted' && localStorage.getItem('pm_push_owner') === userId && pushState.enabled === true && !!pushState.endpoint && !pushState.pendingEndpoint
+  const active = !required && notificationGate.userId === userId && notificationGate.status === 'allowed' && window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && !!navigator.locks && Notification.permission === 'granted' && pushState.enabled === true && !!pushState.endpoint && !pushState.pendingEndpoint
   const status = el('p', { class: required ? 'notification-gate-status' : 'settings-text', role: 'status', 'aria-live': 'polite' }, required ? '' : active ? 'As notificações já estão ativadas neste dispositivo.' : 'Ative para receber avisos e promoções neste dispositivo.')
   const enable = el('button', { class: 'btn-accent', type: 'button' }, 'Ativar notificações')
   const disable = el('button', { class: 'btn-secondary', type: 'button' }, 'Desativar notificações')
@@ -1532,9 +1526,6 @@ function notificationSettingsCard(required = false) {
       await queuePushOperation(async () => {
         ensurePushAccount(userId)
         if (!readPushState(userId).enabled || readPushState(userId).intent !== intent) return
-        const owner = localStorage.getItem('pm_push_owner')
-        if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela e desative as notificações primeiro.')
-        localStorage.setItem('pm_push_owner', userId)
         const reg = await pushServiceWorker()
         const applicationServerKey = pushVapidPublicKeyBytes(config.publicKey)
         let sub = await reg.pushManager.getSubscription()
@@ -1577,7 +1568,7 @@ function notificationSettingsCard(required = false) {
           const state = readPushState(userId)
           if (state.intent !== intent) return
           writePushState(userId, { ...state, enabled: false, intent: '' })
-          if (!state.endpoint && !state.pendingEndpoint && localStorage.getItem('pm_push_owner') === userId) localStorage.removeItem('pm_push_owner')
+          if (!state.endpoint && !state.pendingEndpoint) localStorage.removeItem('pm_push_owner')
         }).catch(() => undefined)
         status.textContent = 'O navegador não conseguiu se conectar ao serviço de notificações. Verifique sua conexão e tente novamente mais tarde.'
       } else {
@@ -1588,26 +1579,19 @@ function notificationSettingsCard(required = false) {
   disable.addEventListener('click', async () => {
     try {
       ensurePushAccount(userId)
-      const owner = localStorage.getItem('pm_push_owner')
-      if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela para desativar as notificações.')
       // Record opt-out synchronously, before waiting for any earlier network call.
       writePushState(userId, { ...readPushState(userId), enabled: false, intent: '' })
       if (typeof verifyNotificationGate === 'function') void verifyNotificationGate(userId)
       await queuePushOperation(async () => {
         ensurePushAccount(userId)
-        const owner = localStorage.getItem('pm_push_owner')
-        if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela para desativar as notificações.')
         const state = readPushState(userId)
-        if (owner !== userId && !state.endpoint && !state.pendingEndpoint) throw new Error('Não foi possível confirmar a conta desta inscrição. Entre na conta que ativou as notificações.')
         const reg = await pushServiceWorker()
         const sub = await reg.pushManager.getSubscription()
         ensurePushAccount(userId)
         const endpoints = [...new Set([state.endpoint, state.pendingEndpoint, sub?.endpoint].filter(Boolean))]
         for (const endpoint of endpoints) { await removePushEndpoint(endpoint); ensurePushAccount(userId) }
-        if (sub) await sub.unsubscribe()
         ensurePushAccount(userId)
         writePushState(userId, { enabled: false })
-        if (localStorage.getItem('pm_push_owner') === userId) localStorage.removeItem('pm_push_owner')
       })
       status.textContent = 'Notificações desativadas neste dispositivo.'
     } catch (err) { status.textContent = err.message || 'Não foi possível desativar notificações. Tente novamente.' }

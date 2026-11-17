@@ -90,7 +90,7 @@ func (s *Server) pushAccessAllowed(w http.ResponseWriter, r *http.Request, userI
 		return true
 	}
 	var enabled bool
-	err := s.store.Pool().QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM push_subscriptions WHERE user_id=$1 AND active)", userID).Scan(&enabled)
+	err := s.store.Pool().QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM push_subscriptions p JOIN push_subscription_users u ON u.endpoint=p.endpoint WHERE u.user_id=$1 AND p.active)", userID).Scan(&enabled)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "Não foi possível verificar notificações")
 		return false
@@ -109,7 +109,7 @@ func (s *Server) handlePushStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var enabled bool
-	err := s.store.Pool().QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM push_subscriptions WHERE endpoint=$1 AND user_id=$2 AND active)", v.Endpoint, userIDOf(r.Context())).Scan(&enabled)
+	err := s.store.Pool().QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM push_subscriptions p JOIN push_subscription_users u ON u.endpoint=p.endpoint WHERE p.endpoint=$1 AND u.user_id=$2 AND p.active)", v.Endpoint, userIDOf(r.Context())).Scan(&enabled)
 	if err != nil {
 		writeError(w, 503, "Não foi possível verificar notificações")
 		return
@@ -160,24 +160,42 @@ func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(context.Background())
+	if _, err = tx.Exec(r.Context(), "SELECT 1 FROM users WHERE id=$1 FOR KEY SHARE", uid); err != nil {
+		writeError(w, 500, "Não foi possível verificar a conta")
+		return
+	}
 	if _, err = tx.Exec(r.Context(), "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", sub.Endpoint); err != nil {
 		writeError(w, 500, "Nao foi possivel bloquear inscricao")
 		return
 	}
-	var owner *string
-	err = tx.QueryRow(r.Context(), "SELECT user_id FROM push_subscriptions WHERE endpoint=$1 FOR UPDATE", sub.Endpoint).Scan(&owner)
+	var stored []byte
+	var active bool
+	err = tx.QueryRow(r.Context(), "SELECT subscription_data,active FROM push_subscriptions WHERE endpoint=$1 FOR UPDATE", sub.Endpoint).Scan(&stored, &active)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, 500, "Não foi possível verificar a inscrição")
 		return
 	}
-	if err == nil && owner != nil && *owner != uid {
-		writeError(w, 409, "Este dispositivo está vinculado a outra conta; desative as notificações nessa conta primeiro")
+	if err == nil && active {
+		var old pushSubscription
+		if json.Unmarshal(stored, &old) != nil || old.Keys != sub.Keys {
+			writeError(w, 409, "A inscrição deste dispositivo mudou; tente novamente.")
+			return
+		}
+		if _, err = tx.Exec(r.Context(), "INSERT INTO push_subscription_users(endpoint,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING", sub.Endpoint, uid); err != nil {
+			writeError(w, 500, "Não foi possível vincular a conta")
+			return
+		}
+		if err = tx.Commit(r.Context()); err != nil {
+			writeError(w, 500, "Não foi possível vincular a conta")
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"enabled": true})
 		return
 	}
 	// Persist an inactive recovery record before contacting the relay. If the
 	// response is lost, cleanup can recover a token from the stored subscription.
 	operationID := store.NewID()
-	_, err = tx.Exec(r.Context(), `INSERT INTO push_subscriptions(endpoint,user_id,relay_id,management_token,subscription_data,active,operation_id) VALUES($1,$2,$3,'',$4,false,$5) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, subscription_data=excluded.subscription_data, active=false, operation_id=excluded.operation_id, updated_at=now() WHERE push_subscriptions.user_id=excluded.user_id OR push_subscriptions.user_id IS NULL`, sub.Endpoint, uid, "pending-"+store.NewID(), mustMarshalSubscription(sub), operationID)
+	_, err = tx.Exec(r.Context(), `INSERT INTO push_subscriptions(endpoint,user_id,relay_id,management_token,subscription_data,active,operation_id) VALUES($1,$2,$3,'',$4,false,$5) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, subscription_data=excluded.subscription_data, active=false, operation_id=excluded.operation_id, updated_at=now() `, sub.Endpoint, uid, "pending-"+store.NewID(), mustMarshalSubscription(sub), operationID)
 	if err != nil {
 		writeError(w, 500, "Não foi possível preparar a inscrição")
 		return
@@ -192,6 +210,10 @@ func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(context.Background())
+	if _, err = tx.Exec(r.Context(), "SELECT 1 FROM users WHERE id=$1 FOR KEY SHARE", uid); err != nil {
+		writeError(w, 500, "Não foi possível verificar a conta")
+		return
+	}
 	if _, err = tx.Exec(r.Context(), "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", sub.Endpoint); err != nil {
 		writeError(w, 500, "Não foi possível iniciar a inscrição")
 		return
@@ -239,9 +261,13 @@ func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 		s.pushRelayError(w, "subscription", status, "subscription_credentials_missing")
 		return
 	}
-	tag, err := tx.Exec(r.Context(), `INSERT INTO push_subscriptions(endpoint,user_id,relay_id,management_token,subscription_data,active) VALUES($1,$2,$3,$4,$5,true) ON CONFLICT(endpoint) DO UPDATE SET relay_id=excluded.relay_id, management_token=excluded.management_token, subscription_data=excluded.subscription_data, active=true, updated_at=now() WHERE push_subscriptions.user_id=excluded.user_id OR push_subscriptions.user_id IS NULL`, sub.Endpoint, uid, result.Data.ID, result.Data.Management.Token, mustMarshalSubscription(sub))
+	tag, err := tx.Exec(r.Context(), `INSERT INTO push_subscriptions(endpoint,user_id,relay_id,management_token,subscription_data,active) VALUES($1,$2,$3,$4,$5,true) ON CONFLICT(endpoint) DO UPDATE SET relay_id=excluded.relay_id, management_token=excluded.management_token, subscription_data=excluded.subscription_data, active=true, updated_at=now() `, sub.Endpoint, uid, result.Data.ID, result.Data.Management.Token, mustMarshalSubscription(sub))
 	if err != nil || tag.RowsAffected() != 1 {
 		writeError(w, 500, "Não foi possível salvar a inscrição")
+		return
+	}
+	if _, err = tx.Exec(r.Context(), "INSERT INTO push_subscription_users(endpoint,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING", sub.Endpoint, uid); err != nil {
+		writeError(w, 500, "Não foi possível vincular a conta")
 		return
 	}
 	if err = tx.Commit(r.Context()); err != nil {
@@ -287,22 +313,25 @@ func (s *Server) handlePushUnsubscribe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "Não foi possível cancelar a inscrição")
 		return
 	}
-	var token string
-	var owner *string
-	err = tx.QueryRow(r.Context(), "SELECT user_id,management_token FROM push_subscriptions WHERE endpoint=$1", v.Endpoint).Scan(&owner, &token)
-	if errors.Is(err, pgx.ErrNoRows) {
+	removed, err := tx.Exec(r.Context(), "DELETE FROM push_subscription_users WHERE endpoint=$1 AND user_id=$2", v.Endpoint, userIDOf(r.Context()))
+	if err != nil {
+		writeError(w, 500, "Não foi possível cancelar a inscrição")
+		return
+	}
+	if removed.RowsAffected() == 0 {
+		_, err = tx.Exec(r.Context(), `UPDATE push_subscriptions SET user_id=NULL, operation_id=md5(random()::text || clock_timestamp()::text), updated_at=now() WHERE endpoint=$1 AND user_id=$2 AND NOT active`, v.Endpoint, userIDOf(r.Context()))
+		if err != nil {
+			writeError(w, 500, "Não foi possível cancelar a inscrição")
+			return
+		}
+		if err = tx.Commit(r.Context()); err != nil {
+			writeError(w, 500, "Não foi possível confirmar o cancelamento")
+			return
+		}
 		writeNoContent(w)
 		return
 	}
-	if err == nil && (owner == nil || *owner != userIDOf(r.Context())) {
-		writeError(w, 403, "Inscrição vinculada a outra conta")
-		return
-	}
-	if err != nil {
-		writeError(w, 500, "Não foi possível localizar a inscrição")
-		return
-	}
-	_, err = tx.Exec(r.Context(), "UPDATE push_subscriptions SET active=false, operation_id=md5(random()::text || clock_timestamp()::text), updated_at=now() WHERE endpoint=$1 AND user_id=$2", v.Endpoint, userIDOf(r.Context()))
+	_, err = tx.Exec(r.Context(), `UPDATE push_subscriptions SET user_id=(SELECT user_id FROM push_subscription_users WHERE endpoint=$1 LIMIT 1), active=EXISTS(SELECT 1 FROM push_subscription_users WHERE endpoint=$1), operation_id=md5(random()::text || clock_timestamp()::text), updated_at=now() WHERE endpoint=$1`, v.Endpoint)
 	if err != nil {
 		writeError(w, 500, "Não foi possível cancelar a inscrição")
 		return
@@ -317,8 +346,48 @@ func (s *Server) handlePushUnsubscribe(w http.ResponseWriter, r *http.Request) {
 
 // removeUserPushSubscriptions revokes remote subscriptions before an account is deleted.
 func (s *Server) removeUserPushSubscriptions(ctx context.Context, userID string) error {
-	_, err := s.store.Pool().Exec(ctx, "UPDATE push_subscriptions SET active=false, operation_id=md5(random()::text || clock_timestamp()::text), updated_at=now() WHERE user_id=$1", userID)
-	return err
+	tx, err := s.store.Pool().Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.Background())
+	var exists string
+	if err = tx.QueryRow(ctx, "SELECT id FROM users WHERE id=$1 FOR UPDATE", userID).Scan(&exists); err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx, "SELECT endpoint FROM push_subscription_users WHERE user_id=$1 ORDER BY endpoint", userID)
+	if err != nil {
+		return err
+	}
+	var endpoints []string
+	for rows.Next() {
+		var endpoint string
+		if err = rows.Scan(&endpoint); err != nil {
+			rows.Close()
+			return err
+		}
+		endpoints = append(endpoints, endpoint)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, endpoint := range endpoints {
+		if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", endpoint); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, "DELETE FROM push_subscription_users WHERE endpoint=$1 AND user_id=$2", endpoint, userID); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE push_subscriptions SET user_id=(SELECT user_id FROM push_subscription_users WHERE endpoint=$1 LIMIT 1), active=EXISTS(SELECT 1 FROM push_subscription_users WHERE endpoint=$1), updated_at=now() WHERE endpoint=$1`, endpoint); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.Exec(ctx, "DELETE FROM users WHERE id=$1", userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Server) handlePushSend(w http.ResponseWriter, r *http.Request) {

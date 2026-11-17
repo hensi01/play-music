@@ -34,11 +34,11 @@ test('falha de cadastro preserva endpoint para nova tentativa',async()=>{
 test('desativar durante cadastro remove a inscrição depois da resposta',async()=>{
  const f=fixture();f.data.set('pm_push_owner','alice');f.data.set(key('alice'),JSON.stringify({enabled:true,endpoint:'https://push.test/old'}));f.ctx.notificationSettingsCard();const b=buttons(f)
  const started=f.holdPost();const recon=f.ctx.reconcilePushSubscription('alice');await started
- const disabling=b.disable.click();assert.equal(JSON.parse(f.data.get(key('alice'))).enabled,false);f.release();await Promise.all([recon,disabling]);assert.equal(JSON.parse(f.data.get(key('alice'))).enabled,false);assert(f.calls.includes('delete:https://push.test/new'));assert(f.calls.includes('unsubscribe'))
+ const disabling=b.disable.click();assert.equal(JSON.parse(f.data.get(key('alice'))).enabled,false);f.release();await Promise.all([recon,disabling]);assert.equal(JSON.parse(f.data.get(key('alice'))).enabled,false);assert(f.calls.includes('delete:https://push.test/new'));assert(!f.calls.includes('unsubscribe'))
 })
 
-test('outra conta não desativa dispositivo da conta anterior',async()=>{
- const f=fixture();f.data.set('pm_push_owner','alice');f.auth.user.id='bob';f.ctx.notificationSettingsCard();await buttons(f).disable.click();assert.equal(f.calls.length,0);assert.equal(f.data.get('pm_push_owner'),'alice')
+test('desativação de outra conta preserva inscrição física compartilhada',async()=>{
+ const f=fixture();f.data.set('pm_push_owner','alice');f.auth.user.id='bob';f.ctx.notificationSettingsCard();await buttons(f).disable.click();assert(!f.calls.includes('unsubscribe'));assert.equal(f.data.get('pm_push_owner'),'alice')
 })
 
 
