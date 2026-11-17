@@ -2623,6 +2623,7 @@ select:disabled { cursor: not-allowed; opacity: 0.6; }
 .download-button:disabled { opacity: .5; cursor: wait; }
 
 /* Desktop keeps row actions inline; phones group secondary actions in a thumb-sized menu. */
+.track-mobile-add { display: none; }
 .track-more { display: contents; }
 .track-more-toggle { display: none; }
 .track-more-menu { display: contents; }
@@ -2660,7 +2661,9 @@ select:disabled { cursor: not-allowed; opacity: 0.6; }
   .track-art { width: 44px; height: 44px; }
   .track-actions { min-width: 0; gap: 4px; }
   .track-actions .track-like { display: inline-flex; align-items: center; justify-content: center; width: 48px; min-width: 48px; height: 48px; padding: 0; }
-  .track-duration { width: 38px; }
+  .track-actions .track-mobile-add { display: inline-flex; align-items: center; justify-content: center; width: 48px; min-width: 48px; height: 48px; border-radius: 999px; color: var(--subtext); }
+  .track-actions .track-mobile-add:focus-visible { background: var(--surface-3); color: var(--text); }
+  .track-duration { display: none; }
   .track-more { position: relative; display: block; flex: 0 0 48px; width: 48px; height: 48px; }
   .track-more-toggle { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 999px; color: var(--subtext); font-size: 13px; font-weight: 700; }
   .track-more-toggle:focus-visible, .track-more.open .track-more-toggle { background: var(--surface-3); color: var(--text); }
@@ -3569,4 +3572,9 @@ button:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   button { transition: none; }
+}
+
+@media (max-width: 400px) {
+  .track-row, .album-track-list .track-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .track-row .track-number, .track-row .track-art { display: none; }
 }

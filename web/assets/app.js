@@ -295,6 +295,8 @@ function trackRow(song, index, opts = {}) {
     icon('plus'),
   )
 
+  const mobileAddBtn = el('button', { class: 'track-mobile-add', type: 'button', 'aria-label': 'Adicionar à playlist', title: 'Adicionar à playlist', onclick: (e) => { e.stopPropagation(); openPlaylistPicker(song) } }, icon('plus'))
+
   const queueBtn = onQueue
     ? el(
         'button',
@@ -353,7 +355,7 @@ function trackRow(song, index, opts = {}) {
         el('p', { class: 'track-artist' }, song.artist || 'Desconhecido'),
       ),
     ),
-    el('div', { class: 'track-actions' }, likeBtn, moreActions, el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
+    el('div', { class: 'track-actions' }, likeBtn, mobileAddBtn, moreActions, el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
   )
 }
 
