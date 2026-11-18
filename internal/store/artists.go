@@ -12,15 +12,34 @@ import (
 const artistCols = `
 	a.id, a.name,
 	(SELECT count(*)::int FROM albums al WHERE al.artist_id=a.id) AS album_count,
-	(SELECT count(*)::int FROM songs s WHERE s.artist_id=a.id) AS song_count,
-	FALSE AS liked`
+	(SELECT count(*)::int FROM songs s WHERE s.artist_id=a.id) AS song_count`
 
-// GetOrCreateArtist resolves a name to an artist id, creating it if needed.
+func scanArtist(row scanner) (*model.Artist, error) {
+	var a model.Artist
+	err := row.Scan(&a.ID, &a.Name, &a.AlbumCount, &a.SongCount)
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
+func collectArtists(rows pgx.Rows) ([]model.Artist, error) {
+	artists, err := collect(rows, scanArtist)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]model.Artist, len(artists))
+	for i := range artists {
+		out[i] = *artists[i]
+	}
+	return out, nil
+}
+
 func (s *Store) GetOrCreateArtist(ctx context.Context, name string) (string, error) {
 	if name == "" {
-		name = "Desconhecido"
+		name = UnknownArtist
 	}
-	id := newID()
+	id := NewID()
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO artists (id, name, created_at)
 		VALUES ($1, $2, now())
@@ -34,72 +53,42 @@ func (s *Store) GetOrCreateArtist(ctx context.Context, name string) (string, err
 	return id, err
 }
 
-// GetArtists lists artists that have at least one accessible album.
-func (s *Store) GetArtists(ctx context.Context, userID string) ([]model.Artist, error) {
-	base := "SELECT " + artistCols + ` FROM artists a
-		WHERE EXISTS (SELECT 1 FROM songs s WHERE s.artist_id=a.id)`
-	var args []any
-	if s.HasAccessFilter(userID) {
-		base += " AND EXISTS (SELECT 1 FROM albums al2 WHERE al2.artist_id=a.id AND al2.id IN " + visibleAlbumSet("$1") + ")"
-		args = append(args, userID)
-	}
-	base += ` ORDER BY a.name COLLATE "C" ASC`
-	rows, err := s.pool.Query(ctx, base, args...)
+func (s *Store) GetArtists(ctx context.Context) ([]model.Artist, error) {
+	rows, err := s.pool.Query(ctx, "SELECT "+artistCols+` FROM artists a
+		WHERE EXISTS (SELECT 1 FROM songs s WHERE s.artist_id=a.id)
+		ORDER BY a.name COLLATE "C" ASC`)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	return collectArtists(rows)
 }
 
 func (s *Store) GetArtist(ctx context.Context, id string) (*model.Artist, error) {
-	row := s.pool.QueryRow(ctx, "SELECT "+artistCols+" FROM artists a WHERE a.id=$1", id)
-	artist, err := scanArtist(row)
+	artist, err := scanArtist(s.pool.QueryRow(ctx,
+		"SELECT "+artistCols+" FROM artists a WHERE a.id=$1", id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	return artist, err
 }
 
-func (s *Store) SearchArtists(ctx context.Context, userID, q string, limit int) ([]model.Artist, error) {
-	like := likePattern(q)
-	base := "SELECT " + artistCols + ` FROM artists a
-		WHERE unaccent(a.name) ILIKE unaccent($1) ESCAPE '\'`
-	args := []any{like}
-	limPh := "$2"
-	if s.HasAccessFilter(userID) {
-		base += " AND EXISTS (SELECT 1 FROM albums al WHERE al.artist_id=a.id AND al.id IN " + visibleAlbumSet("$2") + ")"
-		args = append(args, userID)
-		limPh = "$3"
-	}
-	base += " ORDER BY a.name LIMIT " + limPh
-	args = append(args, limit)
-	rows, err := s.pool.Query(ctx, base, args...)
+func (s *Store) SearchArtists(ctx context.Context, q string, limit int) ([]model.Artist, error) {
+	rows, err := s.pool.Query(ctx, "SELECT "+artistCols+` FROM artists a
+		WHERE unaccent(a.name) ILIKE unaccent($1) ESCAPE '\'
+		ORDER BY a.name LIMIT $2`, likePattern(q), limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	return collectArtists(rows)
 }
 
-func scanArtist(row pgx.Row) (*model.Artist, error) {
-	var a model.Artist
-	err := row.Scan(&a.ID, &a.Name, &a.AlbumCount, &a.SongCount, &a.Liked)
+func (s *Store) ApplyArtistLikes(ctx context.Context, userID string, artists []model.Artist) error {
+	liked, err := s.likedEntityIDs(ctx, userID, EntityArtist, idsOf(artists, func(a model.Artist) string { return a.ID }))
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &a, nil
-}
-
-func collectArtists(rows pgx.Rows) ([]model.Artist, error) {
-	defer rows.Close()
-	out := []model.Artist{}
-	for rows.Next() {
-		var a model.Artist
-		if err := rows.Scan(&a.ID, &a.Name, &a.AlbumCount, &a.SongCount, &a.Liked); err != nil {
-			return nil, err
-		}
-		out = append(out, a)
+	for i := range artists {
+		artists[i].Liked = liked[artists[i].ID]
 	}
-	return out, rows.Err()
+	return nil
 }

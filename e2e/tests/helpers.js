@@ -1,10 +1,11 @@
 // Shared helpers for the Play Music e2e suite.
 // The Go server must be running on :4533 (webServer reuse in the config).
-// The PWA overlay re-appears ~1.5s after every real page load (B5) — every
-// test must call dismissPwa() after a full goto/reload before interacting.
+// The PWA overlay re-appears ~1.5s after every real page load, so a spec
+// either calls markPwaSeen() (client-keys) or dismissPwa() before interacting.
 
 const fs = require('fs')
 const path = require('path')
+const { AUTH_HEADER } = require('./client-keys')
 
 // API base for direct request-fixture calls (UI calls use the page origin).
 // PM_E2E_BASEURL overrides the target (validation servers on other ports).
@@ -38,7 +39,15 @@ function requireEnv(key) {
 const ADMIN_USER = requireEnv('ND_ADMINUSERNAME')
 const ADMIN_PASS = requireEnv('ND_ADMINPASSWORD')
 
-const CLIENT_PHONE = '(99) 99999-9999' // seeded "Cliente Teste"
+// Seed facts: the client the suite logs in as, and the category the seed
+// catalog must always contain. Specs target them through here.
+const CLIENT_PHONE = '(99) 99999-9999'
+const CLIENT_NAME = 'Cliente Teste'
+const SEEDED_CATEGORY = 'Cristão'
+
+// Placeholders of the login and user forms (labels, not values).
+const PHONE_PLACEHOLDER = 'Telefone (99) 99999-9999'
+const USER_PLACEHOLDER = 'Usuário ou e-mail'
 
 // ---------- random fixtures ----------
 
@@ -64,8 +73,8 @@ function randomPhone() {
 // ---------- PWA overlay ----------
 
 // Simulates a browser that supports the native install prompt, then closes the
-// one-button overlay by clicking its backdrop. Returns true if it was closed.
-async function dismissPwa(page, { timeout = 6000 } = {}) {
+// one-button overlay by clicking its backdrop.
+async function dismissPwa(page) {
   await page.evaluate(() => {
     const event = new Event('beforeinstallprompt', { cancelable: true })
     event.prompt = () => Promise.resolve()
@@ -74,13 +83,12 @@ async function dismissPwa(page, { timeout = 6000 } = {}) {
   }).catch(() => {})
   const overlay = page.locator('.pwa-overlay')
   try {
-    await overlay.waitFor({ state: 'visible', timeout })
+    await overlay.waitFor({ state: 'visible', timeout: 6000 })
   } catch {
-    return false
+    return
   }
   await overlay.click({ position: { x: 1, y: 1 } })
   await overlay.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {})
-  return true
 }
 
 // ---------- console error tracking (asserted zero per test) ----------
@@ -89,14 +97,12 @@ async function dismissPwa(page, { timeout = 6000 } = {}) {
 // console noise (e.g. the 401 a wrong-password login is *supposed* to get).
 function trackConsole(page, { ignore } = {}) {
   const errors = []
-  const all = []
   const skip = (t) => (ignore ? ignore(t) : false)
   page.on('console', (m) => {
-    all.push(`[${m.type()}] ${m.text()}`)
     if (m.type() === 'error' && !skip(m.text())) errors.push(`console.error: ${m.text()}`)
   })
   page.on('pageerror', (e) => { if (!skip(e.message)) errors.push(`pageerror: ${e.message}`) })
-  return { errors, all }
+  return { errors }
 }
 
 // Fails the current test if any console/page error was recorded.
@@ -112,10 +118,9 @@ function expectClean(testInfo, tracker, label = '') {
 // ---------- UI flows ----------
 
 async function loginAdmin(page) {
-  await page.goto('/')
+  await page.goto('/admin/login')
   await dismissPwa(page)
-  await page.getByRole('button', { name: 'Administrador' }).click()
-  await page.getByPlaceholder('Usuário ou e-mail').fill(ADMIN_USER)
+  await page.getByPlaceholder(USER_PLACEHOLDER).fill(ADMIN_USER)
   await page.getByPlaceholder('Senha').fill(ADMIN_PASS)
   await page.getByRole('button', { name: 'Entrar' }).click()
   await page.locator('.app-shell').waitFor({ state: 'visible', timeout: 15000 })
@@ -124,8 +129,17 @@ async function loginAdmin(page) {
 async function loginCliente(page, phone = CLIENT_PHONE) {
   await page.goto('/')
   await dismissPwa(page)
-  await page.getByPlaceholder('Telefone (99) 99999-9999').fill(phone)
+  await page.getByPlaceholder(PHONE_PLACEHOLDER).fill(phone)
   await page.getByRole('button', { name: 'Entrar' }).click()
+  await page.locator('.app-shell').waitFor({ state: 'visible', timeout: 15000 })
+}
+
+// Registers a brand-new client from the login screen (the "Criar conta" mode).
+async function registerCliente(page) {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Criar conta' }).click()
+  await page.getByPlaceholder(PHONE_PLACEHOLDER).fill('11987654321')
+  await page.locator('.login-submit').click()
   await page.locator('.app-shell').waitFor({ state: 'visible', timeout: 15000 })
 }
 
@@ -140,7 +154,7 @@ async function logout(page) {
 // ---------- API helpers (request fixture) ----------
 
 async function apiAdminLogin(request) {
-  const res = await request.post(`${BASE}/auth/login`, {
+  const res = await request.post(`${BASE}/auth/admin/login`, {
     data: { username: ADMIN_USER, password: ADMIN_PASS },
   })
   if (!res.ok()) throw new Error(`admin API login failed: ${res.status()}`)
@@ -149,24 +163,7 @@ async function apiAdminLogin(request) {
 
 async function apiAuthHeaders(request) {
   const token = await apiAdminLogin(request)
-  return { 'X-ND-Authorization': `Bearer ${token}` }
-}
-
-async function apiCreateUser(request, { name, phone }) {
-  const headers = await apiAuthHeaders(request)
-  const res = await request.post(`${BASE}/api/admin/users`, {
-    headers,
-    data: { name, phone, isAdmin: false, categoryIds: [] },
-  })
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok()) throw new Error(`create user failed ${res.status()}: ${JSON.stringify(body)}`)
-  return body
-}
-
-async function apiUpdateUser(request, id, payload) {
-  const headers = await apiAuthHeaders(request)
-  const res = await request.put(`${BASE}/api/admin/users/${id}`, { headers, data: payload })
-  if (!res.ok()) throw new Error(`update user failed ${res.status()}`)
+  return { [AUTH_HEADER]: `Bearer ${token}` }
 }
 
 async function apiDeleteUser(request, id) {
@@ -247,11 +244,43 @@ async function apiDeleteCategoryPhoto(request, id) {
 // Fetches the artwork byte length for an entity as an authenticated client.
 // Used to prove a category cover changed (upload ≠ placeholder) and reverted
 // (delete = placeholder again).
-async function apiArtworkBytes(request, id, size = 300) {
+async function apiArtworkBytes(request, id) {
   const headers = await apiAuthHeaders(request)
-  const res = await request.get(`${BASE}/api/artwork/${id}?size=${size}`, { headers })
+  const res = await request.get(`${BASE}/api/artwork/${id}`, { headers })
   if (!res.ok()) throw new Error(`artwork fetch failed ${res.status()}`)
   return (await res.body()).length
+}
+
+// ---------- media fixtures ----------
+
+// A 1x1 transparent PNG, for specs that answer /api/artwork themselves.
+const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=', 'base64')
+
+// Answers every /api/stream/* request with a silent WAV that supports ranges,
+// so playback and seeking are deterministic in headless.
+async function stubStream(page) {
+  await page.route('**/api/stream/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'audio/wav', headers: { 'Accept-Ranges': 'bytes' }, body: silenceWavBuffer() }),
+  )
+}
+
+async function stubArtwork(page) {
+  await page.route('**/api/artwork/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'image/png', body: TINY_PNG }),
+  )
+}
+
+// ---------- layout ----------
+
+// Fails when the page scrolls horizontally: no route may exceed the viewport.
+async function expectNoOverflow(page) {
+  const r = await page.evaluate(() => ({
+    sw: document.documentElement.scrollWidth,
+    iw: window.innerWidth,
+    bodySw: document.body.scrollWidth,
+  }))
+  expect(r.sw, `scrollWidth ${r.sw} > innerWidth ${r.iw}`).toBeLessThanOrEqual(r.iw)
+  expect(r.bodySw, `body scrollWidth ${r.bodySw} > innerWidth ${r.iw}`).toBeLessThanOrEqual(r.iw)
 }
 
 // ---------- audio fixture (deterministic player) ----------
@@ -283,12 +312,35 @@ function ensureSilenceWav(seconds = 30) {
   return file
 }
 
+// A silent WAV as a Buffer, for specs that answer /api/stream themselves.
+function silenceWavBuffer(seconds = 30) {
+  const sampleRate = 22050
+  const dataSize = sampleRate * seconds * 2
+  const buffer = Buffer.alloc(44 + dataSize)
+  buffer.write('RIFF', 0)
+  buffer.writeUInt32LE(36 + dataSize, 4)
+  buffer.write('WAVE', 8)
+  buffer.write('fmt ', 12)
+  buffer.writeUInt32LE(16, 16)
+  buffer.writeUInt16LE(1, 20)
+  buffer.writeUInt16LE(1, 22)
+  buffer.writeUInt32LE(sampleRate, 24)
+  buffer.writeUInt32LE(sampleRate * 2, 28)
+  buffer.writeUInt16LE(2, 32)
+  buffer.writeUInt16LE(16, 34)
+  buffer.write('data', 36)
+  buffer.writeUInt32LE(dataSize, 40)
+  return buffer
+}
+
 module.exports = {
   BASE,
   ADMIN_USER,
-  ADMIN_PASS,
   CLIENT_PHONE,
-  uniqueSuffix,
+  CLIENT_NAME,
+  SEEDED_CATEGORY,
+  PHONE_PLACEHOLDER,
+  USER_PLACEHOLDER,
   randomName,
   randomPhone,
   dismissPwa,
@@ -296,11 +348,10 @@ module.exports = {
   expectClean,
   loginAdmin,
   loginCliente,
+  registerCliente,
   logout,
   apiAdminLogin,
   apiAuthHeaders,
-  apiCreateUser,
-  apiUpdateUser,
   apiDeleteUser,
   apiListUsers,
   apiCreateCategory,
@@ -311,4 +362,7 @@ module.exports = {
   apiDeleteCategoryPhoto,
   apiArtworkBytes,
   ensureSilenceWav,
+  stubStream,
+  stubArtwork,
+  expectNoOverflow,
 }

@@ -12,14 +12,14 @@ import (
 	"play-music/web"
 )
 
-// handleStatic serves the embedded web UI at / with SPA fallback to
-// index.html. The asset URLs carry a version query (?v=...) so browsers and
-// CDNs (Cloudflare) always fetch the current build instead of a stale cached
-// copy, and every static response revalidates (Cache-Control: no-cache).
-//
-// Environment-driven config is injected at boot, never hardcoded in the
-// frontend: ND_FRONTEND_BASEURL -> index.html (window.__APP_CONFIG__.baseURL)
+type versionedAsset struct {
+	body        []byte
+	contentType string
+}
 
+// handleStatic serves the embedded web UI at / with SPA fallback to index.html.
+// Asset URLs carry a version query (?v=...) so browsers and CDNs fetch the
+// current build; every static response revalidates.
 func (s *Server) handleStatic() http.Handler {
 	fsys, err := fs.Sub(web.Assets, "assets")
 	if err != nil {
@@ -30,8 +30,25 @@ func (s *Server) handleStatic() http.Handler {
 	if err != nil {
 		panic(err)
 	}
+	baseURL, _ := json.Marshal(s.cfg.FrontendBaseURL)
 	index = bytes.ReplaceAll(index, []byte("__ASSET_VERSION__"), []byte(version.Version))
-	index = bytes.ReplaceAll(index, []byte("__FRONTEND_BASEURL__"), quoteJSON(s.cfg.FrontendBaseURL))
+	index = bytes.ReplaceAll(index, []byte("__FRONTEND_BASEURL__"), baseURL)
+
+	substituted := func(name string) []byte {
+		body, err := fs.ReadFile(fsys, name)
+		if err != nil {
+			panic(err)
+		}
+		return bytes.ReplaceAll(body, []byte("__ASSET_VERSION__"), []byte(version.Version))
+	}
+
+	// The service worker and the manifest also name assets by version, so they
+	// get the same substitution instead of a copy of the number. The content
+	// type travels with the name: these are its only two users.
+	versioned := map[string]versionedAsset{
+		"sw.js":                {body: substituted("sw.js"), contentType: "text/javascript; charset=utf-8"},
+		"manifest.webmanifest": {body: substituted("manifest.webmanifest"), contentType: "application/manifest+json"},
+	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -44,43 +61,36 @@ func (s *Server) handleStatic() http.Handler {
 		}
 		w.Header().Set("Cache-Control", "no-cache")
 		if p == "index.html" {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Write(index)
+			writeHTML(w, index)
 			return
 		}
-		if p == "loja.html" {
-			http.NotFound(w, r)
+		if asset, ok := versioned[p]; ok {
+			w.Header().Set("Content-Type", asset.contentType)
+			w.Write(asset.body)
 			return
 		}
 
 		if _, err := fs.Stat(fsys, p); err != nil {
-			// Unknown /api/* path: answer a JSON 404, never the SPA shell.
-			// The SPA fallback used to mask missing API endpoints (clients
-			// got 200 + HTML instead of a 404 JSON contract error).
+			// A JSON 404 for /api/*, never the SPA shell, so a missing endpoint
+			// cannot look like a successful HTML page.
 			if p == "api" || strings.HasPrefix(p, "api/") {
 				writeError(w, http.StatusNotFound, "Não encontrado")
 				return
 			}
-			// Unknown /assets/* path: plain 404, never HTML. Serving HTML
-			// for a script URL makes browsers refuse it with "Refused to
-			// execute script" (MIME mismatch).
-			if p == "assets" || strings.HasPrefix(p, "assets/") {
+			// A missing document is a 404; only extensionless paths are
+			// client-side routes of the SPA.
+			if p == "assets" || strings.HasPrefix(p, "assets/") || strings.HasSuffix(p, ".html") {
 				http.NotFound(w, r)
 				return
 			}
-			// SPA fallback: every unknown non-API route serves the app shell.
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Write(index)
+			writeHTML(w, index)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	})
 }
 
-// quoteJSON serializes a plain string as a JSON string literal (HTML-safe).
-// Used to inject ND_FRONTEND_BASEURL into index.html; an empty env var
-// becomes "" (same-origin API), escaping quotes/newlines safely.
-func quoteJSON(v string) []byte {
-	b, _ := json.Marshal(v)
-	return b
+func writeHTML(w http.ResponseWriter, body []byte) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(body)
 }

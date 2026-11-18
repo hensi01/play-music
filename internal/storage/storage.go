@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -38,10 +37,6 @@ func New(cfg config.S3Config) (*Storage, error) {
 	return &Storage{client: client, bucket: cfg.Bucket}, nil
 }
 
-func (s *Storage) Bucket() string { return s.bucket }
-
-// List returns a channel of objects under the bucket root. Per-item errors
-// surface through ObjectInfo.Err.
 func (s *Storage) List(ctx context.Context) <-chan minio.ObjectInfo {
 	return s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{
 		Prefix:    "",
@@ -51,12 +46,11 @@ func (s *Storage) List(ctx context.Context) <-chan minio.ObjectInfo {
 
 // Stat returns the object metadata. The caching proxy in front of MinIO
 // occasionally answers Access Denied for a few seconds after idle time, so
-// transient errors are retried with a short backoff (observed pattern, same
-// as waitForObject in the server package).
+// transient errors are retried with a short backoff.
 func (s *Storage) Stat(ctx context.Context, key string) (minio.ObjectInfo, error) {
 	var last error
 	for i := 0; i < 4; i++ {
-		info, err := s.client.StatObject(ctx, s.bucket, key, minio.StatObjectOptions{})
+		info, err := s.statOnce(ctx, key)
 		if err == nil {
 			return info, nil
 		}
@@ -73,6 +67,36 @@ func (s *Storage) Stat(ctx context.Context, key string) (minio.ObjectInfo, error
 	}
 	return minio.ObjectInfo{}, last
 }
+
+func (s *Storage) statOnce(ctx context.Context, key string) (minio.ObjectInfo, error) {
+	return s.client.StatObject(ctx, s.bucket, key, minio.StatObjectOptions{})
+}
+
+// WaitForObject polls until a freshly written object is readable. The caching
+// proxy can take seconds to expose it (observed ~6s), and a not-found answer is
+// the expected state in that window, so the wait owns the polling policy and
+// uses a single attempt per poll instead of nesting Stat's transient retry.
+func (s *Storage) WaitForObject(ctx context.Context, key string) {
+	deadline := time.Now().Add(objectVisibilityTimeout)
+	for {
+		if _, err := s.statOnce(ctx, key); err == nil {
+			return
+		}
+		if ctx.Err() != nil || time.Now().After(deadline) {
+			return
+		}
+		select {
+		case <-time.After(objectVisibilityPoll):
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+const (
+	objectVisibilityTimeout = 60 * time.Second
+	objectVisibilityPoll    = 2 * time.Second
+)
 
 func isTransientStat(err error) bool {
 	var resp minio.ErrorResponse
@@ -98,7 +122,6 @@ func (s *Storage) ObjectExists(ctx context.Context, key string) (bool, error) {
 	return false, err
 }
 
-// Open returns a reader for the object (supports range via options).
 func (s *Storage) Open(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
 	opts := minio.GetObjectOptions{}
 	if offset > 0 || length > 0 {
@@ -113,10 +136,6 @@ func (s *Storage) Open(ctx context.Context, key string, offset, length int64) (i
 	return obj, nil
 }
 
-func (s *Storage) Download(ctx context.Context, key string) (io.ReadCloser, error) {
-	return s.Open(ctx, key, 0, -1)
-}
-
 func (s *Storage) PresignedURL(ctx context.Context, key string, expiry time.Duration) (string, error) {
 	u, err := s.client.PresignedGetObject(ctx, s.bucket, key, expiry, url.Values{})
 	if err != nil {
@@ -125,7 +144,6 @@ func (s *Storage) PresignedURL(ctx context.Context, key string, expiry time.Dura
 	return u.String(), nil
 }
 
-// DownloadURL signs an attachment response for the original object.
 func (s *Storage) DownloadURL(ctx context.Context, key, disposition string, expiry time.Duration) (string, error) {
 	u, err := s.client.PresignedGetObject(ctx, s.bucket, key, expiry, url.Values{"response-content-disposition": {disposition}})
 	if err != nil {
@@ -134,7 +152,6 @@ func (s *Storage) DownloadURL(ctx context.Context, key, disposition string, expi
 	return u.String(), nil
 }
 
-// Put uploads an object to the bucket (used by the admin song upload).
 func (s *Storage) Put(ctx context.Context, key string, size int64, contentType string, reader io.Reader) error {
 	if size < 0 {
 		size = 0
@@ -144,7 +161,6 @@ func (s *Storage) Put(ctx context.Context, key string, size int64, contentType s
 	return err
 }
 
-// Remove deletes an object from the bucket. Missing objects are not an error.
 func (s *Storage) Remove(ctx context.Context, key string) error {
 	err := s.client.RemoveObject(ctx, s.bucket, key, minio.RemoveObjectOptions{})
 	if err == nil {
@@ -155,13 +171,4 @@ func (s *Storage) Remove(ctx context.Context, key string) error {
 		return nil
 	}
 	return err
-}
-
-// keyFromURL extracts the object key from a URL path (e.g. "/folder/file.mp3").
-func keyFromURL(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return strings.TrimLeft(raw, "/")
-	}
-	return strings.TrimLeft(u.Path, "/")
 }

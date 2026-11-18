@@ -1,9 +1,4 @@
-// Player singleton: queue, playback, seek, shuffle/repeat and the Media
-// Session API integration. Audio streams come exclusively from the Bunny CDN
-// (the server 302s /api/stream to a signed CDN URL) — no retry ladder, no
-// local/transcode fallback: a failed stream simply stops playback.
-
-import { api, endpoints, streamUrl, artworkUrl, getToken } from './api.js'
+import { api, endpoints, streamUrl, artworkUrl, tokenUserId } from './api.js'
 import { createListenTracker, sampleListen } from './listening.js'
 import { showAd } from './ads.js'
 
@@ -12,12 +7,6 @@ audio.preload = 'auto'
 audio.volume = 0.8
 
 let listenTracker = null
-function tokenUserId() {
-  try {
-    const part = getToken().split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
-    return JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, '='))).uid || null
-  } catch { return null }
-}
 function startListening(song) {
   const playId = globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
   listenTracker = createListenTracker(song.id, playId, tokenUserId())
@@ -33,8 +22,7 @@ audio.addEventListener('playing', sampleListening)
 audio.addEventListener('seeking', resetListenAnchor)
 audio.addEventListener('seeked', resetListenAnchor)
 
-// True while the audio element is being handed a new track (src swap). The
-// browser fires a `pause` event during the media load algorithm, so those
+// The media load algorithm fires `pause` while a new src is loading, so those
 // events must not overwrite the real play state.
 let switching = false
 let adGate = false, adPlayer = null, adGeneration = 0, songsSinceAd = 0, adIndex = 0, gateOverlay = null
@@ -105,8 +93,6 @@ const state = {
   shuffle: false,
   repeat: false,
   fullScreen: false,
-  // Seek requested before the metadata (duration) was available; applied as
-  // soon as the duration loads.
   pendingSeek: null,
 }
 
@@ -139,7 +125,6 @@ audio.addEventListener('timeupdate', () => {
 
 const updateDuration = () => {
   set({ duration: resolvedTrackDuration() })
-  // Apply a seek that arrived before the metadata was available.
   if (state.pendingSeek != null) seek(state.pendingSeek)
   updateMediaSessionPosition()
 }
@@ -156,8 +141,6 @@ audio.addEventListener('play', () => {
 audio.addEventListener('pause', () => {
   resetListenAnchor()
   if (switching) {
-    // Consumed the pause fired by the media load algorithm during a src swap.
-    // Do not let it flip the UI to paused; the next `play` event re-syncs.
     switching = false
     return
   }
@@ -178,25 +161,18 @@ audio.addEventListener('error', () => {
   setMediaSessionPlaybackState(false)
 })
 
-// Wraps audio.play() so autoplay-policy rejections (iOS/Android) never turn
-// into unhandled promise rejections; the UI state stays honest (paused).
 function playAudio() {
-  const p = audio.play()
-  if (p && typeof p.catch === 'function') {
-    p.catch(() => {
-      // During a src swap the previous track's play() promise rejects with an
-      // AbortError; ignore it (the swap's own pause/play events settle state),
-      // and never clear `switching` here or the load-algorithm pause event
-      // would stop being consumed — desyncing the UI from the audio element.
-      if (!switching) {
-        set({ playing: false })
-        setMediaSessionPlaybackState(false)
-      }
-    })
-  }
+  audio.play().catch(() => {
+    // A src swap rejects the previous track's play() with AbortError; the
+    // swap's own events settle state, and `switching` must stay set so the
+    // load-algorithm pause is still consumed.
+    if (!switching) {
+      set({ playing: false })
+      setMediaSessionPlaybackState(false)
+    }
+  })
 }
 
-// Media Session API: system media controls + notifications.
 function updateMediaSession() {
   const session = globalThis.navigator?.mediaSession
   if (!session || !state.current) return
@@ -210,7 +186,6 @@ function updateMediaSession() {
       })
     }
   } catch {
-    // Metadata support differs by browser; playback controls can still work.
   }
   setMediaSessionAction('play', () => { if (!adGate) playAudio() })
   setMediaSessionAction('pause', () => { if (!adGate) audio.pause() })
@@ -237,7 +212,6 @@ function setMediaSessionAction(action, handler) {
   try {
     session.setActionHandler(action, handler)
   } catch {
-    // Ignore individual actions that the current browser does not support.
   }
 }
 
@@ -251,7 +225,6 @@ function clearMediaSession() {
   try { session.playbackState = 'none' } catch { /* unsupported */ }
 }
 
-// Syncs the lock-screen/notification play state (iOS/Android).
 function setMediaSessionPlaybackState(playing) {
   const session = globalThis.navigator?.mediaSession
   if (!session) return
@@ -262,8 +235,6 @@ function setMediaSessionPlaybackState(playing) {
   }
 }
 
-// Keeps the system media controls in sync with the audio element, clamping the
-// position so it can never exceed the duration (avoids setPositionState errors).
 function updateMediaSessionPosition() {
   const session = globalThis.navigator?.mediaSession
   if (!session || typeof session.setPositionState !== 'function' || !state.current) return
@@ -289,7 +260,6 @@ function loadAndPlay(song) {
   setMediaSessionPlaybackState(true)
   audio.src = streamUrl(song)
   playAudio()
-  // Report the play so play counts and history update.
   endpoints.registerPlay(song.id).catch(() => undefined)
 }
 
@@ -302,20 +272,11 @@ export function playContext(songs, index) {
   updateMediaSession()
 }
 
-export function playSong(song) {
-  if (adGate) return
-  set({ queue: [song], currentIndex: 0, current: song, progress: 0 })
-  loadAndPlay(song)
-  updateMediaSession()
-}
-
-// Add a track after the current queue without interrupting playback.
 export function addToQueue(song) {
   if (!song?.id) return
   set({ queue: [...state.queue, song] })
 }
 
-// Clear playback and listening state when the account changes.
 export function clearSession() {
   adGeneration++; adGate = false; adPlayer?.cleanup(); adPlayer = null; gateOverlay?.remove(); gateOverlay = null; songsSinceAd = 0; adIndex = 0
   listenTracker = null
@@ -346,8 +307,8 @@ export function next() {
   }
   if (idx >= queue.length) {
     if (!state.repeat) {
-      // End of queue: actually stop the audio, otherwise the element keeps
-      // playing the last track while the UI state reports paused.
+      // Stopping the element matters: pausing only the UI would leave it
+      // playing the last track.
       audio.pause()
       if (audio.readyState > 0) {
         try { audio.currentTime = 0 } catch { /* duration may no longer be seekable */ }
@@ -370,7 +331,6 @@ export function prev() {
   if (adGate) return
   const { queue, currentIndex, progress } = state
   if (queue.length === 0) return
-  // Restart the current track if it has been playing for a while.
   if (progress > 3) {
     if (audio.readyState > 0) {
       audio.currentTime = 0
@@ -420,7 +380,6 @@ export function seek(seconds) {
   updateMediaSessionPosition()
 }
 
-// Nudge playback by delta seconds (e.g. the +5s / -5s buttons and keyboard).
 export function seekBy(delta) {
   if (Number.isFinite(audio.currentTime)) seek(audio.currentTime + delta)
 }
@@ -450,10 +409,10 @@ export function setLiked(liked) {
   set({ current: updated, queue: newQueue })
 }
 
-// Periodically sync the Media Session position state while playing.
 setInterval(() => {
   if (state.playing) updateMediaSessionPosition()
 }, 1000)
 
-// Debug/test hook: exposes the player state and audio element.
+// The e2e specs drive the player through this handle; product code never reads
+// it. Keep the shape in sync with e2e/tests (getState + the audio element).
 window.__player = { getState: () => state, audio }

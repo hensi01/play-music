@@ -1,4 +1,5 @@
 const { test, expect } = require('playwright/test')
+const { dismissPwa, PHONE_PLACEHOLDER } = require('./helpers')
 
 test.use({ serviceWorkers: 'block' })
 
@@ -19,12 +20,8 @@ async function prepare(page, allowed) {
     return route.fulfill({ json: path === '/api/home' ? { sections: [] } : [] })
   })
   await page.goto('/#/song/song-123')
-  const installOverlay = page.locator('.pwa-overlay')
-  await installOverlay.waitFor({ state: 'visible', timeout: 6000 }).catch(() => {})
-  if (await installOverlay.isVisible()) await installOverlay.click({ position: { x: 1, y: 1 } })
-  await page.getByRole('button', { name: 'Administrador' }).click()
-  await page.getByPlaceholder('Usuário ou e-mail').fill('teste')
-  await page.getByPlaceholder('Senha').fill('teste')
+  await dismissPwa(page)
+  await page.getByPlaceholder(PHONE_PLACEHOLDER).fill('11987654321')
   await page.getByRole('button', { name: 'Entrar' }).click()
 }
 

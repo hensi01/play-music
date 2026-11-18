@@ -1,6 +1,6 @@
-// Admin page: users, categories (songs per category) and song uploads.
-
-import { api, endpoints, artworkUrl, applyPhoneMask, getToken } from './api.js'
+import { api, endpoints, artworkUrl, applyPhoneMask, tokenUserId, RERENDER_EVENT } from './api.js'
+import { el } from './dom.js'
+import { fmtDuration, fmtMB, pluralize } from './format.js'
 
 let pendingAPIKey = null
 let apiKeyCreating = false
@@ -9,9 +9,7 @@ let apiKeySession = 0
 export function clearPendingAPIKey() { pendingAPIKey = null; apiKeyCreating = false; apiKeyMessage = ''; apiKeySession++ }
 
 let adminTab = 'users'
-let adminState = { users: [], categories: [], songs: [], songCategoryIds: {}, categoryNames: {} }
-// Race guard do refresh: cada chamada incrementa o seq; respostas de
-// requisições antigas (troca rápida de abas) são descartadas.
+let adminState = { categories: [], songs: [], songCategoryIds: {}, categoryNames: {} }
 let adminRefreshSeq = 0
 let adSaving = false
 let adSavePending = null
@@ -98,13 +96,6 @@ async function renderAds(wrap, seq) {
   draw()
 }
 
-function apiKeyTokenUser(token) {
-  try {
-    const part = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
-    return JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, '='))).uid || null
-  } catch { return null }
-}
-
 function renderAPIKeys(wrap) {
   const name = el('input', { class: 'form-input', placeholder: 'Nome da integração', maxlength: '80', required: true })
   const status = el('p', { role: 'status' }, apiKeyMessage)
@@ -138,10 +129,10 @@ function renderAPIKeys(wrap) {
     event.preventDefault(); if (pendingAPIKey || apiKeyCreating) return
     apiKeyCreating = true; create.disabled = true; apiKeyMessage = ''; status.textContent = ''
     const session = apiKeySession
-    const owner = apiKeyTokenUser(getToken())
+    const owner = tokenUserId()
     try {
       const result = await api.post('/api/admin/api-keys', { name: name.value })
-      if (session !== apiKeySession || !owner || apiKeyTokenUser(getToken()) !== owner) return
+      if (session !== apiKeySession || !owner || tokenUserId() !== owner) return
       pendingAPIKey = result.key
       showPendingKey()
       refreshApp()
@@ -162,7 +153,7 @@ function renderNotifications(wrap) {
   const status = el('p', { role: 'status' })
   const list = el('div', { class: 'admin-table' })
   const configStatus = el('p', { class: 'settings-text' }, 'Verificando serviço de notificações…')
-  api.get('/api/push/config').then(config => { configStatus.textContent = config.enabled ? 'Serviço de notificações configurado.' : 'Serviço indisponível: configure o relay no servidor.' }).catch(() => { configStatus.textContent = 'Não foi possível verificar o serviço.' })
+  endpoints.pushConfig().then(config => { configStatus.textContent = config.enabled ? 'Serviço de notificações configurado.' : 'Serviço indisponível: configure o relay no servidor.' }).catch(() => { configStatus.textContent = 'Não foi possível verificar o serviço.' })
   const button = el('button', { class: 'btn-accent', type: 'submit' }, 'Programar notificação')
   async function load() {
     try {
@@ -200,42 +191,16 @@ function renderNotifications(wrap) {
   void load()
 }
 
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag)
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v === undefined || v === null || v === false) continue
-    if (k === 'class') node.className = v
-    else if (k === 'style') node.setAttribute('style', v)
-    else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v)
-    else node.setAttribute(k, v === true ? '' : String(v))
-  }
-  for (const c of children.flat()) {
-    if (c == null) continue
-    node.append(c instanceof Node ? c : document.createTextNode(String(c)))
-  }
-  return node
-}
-
-function plural(n, singular, pluralForm) {
-  return `${n} ${n === 1 ? singular : pluralForm}`
-}
-
-// Renders the whole app (defined in app.js, not reachable from this module).
 function refreshApp() {
-  window.dispatchEvent(new Event('pm:rerender'))
+  window.dispatchEvent(new Event(RERENDER_EVENT))
 }
-
-// ---------- Users ----------
 
 async function renderUsers(wrap, seq) {
   const [users, categories] = await Promise.all([
     endpoints.admin.users().catch(() => []),
     endpoints.admin.categories().catch(() => []),
   ])
-  // Resposta obsoleta (outra aba já disparou um refresh mais novo): descarta
-  // antes de tocar no estado compartilhado ou no DOM.
   if (!isAdminRefreshCurrent(seq)) return
-  adminState.users = users
   adminState.categories = categories
 
   wrap.append(
@@ -287,39 +252,32 @@ function userForm(existing) {
   function sync() {
     adminBtn.classList.toggle('active', isAdmin)
     clientBtn.classList.toggle('active', !isAdmin)
-    // aria-pressed acompanha o toggle (antes ficava preso ao estado inicial).
     adminBtn.setAttribute('aria-pressed', isAdmin ? 'true' : 'false')
     clientBtn.setAttribute('aria-pressed', !isAdmin ? 'true' : 'false')
     adminFields.style.display = isAdmin ? '' : 'none'
     clientFields.style.display = isAdmin ? 'none' : ''
   }
 
-  const overlay = el('div', { class: 'modal-overlay' },
-    el('div', { class: 'modal' },
-      el('h3', {}, isEdit ? 'Editar usuário' : 'Novo usuário'),
-      el('div', { class: 'login-toggle' }, clientBtn, adminBtn),
-      nameInput,
-      clientFields,
-      adminFields,
-      errorEl,
-      el('div', { class: 'modal-actions' },
-        el('button', { class: 'btn-accent', onclick: save }, 'Salvar'),
-        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
-      ),
+  const overlay = mountModal('modal',
+    el('h3', {}, isEdit ? 'Editar usuário' : 'Novo usuário'),
+    el('div', { class: 'login-toggle' }, clientBtn, adminBtn),
+    nameInput,
+    clientFields,
+    adminFields,
+    errorEl,
+    el('div', { class: 'modal-actions' },
+      el('button', { class: 'btn-accent', onclick: save }, 'Salvar'),
+      el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
     ),
   )
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
-  document.body.append(overlay)
   sync()
 
   async function save() {
     errorEl.textContent = ''
     const payload = { name: nameInput.value.trim(), isAdmin }
     if (isAdmin) {
-      // Nota (contrato): o backend LIMPA o telefone ao virar admin
-      // (handleAdminUpdateUser faz patch.Phone = "" no ramo admin) — enviar
-      // phone aqui seria ignorado. O telefone só entra no payload do ramo
-      // cliente, onde o backend o exige.
+      // The backend clears the phone when a user becomes an admin, so only the
+      // client branch sends it.
       payload.username = usernameInput.value.trim()
       payload.email = emailInput.value.trim()
       if (passInput.value) payload.password = passInput.value
@@ -347,53 +305,46 @@ async function deleteUser(u) {
   }
 }
 
-// ---------- Categories ----------
-
-// newCategoryForm: modal with name + photo (used for creation).
 function newCategoryForm() {
   const nameInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Nome da categoria', autofocus: true })
   const errorEl = el('p', { class: 'login-error' })
 
   const photoInput = el('input', { class: 'upload-file-input', type: 'file', accept: 'image/*' })
+  const photoLabel = el('span', {}, 'Foto da categoria (opcional)')
   const photoDrop = el(
     'div',
     { class: 'upload-photo-drop' },
     el('span', { html: '&#128247;' }),
-    el('span', {}, 'Foto da categoria (opcional)'),
+    photoLabel,
   )
-  photoDrop.addEventListener('click', () => photoInput.click())
-  photoInput.addEventListener('change', () => {
+  wireDropzone(photoDrop, photoInput, () => {
     const f = photoInput.files[0]
-    if (f) photoDrop.querySelector('span:last-child').textContent = f.name
+    if (f) photoLabel.textContent = f.name
   })
 
-  const overlay = el('div', { class: 'modal-overlay' },
-    el('div', { class: 'modal' },
-      el('h3', {}, 'Nova categoria'),
-      nameInput,
-      el('div', { class: 'modal-section-label' }, 'Foto da categoria (opcional)'),
-      photoDrop,
-      photoInput,
-      errorEl,
-      el('div', { class: 'modal-actions' },
-        el('button', { class: 'btn-accent', onclick: save }, 'Criar'),
-        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
-      ),
+  const saveBtn = el('button', { class: 'btn-accent', onclick: save }, 'Criar')
+  const overlay = mountModal('modal',
+    el('h3', {}, 'Nova categoria'),
+    nameInput,
+    el('div', { class: 'modal-section-label' }, 'Foto da categoria (opcional)'),
+    photoDrop,
+    photoInput,
+    errorEl,
+    el('div', { class: 'modal-actions' },
+      saveBtn,
+      el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
     ),
   )
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
-  document.body.append(overlay)
 
   async function save() {
     errorEl.textContent = ''
     const name = nameInput.value.trim()
     if (!name) { errorEl.textContent = 'Informe o nome da categoria.'; return }
-    const btn = overlay.querySelector('.btn-accent')
-    btn.disabled = true
-    btn.textContent = 'Salvando…'
+    saveBtn.disabled = true
+    saveBtn.textContent = 'Salvando…'
     try {
       const cat = await endpoints.admin.createCategory(name)
-      // A categoria precisa existir antes do upload da foto (id gerado no create).
+      // The photo upload needs the id the create call returns.
       if (photoInput.files[0]) {
         await endpoints.admin.uploadCategoryPhoto(cat.id, photoInput.files[0])
       }
@@ -401,8 +352,8 @@ function newCategoryForm() {
       refreshApp()
     } catch (err) {
       errorEl.textContent = err.message
-      btn.disabled = false
-      btn.textContent = 'Criar'
+      saveBtn.disabled = false
+      saveBtn.textContent = 'Criar'
     }
   }
 }
@@ -426,7 +377,7 @@ async function renderCategories(wrap, seq) {
         el('div', { class: 'admin-row-main', style: 'cursor:pointer' },
           el('p', { class: 'admin-row-title', onclick: () => categoryForm(c) }, c.name),
           el('p', { class: 'admin-row-sub' }, [
-            plural(c.songCount ?? 0, 'música', 'músicas'),
+            pluralize(c.songCount ?? 0, 'música', 'músicas'),
           ].filter(Boolean).join(' • ')),
         ),
         el('div', { class: 'admin-row-actions' },
@@ -440,36 +391,37 @@ async function renderCategories(wrap, seq) {
 }
 
 function categoryForm(cat) {
-  const overlay = el('div', { class: 'modal-overlay' },
-    el('div', { class: 'modal modal-wide' },
-      el('h3', {}, `Categoria: ${cat.name}`),
-      el('input', { class: 'form-input', id: 'cat-name', type: 'text', value: cat.name, placeholder: 'Nome da categoria' }),
-      el('div', { class: 'modal-section-label' }, 'Foto da categoria'),
-      el('div', { style: 'display:flex;align-items:center;gap:12px' },
-        el('img', { id: 'cat-photo-preview', class: 'track-art', src: artworkUrl(cat.id, 96), alt: '', style: 'width:56px;height:56px;border-radius:8px;display:block;object-fit:cover' }),
-        el('div', { style: 'display:flex;flex-direction:column;gap:6px' },
-          el('button', { class: 'btn-secondary', onclick: () => uploadCatPhoto() }, 'Enviar foto'),
-          el('button', { class: 'btn-secondary', onclick: () => removeCatPhoto() }, 'Remover foto'),
-        ),
-      ),
-      el('div', { class: 'modal-section-label' }, 'Músicas'),
-      el('input', { class: 'form-input', id: 'cat-song-filter', type: 'text', placeholder: 'Filtrar músicas…' }),
-      el('div', { class: 'modal-scroll', id: 'cat-songs' }),
-      el('p', { class: 'login-error', id: 'cat-error' }),
-      el('div', { class: 'modal-actions' },
-        el('button', { class: 'btn-accent', onclick: save }, 'Salvar'),
-        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
+  const nameInput = el('input', { class: 'form-input', type: 'text', value: cat.name, placeholder: 'Nome da categoria' })
+  const photoPreview = el('img', { class: 'track-art', src: artworkUrl(cat.id, 96), alt: '', style: 'width:56px;height:56px;border-radius:8px;display:block;object-fit:cover' })
+  const filterInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Filtrar músicas…' })
+  const songsBox = el('div', { class: 'modal-scroll' })
+  const errEl = el('p', { class: 'login-error' })
+  const saveBtn = el('button', { class: 'btn-accent', onclick: save }, 'Salvar')
+  const overlay = mountModal('modal modal-wide',
+    el('h3', {}, `Categoria: ${cat.name}`),
+    nameInput,
+    el('div', { class: 'modal-section-label' }, 'Foto da categoria'),
+    el('div', { style: 'display:flex;align-items:center;gap:12px' },
+      photoPreview,
+      el('div', { style: 'display:flex;flex-direction:column;gap:6px' },
+        el('button', { class: 'btn-secondary', onclick: () => uploadCatPhoto() }, 'Enviar foto'),
+        el('button', { class: 'btn-secondary', onclick: () => removeCatPhoto() }, 'Remover foto'),
       ),
     ),
+    el('div', { class: 'modal-section-label' }, 'Músicas'),
+    filterInput,
+    songsBox,
+    errEl,
+    el('div', { class: 'modal-actions' },
+      saveBtn,
+      el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
+    ),
   )
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
-  document.body.append(overlay)
 
-  const songsBox = overlay.querySelector('#cat-songs')
-  let assigned = { songIds: [] }
+  let assignedSongIds = []
 
   endpoints.admin.category(cat.id).then((d) => {
-    assigned = { songIds: d.songIds ?? [] }
+    assignedSongIds = d.songIds ?? []
     buildList('')
   }).catch(() => { buildList('') })
 
@@ -485,10 +437,10 @@ function categoryForm(cat) {
         for (const s of songs) {
           if (f && !s.title.toLowerCase().includes(f) && !(s.artist || '').toLowerCase().includes(f)) continue
           const box = el('input', { type: 'checkbox', id: `song-${s.id}` })
-          box.checked = assigned.songIds.includes(s.id)
+          box.checked = assignedSongIds.includes(s.id)
           box.addEventListener('change', () => {
-            if (box.checked) assigned.songIds.push(s.id)
-            else assigned.songIds = assigned.songIds.filter((x) => x !== s.id)
+            if (box.checked) assignedSongIds.push(s.id)
+            else assignedSongIds = assignedSongIds.filter((x) => x !== s.id)
           })
           songsBox.append(
             el('div', { class: 'admin-row' },
@@ -508,36 +460,10 @@ function categoryForm(cat) {
       })
   }
 
-  overlay.querySelector('#cat-song-filter').addEventListener('input', (e) => buildList(e.target.value))
-
-  function uploadSongPhoto(s) {
-    const input = el('input', { type: 'file', accept: 'image/*', style: 'display:none' })
-    input.addEventListener('change', async () => {
-      const file = input.files[0]
-      if (!file) return
-      try {
-        await endpoints.admin.uploadSongPhoto(s.id, file)
-        alert('Foto atualizada.')
-      } catch (err) {
-        alert(err.message)
-      }
-    })
-    document.body.append(input)
-    input.click()
-  }
-
-  async function removeSongPhoto(s) {
-    try {
-      await endpoints.admin.deleteSongPhoto(s.id)
-      alert('Foto removida.')
-    } catch (err) {
-      alert(err.message)
-    }
-  }
+  filterInput.addEventListener('input', (e) => buildList(e.target.value))
 
   function refreshCatPhotoPreview() {
-    const preview = overlay.querySelector('#cat-photo-preview')
-    if (preview) preview.src = artworkUrl(cat.id, 96) + '&t=' + Date.now()
+    photoPreview.src = artworkUrl(cat.id, 96) + '&t=' + Date.now()
   }
 
   function uploadCatPhoto() {
@@ -567,14 +493,11 @@ function categoryForm(cat) {
   }
 
   async function save() {
-    const errEl = overlay.querySelector('#cat-error')
     errEl.textContent = ''
-    const name = overlay.querySelector('#cat-name').value.trim()
-    const saveBtn = overlay.querySelector('.btn-accent')
-    // Desabilita durante o save: evita duplo submit (cliques repetidos).
+    const name = nameInput.value.trim()
     saveBtn.disabled = true
     try {
-      await endpoints.admin.updateCategory(cat.id, { name, songIds: assigned.songIds })
+      await endpoints.admin.updateCategory(cat.id, { name, songIds: assignedSongIds })
       overlay.remove()
       refreshApp()
     } catch (err) {
@@ -594,8 +517,6 @@ async function deleteCategory(c) {
     alert(err.message)
   }
 }
-
-// ---------- Songs (upload + list) ----------
 
 async function renderSongs(wrap, seq) {
   const data = await endpoints.admin.songs().catch(() => ({ songs: [], categoryIds: {}, categoryList: [] }))
@@ -626,7 +547,7 @@ async function renderSongs(wrap, seq) {
           el('img', { class: 'track-art', src: artworkUrl(s.id, 48), alt: '' }),
           el('div', { style: 'min-width:0' },
             el('p', { class: 'admin-row-title' }, s.title),
-            el('p', { class: 'admin-row-sub' }, [s.artist || 'Desconhecido', s.format, fmtDur(s.duration)].filter(Boolean).join(' • ')),
+            el('p', { class: 'admin-row-sub' }, [s.artist || 'Desconhecido', s.format, fmtDuration(s.duration, { unknown: '' })].filter(Boolean).join(' • ')),
             el('div', { class: 'admin-chips' }, ...chips),
           ),
         ),
@@ -640,22 +561,20 @@ async function renderSongs(wrap, seq) {
   wrap.append(table)
 }
 
-function fmtDur(seconds) {
-  if (!Number.isFinite(seconds) || seconds <= 0) return ''
-  const m = Math.floor(seconds / 60)
-  const s = Math.floor(seconds % 60)
-  return `${m}:${String(s).padStart(2, '0')}`
+// mountModal builds a modal shell (backdrop plus centred panel) from its innards
+// and attaches it. Clicking the backdrop dismisses it; the panel must stop the
+// click only if it needs to, which none do. Returns the overlay so callers can
+// remove it.
+function mountModal(panelClass, ...children) {
+  const overlay = el('div', { class: 'modal-overlay' }, el('div', { class: panelClass }, ...children))
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+  document.body.append(overlay)
+  return overlay
 }
 
-function uploadForm() {
-  const fileInput = el('input', { class: 'upload-file-input', type: 'file', accept: 'audio/*' })
-  const dropzone = el(
-    'div',
-    { class: 'upload-dropzone' },
-    el('span', { class: 'upload-dropzone-icon', html: '&#9835;' }),
-    el('p', { class: 'upload-dropzone-title' }, 'Arraste o arquivo de áudio ou clique para escolher'),
-    el('p', { class: 'upload-dropzone-hint' }, 'mp3, m4a, flac, ogg, wav…'),
-  )
+// wireDropzone makes a dropzone behave like its hidden file input: click opens
+// the picker, a dropped file fills the input, and either path calls onChange.
+function wireDropzone(dropzone, fileInput, onChange) {
   dropzone.addEventListener('click', () => fileInput.click())
   dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag') })
   dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'))
@@ -663,16 +582,30 @@ function uploadForm() {
     e.preventDefault()
     dropzone.classList.remove('drag')
     if (e.dataTransfer.files.length) fileInput.files = e.dataTransfer.files
-    updateFile()
+    onChange()
   })
-  fileInput.addEventListener('change', updateFile)
+  fileInput.addEventListener('change', onChange)
+}
+
+function uploadForm() {
+  const fileInput = el('input', { class: 'upload-file-input', type: 'file', accept: 'audio/*' })
+  const dropTitle = el('p', { class: 'upload-dropzone-title' }, 'Arraste o arquivo de áudio ou clique para escolher')
+  const dropHint = el('p', { class: 'upload-dropzone-hint' }, 'mp3, m4a, flac, ogg, wav…')
+  const dropzone = el(
+    'div',
+    { class: 'upload-dropzone' },
+    el('span', { class: 'upload-dropzone-icon', html: '&#9835;' }),
+    dropTitle,
+    dropHint,
+  )
   function updateFile() {
     const f = fileInput.files[0]
     if (!f) return
     dropzone.classList.add('has-file')
-    dropzone.querySelector('.upload-dropzone-title').textContent = f.name
-    dropzone.querySelector('.upload-dropzone-hint').textContent = `${(f.size / 1024 / 1024).toFixed(2)} MB`
+    dropTitle.textContent = f.name
+    dropHint.textContent = fmtMB(f.size)
   }
+  wireDropzone(dropzone, fileInput, updateFile)
 
   const titleInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Ex.: Louvor da Manhã', autocomplete: 'off' })
   const artistInput = el('input', { class: 'form-input', type: 'text', placeholder: 'Ex.: Ministério Coral', autocomplete: 'off' })
@@ -681,46 +614,43 @@ function uploadForm() {
     ...adminState.categories.map((c) => el('option', { value: c.id }, c.name)),
   )
   const photoInput = el('input', { class: 'upload-file-input', type: 'file', accept: 'image/*' })
+  const photoLabel = el('span', {}, 'Adicionar foto da música')
   const photoDrop = el(
     'div',
     { class: 'upload-photo-drop' },
     el('span', { html: '&#128247;' }),
-    el('span', {}, 'Adicionar foto da música'),
+    photoLabel,
   )
-  photoDrop.addEventListener('click', () => photoInput.click())
-  photoInput.addEventListener('change', () => {
+  wireDropzone(photoDrop, photoInput, () => {
     const f = photoInput.files[0]
-    if (f) photoDrop.querySelector('span:last-child').textContent = f.name
+    if (f) photoLabel.textContent = f.name
   })
   const statusEl = el('p', { class: 'login-error' })
 
   const field = (label, control) =>
     el('label', { class: 'upload-field' }, el('span', { class: 'upload-label' }, label), control)
 
-  const overlay = el('div', { class: 'modal-overlay' },
-    el('div', { class: 'modal modal-upload' },
-      el('h3', {}, 'Enviar música'),
-      el('div', { class: 'modal-section-label' }, 'Arquivo de áudio'),
-      dropzone,
-      fileInput,
-      el('div', { class: 'upload-grid' },
-        field('Título (opcional)', titleInput),
-        field('Artista (opcional)', artistInput),
-      ),
-      field('Categoria', catSelect),
-      el('div', { class: 'modal-section-label' }, 'Foto da música (opcional)'),
-      photoDrop,
-      photoInput,
-      el('p', { class: 'upload-info' }, 'Se o arquivo tiver capa embutida, ela é usada automaticamente. Uma foto enviada aqui substitui a embutida.'),
-      statusEl,
-      el('div', { class: 'modal-actions' },
-        el('button', { class: 'btn-accent', onclick: submit }, 'Enviar'),
-        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
-      ),
+  const submitBtn = el('button', { class: 'btn-accent', onclick: submit }, 'Enviar')
+  const overlay = mountModal('modal modal-upload',
+    el('h3', {}, 'Enviar música'),
+    el('div', { class: 'modal-section-label' }, 'Arquivo de áudio'),
+    dropzone,
+    fileInput,
+    el('div', { class: 'upload-grid' },
+      field('Título (opcional)', titleInput),
+      field('Artista (opcional)', artistInput),
+    ),
+    field('Categoria', catSelect),
+    el('div', { class: 'modal-section-label' }, 'Foto da música (opcional)'),
+    photoDrop,
+    photoInput,
+    el('p', { class: 'upload-info' }, 'Se o arquivo tiver capa embutida, ela é usada automaticamente. Uma foto enviada aqui substitui a embutida.'),
+    statusEl,
+    el('div', { class: 'modal-actions' },
+      submitBtn,
+      el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
     ),
   )
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
-  document.body.append(overlay)
 
   async function submit() {
     const file = fileInput.files[0]
@@ -736,9 +666,8 @@ function uploadForm() {
     if (catSelect.value) fd.append('categoryId', catSelect.value)
     if (photoInput.files[0]) fd.append('photo', photoInput.files[0])
 
-    const btn = overlay.querySelector('.btn-accent')
-    btn.disabled = true
-    btn.textContent = 'Enviando…'
+    submitBtn.disabled = true
+    submitBtn.textContent = 'Enviando…'
     statusEl.textContent = 'Enviando e indexando…'
     statusEl.classList.remove('login-error')
     statusEl.classList.add('upload-info')
@@ -751,61 +680,54 @@ function uploadForm() {
       statusEl.textContent = err.message
       statusEl.classList.remove('upload-info')
       statusEl.classList.add('login-error')
-      btn.disabled = false
-      btn.textContent = 'Enviar'
+      submitBtn.disabled = false
+      submitBtn.textContent = 'Enviar'
     }
   }
 }
 
-// Audio extensions accepted by the folder batch (same list as the scanner).
-const FOLDER_AUDIO_EXTS = ['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus', '.wav', '.wma', '.aiff', '.aif', '.wv', '.tak', '.ape']
-
-function folderAudioExt(name) {
+// The accepted audio extensions come from /api/settings, which the server
+// derives from the one format table the scanner and streamer also use.
+let audioExtensions = null
+async function isAudioFile(name) {
   const i = name.lastIndexOf('.')
-  if (i < 0) return ''
-  return name.slice(i).toLowerCase()
-}
-
-function fmtMB(bytes) {
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+  if (i < 0) return false
+  if (audioExtensions === null) {
+    try { audioExtensions = (await endpoints.settings()).audioExtensions ?? [] } catch { audioExtensions = [] }
+  }
+  return audioExtensions.includes(name.slice(i + 1).toLowerCase())
 }
 
 function uploadFolderForm() {
   // webkitdirectory lets the user pick a whole folder; each File keeps its
   // relative path but only the audio files matter here.
   const fileInput = el('input', { class: 'upload-file-input', type: 'file', webkitdirectory: true, multiple: true })
+  const dropTitle = el('p', { class: 'upload-dropzone-title' }, 'Selecione a pasta de músicas ou arraste aqui')
+  const dropHint = el('p', { class: 'upload-dropzone-hint' }, 'Todas as músicas da pasta serão enviadas em sequência')
   const dropzone = el(
     'div',
     { class: 'upload-dropzone' },
     el('span', { class: 'upload-dropzone-icon', html: '&#128193;' }),
-    el('p', { class: 'upload-dropzone-title' }, 'Selecione a pasta de músicas ou arraste aqui'),
-    el('p', { class: 'upload-dropzone-hint' }, 'Todas as músicas (mp3, flac, m4a, ogg, wav…) serão enviadas em sequência'),
+    dropTitle,
+    dropHint,
   )
-  dropzone.addEventListener('click', () => fileInput.click())
-  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag') })
-  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'))
-  dropzone.addEventListener('drop', (e) => {
-    e.preventDefault()
-    dropzone.classList.remove('drag')
-    if (e.dataTransfer.files.length) fileInput.files = e.dataTransfer.files
-    updateFiles()
-  })
-  fileInput.addEventListener('change', updateFiles)
-
   let selected = []
-  function updateFiles() {
-    selected = Array.from(fileInput.files || []).filter((f) => FOLDER_AUDIO_EXTS.includes(folderAudioExt(f.name)))
+  async function updateFiles() {
+    const candidates = Array.from(fileInput.files || [])
+    const keep = await Promise.all(candidates.map((f) => isAudioFile(f.name)))
+    selected = candidates.filter((_, i) => keep[i])
     const total = selected.reduce((acc, f) => acc + f.size, 0)
     dropzone.classList.toggle('has-file', selected.length > 0)
     if (selected.length === 0) {
-      dropzone.querySelector('.upload-dropzone-title').textContent = 'Nenhum arquivo de áudio encontrado'
-      dropzone.querySelector('.upload-dropzone-hint').textContent = 'Escolha outra pasta'
+      dropTitle.textContent = 'Nenhum arquivo de áudio encontrado'
+      dropHint.textContent = 'Escolha outra pasta'
     } else {
-      dropzone.querySelector('.upload-dropzone-title').textContent = `${selected.length} ${selected.length === 1 ? 'música' : 'músicas'} na pasta`
-      dropzone.querySelector('.upload-dropzone-hint').textContent = `Total de ${fmtMB(total)}`
+      dropTitle.textContent = `${pluralize(selected.length, 'música', 'músicas')} na pasta`
+      dropHint.textContent = `Total de ${fmtMB(total)}`
     }
     updateStartBtn()
   }
+  wireDropzone(dropzone, fileInput, updateFiles)
 
   const catSelect = el('select', { class: 'form-input' },
     el('option', { value: '' }, 'Selecione a categoria…'),
@@ -814,35 +736,31 @@ function uploadFolderForm() {
   catSelect.addEventListener('change', updateStartBtn)
 
   const statusEl = el('p', { class: 'login-error' })
+  const fillEl = el('div', { class: 'upload-progress-fill', style: 'width:0%' })
+  const textEl = el('p', { class: 'upload-progress-text' })
   const progressWrap = el('div', { class: 'upload-progress', style: 'display:none' },
-    el('div', { class: 'upload-progress-bar' }, el('div', { class: 'upload-progress-fill', style: 'width:0%' })),
-    el('p', { class: 'upload-progress-text' }, ''),
+    el('div', { class: 'upload-progress-bar' }, fillEl),
+    textEl,
   )
   const failsEl = el('div', { class: 'upload-fails', style: 'display:none' })
 
-  const overlay = el('div', { class: 'modal-overlay' },
-    el('div', { class: 'modal modal-upload' },
-      el('h3', {}, 'Enviar pasta'),
-      dropzone,
-      fileInput,
-      el('div', { class: 'modal-section-label' }, 'Categoria das músicas'),
-      catSelect,
-      el('p', { class: 'upload-info' }, 'Todas as músicas da pasta entram nesta categoria. Título, artista e capa embutida vêm das tags do arquivo.'),
-      statusEl,
-      progressWrap,
-      failsEl,
-      el('div', { class: 'modal-actions' },
-        el('button', { class: 'btn-accent', id: 'folder-upload-start', onclick: start }, 'Enviar'),
-        el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar'),
-      ),
+  const startBtn = el('button', { class: 'btn-accent', onclick: start }, 'Enviar')
+  const cancelBtn = el('button', { class: 'btn-secondary', onclick: () => overlay.remove() }, 'Cancelar')
+  const overlay = mountModal('modal modal-upload',
+    el('h3', {}, 'Enviar pasta'),
+    dropzone,
+    fileInput,
+    el('div', { class: 'modal-section-label' }, 'Categoria das músicas'),
+    catSelect,
+    el('p', { class: 'upload-info' }, 'Todas as músicas da pasta entram nesta categoria. Título, artista e capa embutida vêm das tags do arquivo.'),
+    statusEl,
+    progressWrap,
+    failsEl,
+    el('div', { class: 'modal-actions' },
+      startBtn,
+      cancelBtn,
     ),
   )
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
-  document.body.append(overlay)
-
-  const startBtn = overlay.querySelector('#folder-upload-start')
-  const fillEl = progressWrap.querySelector('.upload-progress-fill')
-  const textEl = progressWrap.querySelector('.upload-progress-text')
 
   function updateStartBtn() {
     startBtn.disabled = selected.length === 0 || !catSelect.value
@@ -865,7 +783,6 @@ function uploadFolderForm() {
     failsEl.style.display = 'none'
     failsEl.innerHTML = ''
     startBtn.disabled = true
-    const cancelBtn = overlay.querySelector('.btn-secondary')
     cancelBtn.disabled = true
     cancelBtn.textContent = 'Aguarde…'
 
@@ -889,7 +806,7 @@ function uploadFolderForm() {
       }
     }
     fillEl.style.width = '100%'
-    textEl.textContent = `Concluído: ${ok} ${ok === 1 ? 'música enviada' : 'músicas enviadas'}${fails.length ? `, ${fails.length} ${fails.length === 1 ? 'falha' : 'falhas'}` : ''}.`
+    textEl.textContent = `Concluído: ${pluralize(ok, 'música enviada', 'músicas enviadas')}${fails.length ? `, ${pluralize(fails.length, 'falha', 'falhas')}` : ''}.`
     startBtn.disabled = false
     startBtn.textContent = 'Fechar'
     startBtn.onclick = () => overlay.remove()

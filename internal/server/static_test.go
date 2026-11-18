@@ -1,22 +1,25 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
 	"play-music/internal/config"
+	"play-music/internal/stream"
 )
 
-// testStaticServer builds a Server with an empty config (no env-driven
-// injection) — handleStatic reads s.cfg for ND_* frontend/store settings.
+// testStaticServer builds a Server whose config carries no env-driven
+// FrontendBaseURL.
 func testStaticServer() *Server {
 	return &Server{cfg: &config.Config{}}
 }
 
-// B-NEW-1: unknown /api/* paths used to fall through to the SPA shell
-// (200 + HTML), masking missing endpoints. They must answer a JSON 404.
+// A missing endpoint must answer a JSON 404, never the SPA shell: a 200+HTML
+// response makes a missing API look like a successful page.
 func TestStaticUnknownAPI404JSON(t *testing.T) {
 	s := testStaticServer()
 	h := s.handleStatic()
@@ -35,12 +38,12 @@ func TestStaticUnknownAPI404JSON(t *testing.T) {
 	}
 }
 
-// B-NEW-1: unknown /assets/* paths must return a plain 404, never HTML
-// (HTML for a script URL triggers "Refused to execute script").
+// A missing /assets/* path is a plain 404, never HTML: HTML for a script URL
+// makes browsers refuse it with a MIME mismatch.
 func TestStaticUnknownAsset404(t *testing.T) {
 	s := testStaticServer()
 	h := s.handleStatic()
-	for _, p := range []string{"/assets/nope.js", "/assets/missing/app.css", "/assets"} {
+	for _, p := range []string{"/assets/nope.js", "/assets/missing/app.css", "/assets", "/loja.html"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, p, nil))
 		if rec.Code != http.StatusNotFound {
@@ -69,12 +72,35 @@ func TestStaticSpaFallbackPreserved(t *testing.T) {
 	}
 }
 
+// sw.js and manifest.webmanifest are the two files that name assets by build
+// version, so they are substituted and must carry a non-generic content type.
+func TestStaticVersionedAssetsSubstituted(t *testing.T) {
+	s := testStaticServer()
+	h := s.handleStatic()
+	for _, tc := range []struct{ path, contentType string }{
+		{"/sw.js", "text/javascript"},
+		{"/manifest.webmanifest", "application/manifest+json"},
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.path, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d", tc.path, rec.Code)
+		}
+		if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, tc.contentType) {
+			t.Fatalf("%s: Content-Type = %q, want %q", tc.path, ct, tc.contentType)
+		}
+		if body := rec.Body.String(); strings.Contains(body, "__ASSET_VERSION__") {
+			t.Fatalf("%s: version placeholder left in body", tc.path)
+		}
+	}
+}
+
 // Known assets (the app loads ./style.css, ./app.js, ... from the root) must
 // still be served normally.
 func TestStaticKnownAssets(t *testing.T) {
 	s := testStaticServer()
 	h := s.handleStatic()
-	for _, p := range []string{"/app.js", "/style.css", "/sw.js", "/pwa.js", "/manifest.webmanifest", "/icon-192.png"} {
+	for _, p := range []string{"/app.js", "/style.css", "/sw.js", "/pwa.js", "/platform.js", "/manifest.webmanifest", "/icon-192.png"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, p, nil))
 		if rec.Code != http.StatusOK {
@@ -107,11 +133,31 @@ func TestStaticIndexBaseURLEmpty(t *testing.T) {
 		t.Fatalf("baseURL vazio deveria ser \"\": %q", rec.Body.String())
 	}
 }
+
+func TestSettingsListsUploadableAudioExtensions(t *testing.T) {
+	rec := httptest.NewRecorder()
+	(&Server{}).handleSettings(rec, httptest.NewRequest("GET", "/api/settings", nil))
+	var body struct {
+		AudioExtensions []string `json:"audioExtensions"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode settings: %v", err)
+	}
+	// The admin folder uploader filters on this list, so the endpoint must
+	// carry exactly what the upload and stream paths accept.
+	if !reflect.DeepEqual(body.AudioExtensions, stream.AudioExtensions()) {
+		t.Fatalf("audioExtensions = %v, want %v", body.AudioExtensions, stream.AudioExtensions())
+	}
+}
+
 func TestSettingsDoesNotExposeStorageCredentials(t *testing.T) {
-	s := &Server{cfg: &config.Config{MusicFolder: "s3://bucket?accessKey=private-user&secretKey=private-secret"}}
+	s := &Server{cfg: &config.Config{S3: config.S3Config{
+		Endpoint: "minio.example.com", AccessKey: "private-user", SecretKey: "private-secret", Bucket: "music",
+	}}}
 	rec := httptest.NewRecorder()
 	s.handleSettings(rec, httptest.NewRequest("GET", "/api/settings", nil))
-	if strings.Contains(rec.Body.String(), "private-user") || strings.Contains(rec.Body.String(), "private-secret") || strings.Contains(rec.Body.String(), "musicFolder") {
-		t.Fatal("storage connection exposed in settings")
+	body := rec.Body.String()
+	if strings.Contains(body, "private-user") || strings.Contains(body, "private-secret") || strings.Contains(body, "minio.example.com") {
+		t.Fatalf("storage connection exposed in settings: %s", body)
 	}
 }

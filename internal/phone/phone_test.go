@@ -44,20 +44,3 @@ func TestFormat(t *testing.T) {
 		t.Fatalf("Format 10 = %q", got)
 	}
 }
-
-func TestMask(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{"", ""},
-		{"1", "(1"},
-		{"11", "(11)"},
-		{"1198765", "(11) 98765"},
-		{"11987654321", "(11) 98765-4321"},
-		{"1198765432", "(11) 9876-5432"},
-		{"(11) 98765-4321", "(11) 98765-4321"},
-	}
-	for _, c := range cases {
-		if got := Mask(c.in); got != c.want {
-			t.Fatalf("Mask(%q) = %q, want %q", c.in, got, c.want)
-		}
-	}
-}

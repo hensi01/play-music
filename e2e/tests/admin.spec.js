@@ -17,6 +17,8 @@ const {
   apiUploadCategoryPhoto,
   apiDeleteCategoryPhoto,
   apiArtworkBytes,
+  PHONE_PLACEHOLDER,
+  SEEDED_CATEGORY,
 } = require('./helpers')
 
 test.describe('Admin', () => {
@@ -34,7 +36,7 @@ test.describe('Admin', () => {
       await page.getByRole('button', { name: 'Novo usuário' }).click()
       const modal = page.locator('.modal-overlay')
       await modal.getByPlaceholder('Nome').fill(name)
-      await modal.getByPlaceholder('Telefone (99) 99999-9999').fill(phone)
+      await modal.getByPlaceholder(PHONE_PLACEHOLDER).fill(phone)
       await modal.getByRole('button', { name: 'Salvar' }).click()
       await expect(modal).toBeHidden({ timeout: 10000 })
 
@@ -84,7 +86,7 @@ test.describe('Admin', () => {
 
     try {
       await page.getByRole('button', { name: 'Categorias' }).click()
-      await expect(page.locator('.admin-row', { hasText: 'Cristão' })).toHaveCount(1, { timeout: 10000 })
+      await expect(page.locator('.admin-row', { hasText: SEEDED_CATEGORY })).toHaveCount(1, { timeout: 10000 })
 
       // --- Create ---
       await page.getByRole('button', { name: 'Nova categoria' }).click()
@@ -103,7 +105,7 @@ test.describe('Admin', () => {
       await expect(page.locator('.admin-row', { hasText: catName })).toHaveCount(0, { timeout: 10000 })
 
       // "Cristão" untouched.
-      await expect(page.locator('.admin-row', { hasText: 'Cristão' })).toHaveCount(1)
+      await expect(page.locator('.admin-row', { hasText: SEEDED_CATEGORY })).toHaveCount(1)
     } finally {
       // Best-effort cleanup through the API if the UI delete never ran.
       try {

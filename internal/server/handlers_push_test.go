@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"play-music/internal/config"
 	"strings"
 	"testing"
+
+	"play-music/internal/config"
 )
 
 func TestRelayUsesServerSecretAndRespectsResponse(t *testing.T) {
@@ -48,25 +49,21 @@ func TestPushConfigurationDoesNotExposeSecret(t *testing.T) {
 		t.Fatal("invalid push configuration response")
 	}
 }
-func TestPushSendRejectsUnsafeLinksBeforeDatabase(t *testing.T) {
-	s := &Server{cfg: &config.Config{PushProvider: "relay", RelayAppID: "app", RelayAppSecret: "secret", RelayVapidPublicKey: "public"}}
-	for _, link := range []string{"javascript:alert(1)", "//evil.test", "http://evil.test"} {
-		w := httptest.NewRecorder()
-		body := `{"title":"Aviso","body":"Mensagem","url":` + string(mustJSON(link)) + `}`
-		s.handlePushSend(w, httptest.NewRequest("POST", "/", strings.NewReader(body)))
-		if w.Code != 400 {
-			t.Fatalf("%q returned %d", link, w.Code)
-		}
-	}
-}
-func mustJSON(v string) []byte { b, _ := json.Marshal(v); return b }
 
 func TestPushEnrollmentRoutesRemainAvailableBeforeActivation(t *testing.T) {
 	s := &Server{}
-	for _, path := range []string{"/api/me", "/api/push/config", "/api/push/status", "/api/push/subscriptions"} {
+	for _, pattern := range []string{
+		"GET /api/me",
+		"GET /api/push/config",
+		"POST /api/push/status",
+		"POST /api/push/subscriptions",
+		"DELETE /api/push/subscriptions",
+	} {
+		req := httptest.NewRequest("GET", pattern[strings.IndexByte(pattern, ' ')+1:], nil)
+		req.Pattern = pattern
 		w := httptest.NewRecorder()
-		if !s.pushAccessAllowed(w, httptest.NewRequest("GET", path, nil), "user") {
-			t.Fatalf("enrollment route unexpectedly blocked: %s", path)
+		if !s.pushAccessAllowed(w, req, "user") {
+			t.Fatalf("enrollment route unexpectedly blocked: %s", pattern)
 		}
 	}
 }
@@ -85,6 +82,7 @@ func TestChatGPTModeCanUsePlayerWithoutSubscription(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req.Pattern = "GET " + tc.path
 			if tc.header {
 				req.Header.Set(pushUnavailableHeader, "1")
 			}

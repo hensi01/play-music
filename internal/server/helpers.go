@@ -4,19 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
-	"reflect"
 	"strconv"
 
 	"golang.org/x/crypto/bcrypt"
 
 	"play-music/internal/auth"
 	"play-music/internal/model"
+	"play-music/internal/phone"
 	"play-music/internal/store"
 )
 
-// bcryptPassword hashes a plain password.
 func bcryptPassword(plain string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
 	if err != nil {
@@ -25,7 +25,6 @@ func bcryptPassword(plain string) (string, error) {
 	return string(hash), nil
 }
 
-// modelUserFromClaims rebuilds a user for token refresh.
 func modelUserFromClaims(c *auth.Claims) model.User {
 	return model.User{
 		ID:       c.UserID,
@@ -36,17 +35,21 @@ func modelUserFromClaims(c *auth.Claims) model.User {
 	}
 }
 
+// formatPhone puts a stored phone (digits only) into display form. Every
+// response that includes a phone goes through here, so one form is served.
+func formatPhone(u *model.User) {
+	if u.Phone != "" {
+		u.Phone = phone.Format(u.Phone)
+	}
+}
+
+// jsonContentType is the one content type for every JSON response, including
+// the queue handler, which writes stored bytes rather than an encoded value.
+const jsonContentType = "application/json; charset=utf-8"
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Type", jsonContentType)
 	w.WriteHeader(status)
-	if v == nil {
-		return
-	}
-	// Nil slices must serialize as [] (never null): the web UI does
-	// `arr.length` on list endpoints (playlists, albums, search, home).
-	if reflect.TypeOf(v).Kind() == reflect.Slice && reflect.ValueOf(v).IsNil() {
-		v = reflect.MakeSlice(reflect.TypeOf(v), 0, 0).Interface()
-	}
 	json.NewEncoder(w).Encode(v)
 }
 
@@ -58,9 +61,17 @@ func writeNoContent(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func parseID(r *http.Request) string {
-	return r.PathValue("id")
+// decodeJSON reads a size-limited JSON body into v; false means the 400 was
+// already written.
+func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxJSONBody)).Decode(v); err != nil {
+		writeError(w, http.StatusBadRequest, "Requisição inválida")
+		return false
+	}
+	return true
 }
+
+const maxJSONBody = 1 << 20
 
 func parseIntQuery(r *http.Request, key string, def int) int {
 	v := r.URL.Query().Get(key)
@@ -74,7 +85,6 @@ func parseIntQuery(r *http.Request, key string, def int) int {
 	return n
 }
 
-// handleStoreError maps store errors to HTTP responses.
 func handleStoreError(w http.ResponseWriter, err error) {
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "Não encontrado")
@@ -82,6 +92,18 @@ func handleStoreError(w http.ResponseWriter, err error) {
 	}
 	if errors.Is(err, store.ErrForbidden) {
 		writeError(w, http.StatusForbidden, "Sem permissão")
+		return
+	}
+	if errors.Is(err, store.ErrOwnedByOther) {
+		writeError(w, http.StatusConflict, "Recurso vinculado a outra conta")
+		return
+	}
+	if errors.Is(err, store.ErrStale) {
+		writeError(w, http.StatusConflict, "Operação não está mais disponível")
+		return
+	}
+	if errors.Is(err, store.ErrNotPending) {
+		writeError(w, http.StatusConflict, "Notificação não está aguardando envio")
 		return
 	}
 	if errors.Is(err, store.ErrDuplicate) {
@@ -92,14 +114,9 @@ func handleStoreError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusInternalServerError, "Erro interno")
 }
 
-// ---------- request context ----------
-
 type ctxKey string
 
-const (
-	ctxUserID  ctxKey = "user_id"
-	ctxIsAdmin ctxKey = "is_admin"
-)
+const ctxUserID ctxKey = "user_id"
 
 func userIDOf(ctx context.Context) string {
 	if v, ok := ctx.Value(ctxUserID).(string); ok {
@@ -107,11 +124,3 @@ func userIDOf(ctx context.Context) string {
 	}
 	return ""
 }
-
-func isAdminOf(ctx context.Context) bool {
-	v, _ := ctx.Value(ctxIsAdmin).(bool)
-	return v
-}
-
-// All authenticated users can access the free catalog. Ownership is checked separately.
-func (s *Server) filterUser(r *http.Request) string { return "" }

@@ -7,36 +7,29 @@ import (
 	"testing"
 )
 
-func TestClientLoginRejectsMixedCredentials(t *testing.T) {
-	s := &Server{}
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(`{"phone":"11999999999","username":"admin","password":"secret"}`))
-	s.handleLogin(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+// The two login routes accept disjoint credentials: the phone route is for
+// clients, the admin route for username/password. Each rejects a payload that
+// mixes them.
+func TestLoginRoutesRejectMixedCredentials(t *testing.T) {
+	cases := []struct {
+		name    string
+		handler http.HandlerFunc
+		body    string
+	}{
+		{"client route with phone and password", (&Server{}).handleLogin, `{"phone":"11999999999","password":"secret"}`},
+		{"client route with phone and username", (&Server{}).handleLogin, `{"phone":"11999999999","username":"admin"}`},
+		{"admin route with phone", (&Server{}).handleAdminLogin, `{"phone":"11999999999"}`},
+		{"admin route without username", (&Server{}).handleAdminLogin, `{"password":"secret"}`},
+		{"admin route without password", (&Server{}).handleAdminLogin, `{"username":"admin"}`},
+		{"admin route empty", (&Server{}).handleAdminLogin, `{}`},
 	}
-}
-
-func TestAdminLoginRejectsClientCredentials(t *testing.T) {
-	s := &Server{}
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/auth/admin/login", strings.NewReader(`{"phone":"11999999999"}`))
-	s.handleAdminLogin(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusBadRequest, rec.Body.String())
-	}
-}
-
-func TestAdminLoginRequiresBothCredentials(t *testing.T) {
-	s := &Server{}
-	for _, payload := range []string{`{}`, `{"username":"admin"}`, `{"password":"secret"}`} {
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/auth/admin/login", strings.NewReader(payload))
-		s.handleAdminLogin(rec, req)
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("payload %s: status = %d, want %d", payload, rec.Code, http.StatusBadRequest)
-		}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			tc.handler(rec, httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(tc.body)))
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+			}
+		})
 	}
 }

@@ -10,7 +10,6 @@ import (
 	"play-music/internal/model"
 )
 
-// SongFileInfo is the minimal info the scanner uses to detect changes.
 type SongFileInfo struct {
 	Size  int64
 	Mtime time.Time
@@ -23,50 +22,52 @@ const songCols = `
 	s.created_at, s.updated_at, s.play_count,
 	FALSE AS liked`
 
-func scanSong(row pgx.Row) (*model.Song, error) {
-	var s model.Song
-	var size int64
-	err := row.Scan(
+// songDest is the destination list for a songCols row. It is the only place
+// the column order is written down; every song query reads through it.
+func songDest(s *model.Song) []any {
+	return []any{
 		&s.ID, &s.Path, &s.Title, &s.Artist, &s.ArtistID, &s.Album, &s.AlbumID,
 		&s.Year, &s.Genre, &s.Duration, &s.Format, &s.Bitrate, &s.SampleRate,
-		&s.TrackNumber, &s.DiscNumber, &size, new(bool), &s.CreatedAt,
+		&s.TrackNumber, &s.DiscNumber, &s.Size, &s.HasCover, &s.CreatedAt,
 		&s.UpdatedAt, &s.PlayCount, &s.Liked,
-	)
-	if err != nil {
+	}
+}
+
+func scanSong(row scanner) (*model.Song, error) {
+	var s model.Song
+	if err := row.Scan(songDest(&s)...); err != nil {
 		return nil, err
 	}
-	s.Size = size
 	return &s, nil
 }
 
+func collectSongs(rows pgx.Rows) ([]model.Song, error) {
+	songs, err := collect(rows, scanSong)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]model.Song, len(songs))
+	for i := range songs {
+		out[i] = *songs[i]
+	}
+	return out, nil
+}
+
 func (s *Store) GetSong(ctx context.Context, id string) (*model.Song, error) {
-	row := s.pool.QueryRow(ctx,
-		"SELECT "+songCols+" FROM songs s WHERE s.id=$1", id)
-	song, err := scanSong(row)
+	song, err := scanSong(s.pool.QueryRow(ctx,
+		"SELECT "+songCols+" FROM songs s WHERE s.id=$1", id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	return song, err
 }
 
-func (s *Store) GetSongByPath(ctx context.Context, path string) (*model.Song, error) {
-	row := s.pool.QueryRow(ctx,
-		"SELECT "+songCols+" FROM songs s WHERE s.path=$1", path)
-	song, err := scanSong(row)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	return song, err
-}
-
-// SongExists reports whether the song id exists (admin photo upload).
 func (s *Store) SongExists(ctx context.Context, id string) (bool, error) {
 	var ok bool
 	err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM songs WHERE id=$1)", id).Scan(&ok)
 	return ok, err
 }
 
-// UpdateSongMeta overrides the title/artist of a song (admin upload form).
 func (s *Store) UpdateSongMeta(ctx context.Context, id, title, artist string) error {
 	return dbTx(ctx, s, func(q queryer) error {
 		var album, oldAlbumID string
@@ -82,26 +83,26 @@ func (s *Store) UpdateSongMeta(ctx context.Context, id, title, artist string) er
 			return err
 		}
 		var artistID, albumID string
-		if err := q.QueryRow(ctx, `INSERT INTO artists(id,name) VALUES($1,$2) ON CONFLICT(lower(name)) DO UPDATE SET name=artists.name RETURNING id`, newID(), artist).Scan(&artistID); err != nil {
+		if err := q.QueryRow(ctx, `INSERT INTO artists(id,name) VALUES($1,$2) ON CONFLICT(lower(name)) DO UPDATE SET name=artists.name RETURNING id`, NewID(), artist).Scan(&artistID); err != nil {
 			return err
 		}
 		if album == "" {
-			album = "Desconhecido"
+			album = UnknownArtist
 		}
-		if err := q.QueryRow(ctx, `INSERT INTO albums(id,name,artist,artist_id,year,created_at,updated_at) VALUES($1,$2,$3,$4,$5,now(),now()) ON CONFLICT(lower(name),lower(artist)) DO UPDATE SET artist_id=EXCLUDED.artist_id,updated_at=now() RETURNING id`, newID(), album, artist, artistID, year).Scan(&albumID); err != nil {
+		var err error
+		if albumID, err = getOrCreateAlbum(ctx, q, album, artist, artistID, year); err != nil {
 			return err
 		}
 		if oldAlbumID != "" && oldAlbumID != albumID {
-			if _, err := q.Exec(ctx, `INSERT INTO artworks(entity_type,entity_id,data,mime,updated_at) SELECT 'album',$2,data,mime,now() FROM artworks WHERE entity_type='album' AND entity_id=$1 ON CONFLICT(entity_type,entity_id) DO NOTHING`, oldAlbumID, albumID); err != nil {
+			if _, err := q.Exec(ctx, `INSERT INTO artworks(entity_type,entity_id,data,updated_at) SELECT '`+EntityAlbum+`',$2,data,now() FROM artworks WHERE entity_type='`+EntityAlbum+`' AND entity_id=$1 ON CONFLICT(entity_type,entity_id) DO NOTHING`, oldAlbumID, albumID); err != nil {
 				return err
 			}
 		}
-		_, err := q.Exec(ctx, `UPDATE songs SET title=COALESCE(NULLIF($2,''),title),artist=$3,artist_id=$4,album_id=$5,updated_at=now() WHERE id=$1`, id, title, artist, artistID, albumID)
+		_, err = q.Exec(ctx, `UPDATE songs SET title=COALESCE(NULLIF($2,''),title),artist=$3,artist_id=$4,album_id=$5,updated_at=now() WHERE id=$1`, id, title, artist, artistID, albumID)
 		return err
 	})
 }
 
-// UpsertSong inserts or updates a song (matched by path) and returns its id.
 func (s *Store) UpsertSong(ctx context.Context, song *model.Song, mtime time.Time, size int64) (string, error) {
 	var id string
 	err := s.pool.QueryRow(ctx, `
@@ -122,33 +123,35 @@ func (s *Store) UpsertSong(ctx context.Context, song *model.Song, mtime time.Tim
 		song.ID, song.Path, song.Title, song.Artist, song.ArtistID, song.Album, song.AlbumID,
 		song.Year, song.Genre, song.Duration, song.Format, song.Bitrate, song.SampleRate,
 		song.TrackNumber, song.DiscNumber, size, mtime, song.HasCover).Scan(&id)
-	if err != nil {
-		return "", err
-	}
-	return id, nil
+	return id, err
 }
 
-// LoadSongPaths returns path -> file info for change detection.
 func (s *Store) LoadSongPaths(ctx context.Context) (map[string]SongFileInfo, error) {
 	rows, err := s.pool.Query(ctx, "SELECT path, size, COALESCE(mtime, updated_at) FROM songs")
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := make(map[string]SongFileInfo)
-	for rows.Next() {
-		var p string
-		var f SongFileInfo
-		if err := rows.Scan(&p, &f.Size, &f.Mtime); err != nil {
-			return nil, err
-		}
-		out[p] = f
+	type entry struct {
+		path string
+		info SongFileInfo
 	}
-	return out, rows.Err()
+	entries, err := collect(rows, func(row scanner) (entry, error) {
+		var e entry
+		err := row.Scan(&e.path, &e.info.Size, &e.info.Mtime)
+		return e, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]SongFileInfo, len(entries))
+	for _, e := range entries {
+		out[e.path] = e.info
+	}
+	return out, nil
 }
 
-// DeleteMissing removes songs whose path is no longer in the bucket, plus
-// orphaned albums, artists and likes.
+// DeleteMissing also drops albums, artists and likes that no song references any
+// more.
 func (s *Store) DeleteMissing(ctx context.Context, keep []string) (int64, error) {
 	var deleted int64
 	err := dbTx(ctx, s, func(q queryer) error {
@@ -168,26 +171,15 @@ func (s *Store) DeleteMissing(ctx context.Context, keep []string) (int64, error)
 		}
 		_, err := q.Exec(ctx, `
 			DELETE FROM user_likes ul
-			WHERE (ul.entity_type='song' AND NOT EXISTS (SELECT 1 FROM songs s WHERE s.id=ul.entity_id))
-			   OR (ul.entity_type='album' AND NOT EXISTS (SELECT 1 FROM albums a WHERE a.id=ul.entity_id))
-			   OR (ul.entity_type='artist' AND NOT EXISTS (SELECT 1 FROM artists a WHERE a.id=ul.entity_id))`)
+			WHERE (ul.entity_type='`+EntitySong+`' AND NOT EXISTS (SELECT 1 FROM songs s WHERE s.id=ul.entity_id))
+			   OR (ul.entity_type='`+EntityAlbum+`' AND NOT EXISTS (SELECT 1 FROM albums a WHERE a.id=ul.entity_id))
+			   OR (ul.entity_type='`+EntityArtist+`' AND NOT EXISTS (SELECT 1 FROM artists a WHERE a.id=ul.entity_id))`)
 		return err
 	})
 	return deleted, err
 }
 
-// RegisterPlay records a play event and increments the play counter.
-// The song must be accessible to the user.
-// RegisterPlay bumps the play count and records history for userID.
-// accessUserID drives the song access check ("" for admins/unspecified).
-func (s *Store) RegisterPlay(ctx context.Context, userID, accessUserID, songID string) error {
-	ok, err := s.CanAccessSong(ctx, accessUserID, songID)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return ErrForbidden
-	}
+func (s *Store) RegisterPlay(ctx context.Context, userID, songID string) error {
 	return dbTx(ctx, s, func(q queryer) error {
 		tag, err := q.Exec(ctx, `
 			UPDATE songs SET play_count=play_count+1, last_played_at=now() WHERE id=$1`, songID)
@@ -197,93 +189,49 @@ func (s *Store) RegisterPlay(ctx context.Context, userID, accessUserID, songID s
 		if tag.RowsAffected() == 0 {
 			return ErrNotFound
 		}
-		// Admin plays (userID "") are recorded without an owner.
-		if userID == "" {
-			_, err = q.Exec(ctx, "INSERT INTO history(song_id, user_id, played_at) VALUES($1, NULL, now())", songID)
-		} else {
-			_, err = q.Exec(ctx, "INSERT INTO history(song_id, user_id, played_at) VALUES($1, $2, now())", songID, userID)
+		if _, err = q.Exec(ctx, "INSERT INTO history(song_id, user_id, played_at) VALUES($1, $2, now())", songID, userID); err != nil {
+			return err
 		}
-		return err
+		return nil
 	})
 }
 
-func (s *Store) SearchSongs(ctx context.Context, userID, q string, limit int) ([]model.Song, error) {
-	like := likePattern(q)
-	base := "SELECT " + songCols + ` FROM songs s
+func (s *Store) SearchSongs(ctx context.Context, q string, limit int) ([]model.Song, error) {
+	rows, err := s.pool.Query(ctx, "SELECT "+songCols+` FROM songs s
 		 WHERE (unaccent(s.title) ILIKE unaccent($1) ESCAPE '\'
 		     OR unaccent(s.artist) ILIKE unaccent($1) ESCAPE '\'
-		     OR unaccent(s.album) ILIKE unaccent($1) ESCAPE '\')`
-	args := []any{like}
-	limPh := "$2"
-	if s.HasAccessFilter(userID) {
-		base += " AND s.id IN " + visibleSongSet("$2")
-		args = append(args, userID)
-		limPh = "$3"
-	}
-	base += " ORDER BY s.title LIMIT " + limPh
-	args = append(args, limit)
-	rows, err := s.pool.Query(ctx, base, args...)
+		     OR unaccent(s.album) ILIKE unaccent($1) ESCAPE '\')
+		 ORDER BY s.title LIMIT $2`, likePattern(q), limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	return collectSongs(rows)
 }
 
-// RecentlyAddedSongs returns the newest songs (home "Adicionadas recentemente").
-func (s *Store) RecentlyAddedSongs(ctx context.Context, userID string, limit int) ([]model.Song, error) {
-	base := "SELECT " + songCols + " FROM songs s"
-	args := []any{}
-	limPh := "$1"
-	if s.HasAccessFilter(userID) {
-		base += " WHERE s.id IN " + visibleSongSet("$1")
-		args = append(args, userID)
-		limPh = "$2"
-	}
-	base += " ORDER BY s.created_at DESC, s.title LIMIT " + limPh
-	args = append(args, limit)
-	rows, err := s.pool.Query(ctx, base, args...)
+func (s *Store) RecentlyAddedSongs(ctx context.Context, limit int) ([]model.Song, error) {
+	rows, err := s.pool.Query(ctx, "SELECT "+songCols+
+		" FROM songs s ORDER BY s.created_at DESC, s.title LIMIT $1", limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	return collectSongs(rows)
 }
 
-// MostPlayedSongs returns the most played songs (home "Mais ouvidas").
-func (s *Store) MostPlayedSongs(ctx context.Context, userID string, limit int) ([]model.Song, error) {
-	base := "SELECT " + songCols + " FROM songs s"
-	args := []any{}
-	limPh := "$1"
-	if s.HasAccessFilter(userID) {
-		base += " WHERE s.id IN " + visibleSongSet("$1")
-		args = append(args, userID)
-		limPh = "$2"
-	}
-	base += " ORDER BY s.play_count DESC, s.updated_at DESC, s.title LIMIT " + limPh
-	args = append(args, limit)
-	rows, err := s.pool.Query(ctx, base, args...)
+func (s *Store) MostPlayedSongs(ctx context.Context, limit int) ([]model.Song, error) {
+	rows, err := s.pool.Query(ctx, "SELECT "+songCols+
+		" FROM songs s ORDER BY s.play_count DESC, s.updated_at DESC, s.title LIMIT $1", limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	return collectSongs(rows)
 }
 
-// AllSongs returns every song (admin listing; userID "" or filtered).
-func (s *Store) AllSongs(ctx context.Context, userID string) ([]model.Song, error) {
-	base := "SELECT " + songCols + " FROM songs s"
-	args := []any{}
-	if s.HasAccessFilter(userID) {
-		base += " WHERE s.id IN " + visibleSongSet("$1")
-		args = append(args, userID)
-	}
-	base += ` ORDER BY s.title COLLATE "C" ASC`
-	rows, err := s.pool.Query(ctx, base, args...)
+func (s *Store) AllSongs(ctx context.Context) ([]model.Song, error) {
+	rows, err := s.pool.Query(ctx, "SELECT "+songCols+
+		` FROM songs s ORDER BY s.title COLLATE "C" ASC`)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	return collectSongs(rows)
 }
 
@@ -294,89 +242,39 @@ func (s *Store) SongsByAlbum(ctx context.Context, albumID string) ([]model.Song,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	return collectSongs(rows)
 }
 
-func (s *Store) TopSongsByArtist(ctx context.Context, userID, artistID string, limit int) ([]model.Song, error) {
-	base := "SELECT " + songCols + ` FROM songs s WHERE s.artist_id=$1`
-	args := []any{artistID}
-	limPh := "$2"
-	if s.HasAccessFilter(userID) {
-		base += " AND s.id IN " + visibleSongSet("$2")
-		args = append(args, userID)
-		limPh = "$3"
-	}
-	base += ` ORDER BY s.play_count DESC, s.updated_at DESC LIMIT ` + limPh
-	args = append(args, limit)
-	rows, err := s.pool.Query(ctx, base, args...)
+func (s *Store) TopSongsByArtist(ctx context.Context, artistID string, limit int) ([]model.Song, error) {
+	rows, err := s.pool.Query(ctx,
+		"SELECT "+songCols+" FROM songs s WHERE s.artist_id=$1"+
+			` ORDER BY s.play_count DESC, s.updated_at DESC LIMIT $2`,
+		artistID, limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	return collectSongs(rows)
 }
 
-// LikedSongs returns the songs the user liked. ownerID scopes the likes;
-// accessUserID drives the song access filter ("" for admins/unspecified).
-func (s *Store) LikedSongs(ctx context.Context, ownerID, accessUserID string, limit int) ([]model.Song, error) {
-	base := "SELECT " + songCols + ` FROM songs s
-		 JOIN user_likes ul ON ul.entity_type='song' AND ul.entity_id=s.id AND ul.user_id=$1`
-	args := []any{ownerID}
-	limPh := "$2"
-	if s.HasAccessFilter(accessUserID) {
-		base += " AND s.id IN " + visibleSongSet("$2")
-		args = append(args, accessUserID)
-		limPh = "$3"
-	}
-	base += " ORDER BY ul.created_at DESC LIMIT " + limPh
-	args = append(args, limit)
-	rows, err := s.pool.Query(ctx, base, args...)
+func (s *Store) LikedSongs(ctx context.Context, userID string, limit int) ([]model.Song, error) {
+	rows, err := s.pool.Query(ctx, "SELECT "+songCols+` FROM songs s
+		 JOIN user_likes ul ON ul.entity_type='`+EntitySong+`' AND ul.entity_id=s.id AND ul.user_id=$1
+		 ORDER BY ul.created_at DESC LIMIT $2`, userID, limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	return collectSongs(rows)
 }
 
-// HistorySongs returns the most recently played songs of ownerID. Access is
-// filtered by accessUserID ("" for admins/unspecified).
-func (s *Store) HistorySongs(ctx context.Context, ownerID, accessUserID string, limit int) ([]model.Song, error) {
-	base := "SELECT " + songCols + ` FROM songs s
+func (s *Store) HistorySongs(ctx context.Context, userID string, limit int) ([]model.Song, error) {
+	rows, err := s.pool.Query(ctx, "SELECT "+songCols+` FROM songs s
 		 JOIN (SELECT song_id, max(played_at) AS last FROM history WHERE user_id=$1
-		       GROUP BY song_id ORDER BY last DESC LIMIT $2) h ON h.song_id = s.id`
-	args := []any{ownerID, limit}
-	if s.HasAccessFilter(accessUserID) {
-		base += " AND s.id IN " + visibleSongSet("$3")
-		args = append(args, accessUserID)
-	}
-	base += " ORDER BY h.last DESC"
-	rows, err := s.pool.Query(ctx, base, args...)
+		       GROUP BY song_id ORDER BY last DESC LIMIT $2) h ON h.song_id = s.id
+		 ORDER BY h.last DESC`, userID, limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	return collectSongs(rows)
-}
-
-func collectSongs(rows pgx.Rows) ([]model.Song, error) {
-	defer rows.Close()
-	out := []model.Song{}
-	for rows.Next() {
-		var s model.Song
-		var size int64
-		if err := rows.Scan(
-			&s.ID, &s.Path, &s.Title, &s.Artist, &s.ArtistID, &s.Album, &s.AlbumID,
-			&s.Year, &s.Genre, &s.Duration, &s.Format, &s.Bitrate, &s.SampleRate,
-			&s.TrackNumber, &s.DiscNumber, &size, new(bool), &s.CreatedAt,
-			&s.UpdatedAt, &s.PlayCount, &s.Liked,
-		); err != nil {
-			return nil, err
-		}
-		s.Size = size
-		out = append(out, s)
-	}
-	return out, rows.Err()
 }
 
 func likePattern(q string) string {

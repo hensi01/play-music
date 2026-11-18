@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-// S3Config holds the MinIO/S3 connection settings, sourced from the
-// ND_MUSICFOLDER URL (preferred) with ND_S3_* and MINIO_* fallbacks.
 type S3Config struct {
 	Endpoint  string
 	AccessKey string
@@ -50,14 +48,31 @@ type Config struct {
 
 	TranscodingCacheSize int64
 	ImageCacheSize       int64
-
-	EnableInsights bool
-
-	MusicFolder string
 }
 
 func getenv(key string) string {
 	return strings.TrimSpace(os.Getenv(key))
+}
+
+// firstSet returns the first non-empty value.
+func firstSet(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// firstBool parses the first environment variable that is set; def is used when
+// none of them is.
+func firstBool(def bool, keys ...string) bool {
+	for _, k := range keys {
+		if getenv(k) != "" {
+			return getenvBool(k, def)
+		}
+	}
+	return def
 }
 
 func getenvBool(key string, def bool) bool {
@@ -130,47 +145,18 @@ func s3FromMusicFolder(musicFolder string) S3Config {
 	return cfg
 }
 
-// Load reads the configuration from the environment.
 func Load() *Config {
 	musicFolder := getenv("ND_MUSICFOLDER")
 
 	s3 := s3FromMusicFolder(musicFolder)
-	if s3.Endpoint == "" {
-		s3.Endpoint = getenv("ND_S3_ENDPOINT")
-	}
-	if s3.Endpoint == "" {
-		s3.Endpoint = getenv("MINIO_ENDPOINT")
-	}
-	if s3.AccessKey == "" {
-		s3.AccessKey = getenv("ND_S3_ACCESSKEY")
-	}
-	if s3.AccessKey == "" {
-		s3.AccessKey = getenv("MINIO_ACCESS_KEY")
-	}
-	if s3.SecretKey == "" {
-		s3.SecretKey = getenv("ND_S3_SECRETKEY")
-	}
-	if s3.SecretKey == "" {
-		s3.SecretKey = getenv("MINIO_SECRET_KEY")
-	}
-	if s3.Bucket == "" {
-		s3.Bucket = getenv("ND_S3_BUCKET")
-	}
-	if s3.Bucket == "" {
-		s3.Bucket = getenv("MINIO_BUCKET")
-	}
-	if s3.Region == "" {
-		s3.Region = getenv("ND_S3_REGION")
-	}
-	if s3.Region == "" {
-		s3.Region = getenv("MINIO_REGION")
-	}
-	if !s3.Secure && getenv("ND_S3_SECURE") != "" {
-		s3.Secure = getenvBool("ND_S3_SECURE", true)
-	}
-	if getenv("MINIO_USE_SSL") != "" {
-		s3.Secure = getenvBool("MINIO_USE_SSL", true)
-	}
+	// Each field falls back in order: ND_MUSICFOLDER, the ND_S3_* name, then
+	// the MINIO_* name that older deployments still set.
+	s3.Endpoint = firstSet(s3.Endpoint, getenv("ND_S3_ENDPOINT"), getenv("MINIO_ENDPOINT"))
+	s3.AccessKey = firstSet(s3.AccessKey, getenv("ND_S3_ACCESSKEY"), getenv("MINIO_ACCESS_KEY"))
+	s3.SecretKey = firstSet(s3.SecretKey, getenv("ND_S3_SECRETKEY"), getenv("MINIO_SECRET_KEY"))
+	s3.Bucket = firstSet(s3.Bucket, getenv("ND_S3_BUCKET"), getenv("MINIO_BUCKET"))
+	s3.Region = firstSet(s3.Region, getenv("ND_S3_REGION"), getenv("MINIO_REGION"))
+	s3.Secure = firstBool(s3.Secure, "ND_S3_SECURE", "MINIO_USE_SSL")
 
 	ttl, _ := time.ParseDuration(getenv("ND_STREAM_URL_TTL"))
 	if ttl < time.Second || ttl > 7*24*time.Hour {
@@ -203,14 +189,9 @@ func Load() *Config {
 
 		TranscodingCacheSize: parseSize(getenv("ND_TRANSCODINGCACHESIZE")),
 		ImageCacheSize:       parseSize(getenv("ND_IMAGECACHESIZE")),
-
-		EnableInsights: getenvBool("ND_ENABLEINSIGHTSCOLLECTOR", false),
-
-		MusicFolder: musicFolder,
 	}
 }
 
-// ListenAddr returns the listen address (host:port).
 func (c *Config) ListenAddr() string {
 	host := c.Address
 	if host == "" {

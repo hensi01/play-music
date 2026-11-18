@@ -31,9 +31,8 @@ func scanUser(row pgx.Row) (*model.User, error) {
 }
 
 // CreateUser creates a user with a pre-hashed password and category grants.
-// The generated created_at is returned from the INSERT so the caller can
-// echo it back in the API response (fixes the zero-value "0001-01-01T00:00:00Z"
-// bug: time.Time zero values are not omitted by omitempty).
+// The row's created_at is read back from the INSERT because omitempty does not
+// omit a zero time.Time, so an unset value would serialize as year 1.
 func (s *Store) CreateUser(ctx context.Context, u *model.User, passwordHash string, categoryIDs []string) error {
 	err := dbTx(ctx, s, func(q queryer) error {
 		if err := q.QueryRow(ctx, `
@@ -51,26 +50,8 @@ func (s *Store) CreateUser(ctx context.Context, u *model.User, passwordHash stri
 	return err
 }
 
-// GetUserByUsername returns the user with hash for username login.
-func (s *Store) GetUserByUsername(ctx context.Context, username string) (*model.User, string, error) {
-	u, err := scanUser(s.pool.QueryRow(ctx,
-		"SELECT "+userCols+" FROM users WHERE username=$1", username))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, "", ErrNotFound
-	}
-	if err != nil {
-		return nil, "", err
-	}
-	var hash string
-	if err := s.pool.QueryRow(ctx,
-		"SELECT password_hash FROM users WHERE id=$1", u.ID).Scan(&hash); err != nil {
-		return nil, "", err
-	}
-	return u, hash, nil
-}
-
 // GetUserByUsernameOrEmail resolves an admin login credential: username or
-// e-mail (both are valid admin identifiers).
+// e-mail (both are valid admin identifiers) plus the password hash to check.
 func (s *Store) GetUserByUsernameOrEmail(ctx context.Context, credential string) (*model.User, string, error) {
 	u, err := scanUser(s.pool.QueryRow(ctx,
 		"SELECT "+userCols+" FROM users WHERE username=$1 OR (email=$1 AND email <> '')", credential))
@@ -88,22 +69,15 @@ func (s *Store) GetUserByUsernameOrEmail(ctx context.Context, credential string)
 	return u, hash, nil
 }
 
-// GetUserByPhone returns the user with hash for phone login.
-func (s *Store) GetUserByPhone(ctx context.Context, phone string) (*model.User, string, error) {
+// GetUserByPhone finds a client account by its normalized phone number. The
+// password hash is not loaded: a phone is a client credential, not a password.
+func (s *Store) GetUserByPhone(ctx context.Context, phone string) (*model.User, error) {
 	u, err := scanUser(s.pool.QueryRow(ctx,
 		"SELECT "+userCols+" FROM users WHERE phone=$1", phone))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, "", ErrNotFound
+		return nil, ErrNotFound
 	}
-	if err != nil {
-		return nil, "", err
-	}
-	var hash string
-	if err := s.pool.QueryRow(ctx,
-		"SELECT password_hash FROM users WHERE id=$1", u.ID).Scan(&hash); err != nil {
-		return nil, "", err
-	}
-	return u, hash, nil
+	return u, err
 }
 
 func (s *Store) GetUser(ctx context.Context, id string) (*model.User, error) {
@@ -114,7 +88,6 @@ func (s *Store) GetUser(ctx context.Context, id string) (*model.User, error) {
 	return u, err
 }
 
-// ListUsers returns all users with their granted categories.
 func (s *Store) ListUsers(ctx context.Context) ([]model.User, error) {
 	rows, err := s.pool.Query(ctx, "SELECT "+userCols+" FROM users ORDER BY is_admin DESC, name")
 	if err != nil {
@@ -213,25 +186,13 @@ func (s *Store) DeleteUser(ctx context.Context, id string) error {
 }
 
 func (s *Store) UserCategories(ctx context.Context, userID string) ([]model.Category, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT c.id, c.name,
-			(SELECT count(*)::int FROM category_songs cs WHERE cs.category_id = c.id) AS song_count
-		FROM user_categories uc
+	rows, err := s.pool.Query(ctx, "SELECT "+categoryCols+` FROM user_categories uc
 		JOIN categories c ON c.id = uc.category_id
 		WHERE uc.user_id=$1 ORDER BY c.name`, userID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []model.Category
-	for rows.Next() {
-		var c model.Category
-		if err := rows.Scan(&c.ID, &c.Name, &c.SongCount); err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
+	return collectCategories(rows)
 }
 
 func setUserCategories(ctx context.Context, q queryer, userID string, categoryIDs []string) error {
@@ -248,14 +209,12 @@ func setUserCategories(ctx context.Context, q queryer, userID string, categoryID
 	return nil
 }
 
-// HasAdmin reports whether an admin user exists.
 func (s *Store) HasAdmin(ctx context.Context) (bool, error) {
 	var ok bool
 	err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE is_admin)").Scan(&ok)
 	return ok, err
 }
 
-// GetAdminID returns the id of the (first) admin user.
 func (s *Store) GetAdminID(ctx context.Context) (string, error) {
 	var id string
 	err := s.pool.QueryRow(ctx, "SELECT id FROM users WHERE is_admin ORDER BY created_at LIMIT 1").Scan(&id)

@@ -363,6 +363,12 @@
           },
           "libraryName": {
             "type": "string"
+          },
+          "audioExtensions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

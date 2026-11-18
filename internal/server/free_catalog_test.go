@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
@@ -18,20 +17,13 @@ import (
 )
 
 func TestFreeCatalogAndRecommendationsIntegration(t *testing.T) {
-	url := os.Getenv("PM_TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("isolated database not configured")
-	}
+	url := testDisposableDB(t)
 	ctx := context.Background()
 	pool, err := db.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	var dbname string
-	if err = pool.QueryRow(ctx, "SELECT current_database()").Scan(&dbname); err != nil || !strings.HasPrefix(dbname, "codex_free_") {
-		t.Fatal("test requires an isolated codex_free_ database")
-	}
 	st := store.New(pool)
 	cfg := &config.Config{AdminUsername: "isolated-admin", AdminPassword: "isolated-password"}
 	authsvc, err := auth.New(ctx, cfg, st)
@@ -158,7 +150,7 @@ func TestFreeCatalogAndRecommendationsIntegration(t *testing.T) {
 	if _, err = pool.Exec(ctx, "UPDATE songs SET album='Demo Album',album_id=$2 WHERE id=$1", song1, oldAlbum); err != nil {
 		t.Fatal(err)
 	}
-	if err = st.UpsertArt(ctx, "album", oldAlbum, []byte("original-cover"), "image/jpeg"); err != nil {
+	if err = st.UpsertArt(ctx, store.EntityAlbum, oldAlbum, []byte("original-cover")); err != nil {
 		t.Fatal(err)
 	}
 	if rec := call("PUT", "/api/me/liked/albums/"+oldAlbum, tokenA, ""); rec.Code != 204 {
@@ -223,7 +215,7 @@ func TestFreeCatalogAndRecommendationsIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = st.UpsertArt(ctx, "album", otherAlbum, []byte("existing-cover"), "image/jpeg"); err != nil {
+	if err = st.UpsertArt(ctx, store.EntityAlbum, otherAlbum, []byte("existing-cover")); err != nil {
 		t.Fatal(err)
 	}
 	if err = st.UpdateSongMeta(ctx, song1, "", "Other Band"); err != nil {

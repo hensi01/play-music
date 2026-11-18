@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
@@ -19,10 +18,7 @@ import (
 )
 
 func TestAPIKeyLifecyclePostgres(t *testing.T) {
-	databaseURL := os.Getenv("TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("TEST_DATABASE_URL not configured for disposable database")
-	}
+	databaseURL := testDisposableDB(t)
 	ctx := context.Background()
 	pool, err := db.Connect(ctx, databaseURL)
 	if err != nil {
@@ -44,17 +40,17 @@ func TestAPIKeyLifecyclePostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &Server{store: st, auth: authService}
-	adminToken, err := authService.Sign(ctx, model.User{ID: id, IsAdmin: true})
+	adminToken, err := authService.Sign(model.User{ID: id, IsAdmin: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, middleware := range []func(http.Handler) http.Handler{s.requireAuth, s.requireAdmin} {
+	for _, middleware := range []func(http.HandlerFunc) http.HandlerFunc{s.requireAuth, s.requireAdmin} {
 		called := false
-		handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { called = true; w.WriteHeader(http.StatusNoContent) }))
+		handler := middleware(func(w http.ResponseWriter, _ *http.Request) { called = true; w.WriteHeader(http.StatusNoContent) })
 		request := httptest.NewRequest("GET", "/api/songs", nil)
 		request.Header.Set(auth.HeaderName, "Bearer "+adminToken)
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, request)
+		handler(response, request)
 		if response.Code != http.StatusNoContent || !called {
 			t.Fatalf("admin sem notificações: %d", response.Code)
 		}
@@ -64,14 +60,14 @@ func TestAPIKeyLifecyclePostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _, _ = pool.Exec(context.Background(), "DELETE FROM users WHERE id=$1", clientID) }()
-	clientToken, err := authService.Sign(ctx, model.User{ID: clientID})
+	clientToken, err := authService.Sign(model.User{ID: clientID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	clientRequest := httptest.NewRequest("GET", "/api/songs", nil)
 	clientRequest.Header.Set(auth.HeaderName, "Bearer "+clientToken)
 	clientResponse := httptest.NewRecorder()
-	s.requireAuth(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("cliente sem notificações passou") })).ServeHTTP(clientResponse, clientRequest)
+	s.requireAuth(func(http.ResponseWriter, *http.Request) { t.Error("cliente sem notificações passou") })(clientResponse, clientRequest)
 	if clientResponse.Code != http.StatusPreconditionRequired {
 		t.Fatalf("cliente sem notificações: %d", clientResponse.Code)
 	}
@@ -95,30 +91,30 @@ func TestAPIKeyLifecyclePostgres(t *testing.T) {
 		t.Fatal("secret returned in listing")
 	}
 	called := false
-	h := s.requireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := s.requireAdmin(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		if userIDOf(r.Context()) != id {
 			t.Error("wrong owner")
 		}
 		w.WriteHeader(204)
-	}))
+	})
 	upload := func() int {
 		called = false
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/api/admin/songs", nil)
 		r.Header.Set("X-API-Key", key.Key)
-		h.ServeHTTP(w, r)
+		h(w, r)
 		return w.Code
 	}
 	if code := upload(); code != 204 || !called {
 		t.Fatalf("valid key: %d", code)
 	}
 	// A key that is valid for admin routes must not authenticate user routes.
-	userRoute := s.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { t.Error("key reached user handler") }))
+	userRoute := s.requireAuth(func(http.ResponseWriter, *http.Request) { t.Error("key reached user handler") })
 	other := httptest.NewRequest("GET", "/api/me", nil)
 	other.Header.Set("X-API-Key", key.Key)
 	otherResult := httptest.NewRecorder()
-	userRoute.ServeHTTP(otherResult, other)
+	userRoute(otherResult, other)
 	if otherResult.Code != 401 {
 		t.Fatalf("key on user route: %d", otherResult.Code)
 	}

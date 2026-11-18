@@ -13,11 +13,14 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5"
+	"play-music/internal/model"
 	"play-music/internal/store"
 )
 
-var pushHTTP = &http.Client{Timeout: 12 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+var pushHTTP = &http.Client{
+	Timeout:       12 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
 
 const pushUnavailableHeader = "X-Mi-Ritmo-Push-Unavailable"
 
@@ -25,347 +28,343 @@ func (s *Server) pushEnabled() bool {
 	c := s.cfg
 	return c.PushProvider == "relay" && c.RelayAppID != "" && c.RelayAppSecret != "" && c.RelayVapidPublicKey != ""
 }
-func (s *Server) relay(ctx context.Context, method, path, auth string, body any, result any) (int, error) {
+
+// relay calls the push relay. auth is the management token for authenticated
+// calls; empty means the app secret authenticates the request.
+func (s *Server) relay(ctx context.Context, method, path, auth string, body, result any) (int, error) {
 	base := s.cfg.RelayBaseURL
 	if base == "" {
 		base = "https://vapid.party"
 	}
-	u, e := url.Parse(base)
-	if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+	u, err := url.Parse(base)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return 0, errors.New("invalid relay URL")
 	}
-	b, e := json.Marshal(body)
-	if e != nil {
-		return 0, e
+	b, err := json.Marshal(body)
+	if err != nil {
+		return 0, err
 	}
-	req, e := http.NewRequestWithContext(ctx, method, strings.TrimRight(base, "/")+path, bytes.NewReader(b))
-	if e != nil {
-		return 0, e
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(base, "/")+path, bytes.NewReader(b))
+	if err != nil {
+		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if auth != "" {
 		req.Header.Set("Authorization", "Bearer "+auth)
 	} else {
-		req.Header.Set("X-API-Key", s.cfg.RelayAppSecret)
+		req.Header.Set(apiKeyHeader, s.cfg.RelayAppSecret)
 	}
-	resp, e := pushHTTP.Do(req)
-	if e != nil {
-		return 0, e
+	resp, err := pushHTTP.Do(req)
+	if err != nil {
+		return 0, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return resp.StatusCode, errors.New("relay rejected request")
 	}
 	if result != nil {
-		e = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(result)
+		err = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(result)
 	}
-	return resp.StatusCode, e
+	return resp.StatusCode, err
 }
 
-// Account-level protection complements the device permission check in the UI.
+func (s *Server) relayPath(suffix string) string {
+	return "/api/apps/" + url.PathEscape(s.cfg.RelayAppID) + suffix
+}
+
+type relayTicket struct {
+	Data struct {
+		Token string `json:"token"`
+	} `json:"data"`
+}
+
+type relaySubscription struct {
+	Data struct {
+		ID         string `json:"subscriptionId"`
+		Management struct {
+			Token string `json:"token"`
+		} `json:"management"`
+	} `json:"data"`
+}
+
+type relaySendResult struct {
+	Data struct {
+		Queued int `json:"queued"`
+	} `json:"data"`
+}
+
+// pushMessage is one notification. validate() is the single place the limits
+// are enforced, for campaigns and immediate sends alike.
+type pushMessage struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	URL   string `json:"url"`
+}
+
+func (m *pushMessage) validate() error {
+	m.Title = strings.TrimSpace(m.Title)
+	m.Body = strings.TrimSpace(m.Body)
+	m.URL = strings.TrimSpace(m.URL)
+	if m.Title == "" || m.Body == "" ||
+		utf8.RuneCountInString(m.Title) > 120 || utf8.RuneCountInString(m.Body) > 500 || len(m.URL) > 1000 {
+		return errors.New("Preencha título e mensagem válidos")
+	}
+	if m.URL == "" {
+		m.URL = "/"
+	}
+	u, err := url.Parse(m.URL)
+	if err != nil ||
+		(u.IsAbs() && (u.Scheme != "https" || u.Host == "" || u.User != nil)) ||
+		(!u.IsAbs() && (!strings.HasPrefix(m.URL, "/") || strings.HasPrefix(m.URL, "//"))) {
+		return errors.New("Link deve ser HTTPS ou um caminho do aplicativo")
+	}
+	return nil
+}
+
+// payload is the object the relay hands to the service worker. The relay
+// rejects payloads above 3000 bytes, so the bound is checked before sending.
+// The service worker supplies its own icon and badge, so the payload carries
+// only the fields it reads.
+func (m pushMessage) payload() (map[string]any, error) {
+	p := map[string]any{"title": m.Title, "body": m.Body, "url": m.URL}
+	encoded, _ := json.Marshal(p)
+	if len(encoded) > 3000 {
+		return nil, errors.New("Mensagem e link excedem o limite de tamanho")
+	}
+	return p, nil
+}
+
+// relayFailure reports how far a batched send got before the relay failed, so
+// the caller can tell "nothing sent" from "partially sent".
+type relayFailure struct {
+	StatusCode int
+}
+
+func (e *relayFailure) Error() string {
+	return fmt.Sprintf("relay send failed with status %d", e.StatusCode)
+}
+
+// pushGateExempt reports whether a matched route may be reached before the user
+// has an active push subscription. Enrolling and reading the account are what
+// make activation possible, so they cannot require it; every other route in the
+// table is gated. The pattern comes from the mux, so a new /api/push/ route is
+// exempt without touching this middleware.
+func pushGateExempt(pattern string) bool {
+	path := pattern
+	if i := strings.IndexByte(pattern, ' '); i >= 0 {
+		path = pattern[i+1:]
+	}
+	return path == "/api/me" || strings.HasPrefix(path, "/api/push/")
+}
+
 func (s *Server) pushAccessAllowed(w http.ResponseWriter, r *http.Request, userID string) bool {
-	if r.URL.Path == "/api/me" || strings.HasPrefix(r.URL.Path, "/api/push/") {
+	if pushGateExempt(r.Pattern) {
 		return true
 	}
-	// The ChatGPT link mode bypasses the push prerequisite for this session;
-	// authentication is still required by the surrounding middleware.
+	// The ChatGPT link mode bypasses the push prerequisite; authentication is
+	// still enforced by the surrounding middleware.
 	if r.Header.Get(pushUnavailableHeader) == "1" ||
 		(r.URL.Query().Get("pushUnavailable") == "1" &&
 			(strings.HasPrefix(r.URL.Path, "/api/stream/") || strings.HasPrefix(r.URL.Path, "/api/artwork/"))) {
 		return true
 	}
-	var enabled bool
-	err := s.store.Pool().QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM push_subscriptions WHERE user_id=$1 AND active)", userID).Scan(&enabled)
+	active, err := s.store.PushAccessActive(r.Context(), userID)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "Não foi possível verificar notificações")
 		return false
 	}
-	if !enabled {
+	if !active {
 		writeError(w, http.StatusPreconditionRequired, "Ative as notificações para usar o aplicativo")
 		return false
 	}
 	return true
 }
+
 func (s *Server) handlePushStatus(w http.ResponseWriter, r *http.Request) {
 	var v struct {
 		Endpoint string `json:"endpoint"`
 	}
-	if !pushRead(w, r, &v) {
+	if !decodeJSON(w, r, &v) {
 		return
 	}
-	var enabled bool
-	err := s.store.Pool().QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM push_subscriptions WHERE endpoint=$1 AND user_id=$2 AND active)", v.Endpoint, userIDOf(r.Context())).Scan(&enabled)
+	active, err := s.store.PushEndpointActive(r.Context(), v.Endpoint, userIDOf(r.Context()))
 	if err != nil {
-		writeError(w, 503, "Não foi possível verificar notificações")
+		writeError(w, http.StatusServiceUnavailable, "Não foi possível verificar notificações")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, 200, map[string]bool{"active": enabled})
+	writeJSON(w, http.StatusOK, map[string]bool{"active": active})
 }
 
 func (s *Server) handlePushConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, 200, map[string]any{"enabled": s.pushEnabled(), "publicKey": s.cfg.RelayVapidPublicKey})
-}
-func pushRead(w http.ResponseWriter, r *http.Request, v any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, 16384)
-	if json.NewDecoder(r.Body).Decode(v) != nil {
-		writeError(w, 400, "Dados inválidos")
-		return false
-	}
-	return true
+	writeJSON(w, http.StatusOK, map[string]any{
+		"enabled":   s.pushEnabled(),
+		"publicKey": s.cfg.RelayVapidPublicKey,
+	})
 }
 
 type pushSubscription struct {
-	Endpoint       string `json:"endpoint"`
-	ExpirationTime *int64 `json:"expirationTime"`
-	Keys           struct {
+	Endpoint string `json:"endpoint"`
+	Keys     struct {
 		P256dh string `json:"p256dh"`
 		Auth   string `json:"auth"`
 	} `json:"keys"`
 }
 
+func (sub pushSubscription) marshal() []byte {
+	b, _ := json.Marshal(sub)
+	return b
+}
+
 func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 	if !s.pushEnabled() {
-		writeError(w, 503, "Notificações indisponíveis")
+		writeError(w, http.StatusServiceUnavailable, "Notificações indisponíveis")
 		return
 	}
 	var sub pushSubscription
-	if !pushRead(w, r, &sub) {
+	if !decodeJSON(w, r, &sub) {
 		return
 	}
-	if len(sub.Endpoint) > 4096 || !strings.HasPrefix(sub.Endpoint, "https://") || sub.Keys.P256dh == "" || sub.Keys.Auth == "" {
-		writeError(w, 400, "Inscrição inválida")
+	if len(sub.Endpoint) > 4096 || !strings.HasPrefix(sub.Endpoint, "https://") ||
+		sub.Keys.P256dh == "" || sub.Keys.Auth == "" {
+		writeError(w, http.StatusBadRequest, "Inscrição inválida")
 		return
 	}
-	uid := userIDOf(r.Context())
-	tx, err := s.store.Pool().Begin(r.Context())
-	if err != nil {
-		writeError(w, 500, "Nao foi possivel iniciar inscricao")
-		return
-	}
-	defer tx.Rollback(context.Background())
-	if _, err = tx.Exec(r.Context(), "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", sub.Endpoint); err != nil {
-		writeError(w, 500, "Nao foi possivel bloquear inscricao")
-		return
-	}
-	var owner *string
-	err = tx.QueryRow(r.Context(), "SELECT user_id FROM push_subscriptions WHERE endpoint=$1 FOR UPDATE", sub.Endpoint).Scan(&owner)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, 500, "Não foi possível verificar a inscrição")
-		return
-	}
-	if err == nil && owner != nil && *owner != uid {
-		writeError(w, 409, "Este dispositivo está vinculado a outra conta; desative as notificações nessa conta primeiro")
-		return
-	}
-	// Persist an inactive recovery record before contacting the relay. If the
-	// response is lost, cleanup can recover a token from the stored subscription.
+	ctx := r.Context()
+	uid := userIDOf(ctx)
 	operationID := store.NewID()
-	_, err = tx.Exec(r.Context(), `INSERT INTO push_subscriptions(endpoint,user_id,relay_id,management_token,subscription_data,active,operation_id) VALUES($1,$2,$3,'',$4,false,$5) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, subscription_data=excluded.subscription_data, active=false, operation_id=excluded.operation_id, updated_at=now() WHERE push_subscriptions.user_id=excluded.user_id OR push_subscriptions.user_id IS NULL`, sub.Endpoint, uid, "pending-"+store.NewID(), mustMarshalSubscription(sub), operationID)
+
+	// An inactive row is persisted before the relay is contacted so a lost
+	// response can still be recovered by the cleanup loop.
+	if err := s.store.ReservePushEnrollment(ctx, sub.Endpoint, uid, operationID, sub.marshal()); err != nil {
+		handleStoreError(w, err)
+		return
+	}
+
+	credentials, status, err := s.enroll(ctx, sub)
 	if err != nil {
-		writeError(w, 500, "Não foi possível preparar a inscrição")
+		s.pushRelayError(w, "subscription", status, err)
 		return
 	}
-	if err = tx.Commit(r.Context()); err != nil {
-		writeError(w, 500, "Não foi possível preparar a inscrição")
+	if err := s.store.ActivatePushSubscription(ctx, sub.Endpoint, uid, operationID,
+		credentials.id, credentials.token, sub.marshal()); err != nil {
+		handleStoreError(w, err)
 		return
 	}
-	tx, err = s.store.Pool().Begin(r.Context())
+	writeJSON(w, http.StatusOK, map[string]bool{"enabled": true})
+}
+
+// enroll performs the relay's ticket-then-subscription handshake. The returned
+// management token is what later lets us revoke or refresh the subscription.
+func (s *Server) enroll(ctx context.Context, sub pushSubscription) (managementCredentials, int, error) {
+	missing := errors.New("relay returned no credentials")
+	var ticket relayTicket
+	status, err := s.relay(ctx, http.MethodPost, s.relayPath("/enrollment-ticket"), "", sub, &ticket)
 	if err != nil {
-		writeError(w, 500, "Não foi possível iniciar a inscrição")
-		return
-	}
-	defer tx.Rollback(context.Background())
-	if _, err = tx.Exec(r.Context(), "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", sub.Endpoint); err != nil {
-		writeError(w, 500, "Não foi possível iniciar a inscrição")
-		return
-	}
-	var currentOwner *string
-	var currentOperation string
-	if err = tx.QueryRow(r.Context(), "SELECT user_id,operation_id FROM push_subscriptions WHERE endpoint=$1 FOR UPDATE", sub.Endpoint).Scan(&currentOwner, &currentOperation); err != nil || currentOwner == nil || *currentOwner != uid || currentOperation != operationID {
-		writeError(w, 409, "Inscrição não está mais disponível")
-		return
-	}
-	path := "/api/apps/" + url.PathEscape(s.cfg.RelayAppID)
-	var ticket struct {
-		Data struct {
-			Token string `json:"token"`
-		} `json:"data"`
-	}
-	status, err := s.relay(r.Context(), "POST", path+"/enrollment-ticket", "", sub, &ticket)
-	if err != nil {
-		s.pushRelayError(w, "enrollment_ticket", status, "request_failed")
-		return
+		return managementCredentials{}, status, err
 	}
 	if ticket.Data.Token == "" {
-		s.pushRelayError(w, "enrollment_ticket", status, "ticket_missing")
-		return
+		return managementCredentials{}, status, missing
 	}
-	var result struct {
-		Data struct {
-			ID         string `json:"subscriptionId"`
-			Management struct {
-				Token string `json:"token"`
-			} `json:"management"`
-		} `json:"data"`
-	}
-	status, err = s.relay(r.Context(), "POST", path+"/subscriptions", ticket.Data.Token, sub, &result)
-	if err != nil {
-		s.pushRelayError(w, "subscription", status, "request_failed")
-		return
-	}
-	if result.Data.ID == "" || result.Data.Management.Token == "" {
-		s.pushRelayError(w, "subscription", status, "subscription_credentials_missing")
-		return
-	}
-	tag, err := tx.Exec(r.Context(), `INSERT INTO push_subscriptions(endpoint,user_id,relay_id,management_token,subscription_data,active) VALUES($1,$2,$3,$4,$5,true) ON CONFLICT(endpoint) DO UPDATE SET relay_id=excluded.relay_id, management_token=excluded.management_token, subscription_data=excluded.subscription_data, active=true, updated_at=now() WHERE push_subscriptions.user_id=excluded.user_id OR push_subscriptions.user_id IS NULL`, sub.Endpoint, uid, result.Data.ID, result.Data.Management.Token, mustMarshalSubscription(sub))
-	if err != nil || tag.RowsAffected() != 1 {
-		writeError(w, 500, "Não foi possível salvar a inscrição")
-		return
-	}
-	if err = tx.Commit(r.Context()); err != nil {
-		writeError(w, 500, "Não foi possível salvar a inscrição")
-		return
-	}
-	writeJSON(w, 200, map[string]bool{"enabled": true})
-}
-func mustMarshalSubscription(sub pushSubscription) []byte { b, _ := json.Marshal(sub); return b }
 
-func (s *Server) pushRelayError(w http.ResponseWriter, stage string, status int, reason string) {
-	if s.log != nil {
-		s.log.Warn("push relay request failed", "stage", stage, "upstream_status", status, "reason", reason)
+	var created relaySubscription
+	status, err = s.relay(ctx, http.MethodPost, s.relayPath("/subscriptions"), ticket.Data.Token, sub, &created)
+	if err != nil {
+		return managementCredentials{}, status, err
 	}
-	if status == 429 {
-		writeError(w, 429, "Limite de inscrições ou de envios atingido; tente novamente mais tarde")
+	if created.Data.ID == "" || created.Data.Management.Token == "" {
+		return managementCredentials{}, status, missing
+	}
+	return managementCredentials{id: created.Data.ID, token: created.Data.Management.Token}, status, nil
+}
+
+type managementCredentials struct {
+	id    string
+	token string
+}
+
+func (s *Server) pushRelayError(w http.ResponseWriter, stage string, status int, cause error) {
+	s.log.Warn("push relay request failed", "stage", stage, "upstream_status", status, "err", cause)
+	if status == http.StatusTooManyRequests {
+		writeError(w, http.StatusTooManyRequests, "Limite de inscrições ou de envios atingido; tente novamente mais tarde")
 		return
 	}
-	writeError(w, 502, "Serviço de notificações indisponível")
+	writeError(w, http.StatusBadGateway, "Serviço de notificações indisponível")
 }
+
 func (s *Server) handlePushUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	var v struct {
 		Endpoint string `json:"endpoint"`
 	}
-	if !pushRead(w, r, &v) {
+	if !decodeJSON(w, r, &v) {
 		return
 	}
-	tx, err := s.store.Pool().Begin(r.Context())
-	if err != nil {
-		writeError(w, 500, "Não foi possível cancelar a inscrição")
+	// The device stays locally inactive; the scheduler revokes it remotely,
+	// even after a restart.
+	if err := s.store.DeactivatePushSubscription(r.Context(), v.Endpoint, userIDOf(r.Context())); err != nil {
+		handleStoreError(w, err)
 		return
 	}
-	defer tx.Rollback(context.Background())
-	if _, err = tx.Exec(r.Context(), "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", v.Endpoint); err != nil {
-		writeError(w, 500, "Não foi possível cancelar a inscrição")
-		return
-	}
-	var token string
-	var owner *string
-	err = tx.QueryRow(r.Context(), "SELECT user_id,management_token FROM push_subscriptions WHERE endpoint=$1", v.Endpoint).Scan(&owner, &token)
-	if errors.Is(err, pgx.ErrNoRows) {
-		writeNoContent(w)
-		return
-	}
-	if err == nil && (owner == nil || *owner != userIDOf(r.Context())) {
-		writeError(w, 403, "Inscrição vinculada a outra conta")
-		return
-	}
-	if err != nil {
-		writeError(w, 500, "Não foi possível localizar a inscrição")
-		return
-	}
-	_, err = tx.Exec(r.Context(), "UPDATE push_subscriptions SET active=false, operation_id=md5(random()::text || clock_timestamp()::text), updated_at=now() WHERE endpoint=$1 AND user_id=$2", v.Endpoint, userIDOf(r.Context()))
-	if err != nil {
-		writeError(w, 500, "Não foi possível cancelar a inscrição")
-		return
-	}
-	if err = tx.Commit(r.Context()); err != nil {
-		writeError(w, 500, "Não foi possível confirmar o cancelamento")
-		return
-	}
-	// The scheduler removes inactive subscriptions from the relay, even after a restart.
 	writeNoContent(w)
 }
 
-// removeUserPushSubscriptions revokes remote subscriptions before an account is deleted.
-func (s *Server) removeUserPushSubscriptions(ctx context.Context, userID string) error {
-	_, err := s.store.Pool().Exec(ctx, "UPDATE push_subscriptions SET active=false, operation_id=md5(random()::text || clock_timestamp()::text), updated_at=now() WHERE user_id=$1", userID)
-	return err
+func (s *Server) handleCreateCampaign(w http.ResponseWriter, r *http.Request) {
+	if !s.pushEnabled() {
+		writeError(w, http.StatusServiceUnavailable, "Notificações indisponíveis")
+		return
+	}
+	var req struct {
+		pushMessage
+		ScheduledAt time.Time `json:"scheduledAt"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	msg := req.pushMessage
+	if err := msg.validate(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if _, err := msg.payload(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.ScheduledAt.IsZero() {
+		req.ScheduledAt = time.Now().UTC()
+	}
+	if req.ScheduledAt.Before(time.Now().Add(-time.Minute)) {
+		writeError(w, http.StatusBadRequest, "O horário não pode estar no passado")
+		return
+	}
+	campaign := model.PushCampaign{
+		ID:          store.NewID(),
+		Title:       msg.Title,
+		Body:        msg.Body,
+		URL:         msg.URL,
+		ScheduledAt: req.ScheduledAt,
+		Status:      store.CampaignPending,
+	}
+	if err := s.store.CreatePushCampaign(r.Context(), &campaign, userIDOf(r.Context())); err != nil {
+		writeError(w, http.StatusInternalServerError, "Não foi possível agendar")
+		return
+	}
+	writeJSON(w, http.StatusCreated, campaign)
 }
 
-func (s *Server) handlePushSend(w http.ResponseWriter, r *http.Request) {
-	if !s.pushEnabled() {
-		writeError(w, 503, "Notificações indisponíveis")
-		return
-	}
-	var m struct {
-		Title string `json:"title"`
-		Body  string `json:"body"`
-		URL   string `json:"url"`
-	}
-	if !pushRead(w, r, &m) {
-		return
-	}
-	m.Title = strings.TrimSpace(m.Title)
-	m.Body = strings.TrimSpace(m.Body)
-	m.URL = strings.TrimSpace(m.URL)
-	if m.Title == "" || m.Body == "" || utf8.RuneCountInString(m.Title) > 120 || utf8.RuneCountInString(m.Body) > 500 || len(m.URL) > 1000 {
-		writeError(w, 400, "Preencha título e mensagem válidos")
-		return
-	}
-	if m.URL != "" {
-		u, e := url.Parse(m.URL)
-		if e != nil || (u.IsAbs() && (u.Scheme != "https" || u.Host == "" || u.User != nil)) || (!u.IsAbs() && (!strings.HasPrefix(m.URL, "/") || strings.HasPrefix(m.URL, "//"))) {
-			writeError(w, 400, "Link deve ser HTTPS ou um caminho do aplicativo")
-			return
-		}
-	}
-	rows, err := s.store.Pool().Query(r.Context(), "SELECT relay_id FROM push_subscriptions WHERE user_id IS NOT NULL AND active ORDER BY relay_id")
+func (s *Server) handleListCampaigns(w http.ResponseWriter, r *http.Request) {
+	campaigns, err := s.store.ListPushCampaigns(r.Context())
 	if err != nil {
-		writeError(w, 500, "Não foi possível listar dispositivos")
+		writeError(w, http.StatusInternalServerError, "Não foi possível consultar notificações")
 		return
 	}
-	var ids []string
-	for rows.Next() {
-		var id string
-		if rows.Scan(&id) != nil {
-			rows.Close()
-			writeError(w, 500, "Não foi possível listar dispositivos")
-			return
-		}
-		ids = append(ids, id)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		writeError(w, 500, "Não foi possível listar dispositivos")
+	writeJSON(w, http.StatusOK, campaigns)
+}
+
+func (s *Server) handleCancelCampaign(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.CancelPushCampaign(r.Context(), r.PathValue("id")); err != nil {
+		handleStoreError(w, err)
 		return
 	}
-	queued := 0
-	if m.URL == "" {
-		m.URL = "/"
-	}
-	payload := map[string]any{"title": m.Title, "body": m.Body, "url": m.URL, "icon": "/icon-192.png"}
-	if encoded, _ := json.Marshal(payload); len(encoded) > 3000 {
-		writeError(w, 400, "Mensagem e link excedem o limite de tamanho")
-		return
-	}
-	for i := 0; i < len(ids); i += 100 {
-		end := i + 100
-		if end > len(ids) {
-			end = len(ids)
-		}
-		var result struct {
-			Data struct {
-				Queued int `json:"queued"`
-			} `json:"data"`
-		}
-		status, e := s.relay(r.Context(), "POST", "/api/send", "", map[string]any{"payload": payload, "subscriptionIds": ids[i:end]}, &result)
-		if e != nil {
-			writeJSON(w, 502, map[string]any{"error": fmt.Sprintf("%d dispositivos enfileirados; resultado incerto para %d restantes. Confira antes de reenviar", queued, len(ids)-i), "queued": queued, "remaining": len(ids) - i, "relayStatus": status})
-			return
-		}
-		queued += result.Data.Queued
-	}
-	writeJSON(w, 200, map[string]int{"queued": queued, "selected": len(ids)})
+	writeNoContent(w)
 }

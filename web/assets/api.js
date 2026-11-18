@@ -1,10 +1,16 @@
-// API client: fetch wrapper with JWT auth, token refresh and all endpoints.
-
 const AUTH_HEADER = 'X-ND-Authorization'
 const PUSH_UNAVAILABLE_HEADER = 'X-Mi-Ritmo-Push-Unavailable'
 export const TOKEN_KEY = 'pm_token'
 
-function chatGPTNotificationBypass() {
+// UI events other modules dispatch on window. They live here so a typo cannot
+// silently stop a listener from firing.
+export const RERENDER_EVENT = 'pm:rerender'
+export const UNAUTHORIZED_EVENT = 'pm:unauthorized'
+export const PLAYLISTS_CHANGED_EVENT = 'pm:playlists-changed'
+
+// The ChatGPT/Codex preview browser cannot grant notification permission, so the
+// server lets it skip the push gate.
+export function isChatGPTBrowser() {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false
   return new URLSearchParams(window.location?.search || '').get('chatgpt') === '1' ||
     /ChatGPT|Codex Browser/i.test(navigator.userAgent || '')
@@ -19,17 +25,57 @@ export function setToken(token) {
   else localStorage.removeItem(TOKEN_KEY)
 }
 
+// decodeBase64URL decodes the URL-safe base64 alphabet JWTs and VAPID keys use.
+export function decodeBase64URL(value) {
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=')
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0))
+}
+
+// jwtClaims decodes a JWT payload without verifying it: the server verifies
+// every request, this is only for local UI decisions.
+function jwtClaims(token) {
+  const payload = (token || '').split('.')[1]
+  if (!payload) return null
+  try {
+    return JSON.parse(new TextDecoder().decode(decodeBase64URL(payload)))
+  } catch {
+    return null
+  }
+}
+
+// tokenUserId is the `uid` claim of the current token, or null.
+export function tokenUserId() {
+  return jwtClaims(getToken())?.uid || null
+}
+
+// tokenExpiry is the `exp` claim in milliseconds, or null when absent.
+export function tokenExpiry(token) {
+  const exp = jwtClaims(token)?.exp
+  return typeof exp === 'number' ? exp * 1000 : null
+}
+
 // Resolves a path against the configured API base URL (see window.__APP_CONFIG__).
 function resolve(path) {
   const base = (readAppConfig().baseURL || '').replace(/\/+$/, '')
   return base + path
 }
 
-export async function apiFetch(path, options = {}) {
-  const token = options.anonymous ? null : getToken()
+// errorMessage is the server's `error` field, or fallback when the body is not
+// JSON. Every failed response reports through it.
+async function errorMessage(res, fallback) {
+  try {
+    const body = await res.json()
+    if (body?.error) return body.error
+  } catch {
+    /* not json */
+  }
+  return fallback
+}
+
+async function apiFetch(path, options = {}) {  const token = options.anonymous ? null : getToken()
   const headers = new Headers(options.headers)
   if (token) headers.set(AUTH_HEADER, `Bearer ${token}`)
-  if (chatGPTNotificationBypass()) headers.set(PUSH_UNAVAILABLE_HEADER, '1')
+  if (isChatGPTBrowser()) headers.set(PUSH_UNAVAILABLE_HEADER, '1')
 
   const { anonymous, ...fetchOptions } = options
   const res = await fetch(resolve(path), { ...fetchOptions, headers })
@@ -40,28 +86,12 @@ export async function apiFetch(path, options = {}) {
   if (res.status === 401) {
     if (!anonymous && token === getToken()) {
       setToken(null)
-      window.dispatchEvent(new Event('pm:unauthorized'))
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
     }
-    let msg = 'Não autenticado'
-    try {
-      const body = await res.json()
-      if (body?.error) msg = body.error
-    } catch {
-      /* not json */
-    }
-    throw new Error(msg)
+    throw new Error(await errorMessage(res, 'Não autenticado'))
   }
 
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`
-    try {
-      const body = await res.json()
-      if (body?.error) msg = body.error
-    } catch {
-      /* not json */
-    }
-    throw new Error(msg)
-  }
+  if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}`))
 
   if (res.status === 204) return undefined
   return res.json()
@@ -96,27 +126,22 @@ export const endpoints = {
   recommendations: () => api.get('/api/recommendations'),
   qualifiedListen: (songId, playId) => api.post('/api/me/listens', { songId, playId }),
   settings: () => api.get('/api/settings'),
+  pushConfig: (options) => apiFetch('/api/push/config', options),
   home: () => api.get('/api/home'),
   search: (q, type = 'all') => api.get(`/api/search?q=${encodeURIComponent(q)}&type=${encodeURIComponent(type)}`),
   categories: () => api.get('/api/categories'),
   category: (id) => api.get(`/api/categories/${id}`),
 
-  albums: (params = '') => api.get(`/api/albums${params}`),
+  albums: () => api.get('/api/albums'),
   album: (id) => api.get(`/api/albums/${id}`),
-  artists: () => api.get('/api/artists'),
-  artist: (id) => api.get(`/api/artists/${id}`),
   songs: () => api.get('/api/songs'),
   song: (id) => api.get(`/api/songs/${id}`),
-
 
   playlists: () => api.get('/api/playlists'),
   playlist: (id) => api.get(`/api/playlists/${id}`),
   createPlaylist: (name, songIds) => api.post('/api/playlists', { name, songIds }),
-  updatePlaylist: (id, body) => api.put(`/api/playlists/${id}`, body),
-  deletePlaylist: (id) => api.del(`/api/playlists/${id}`),
   addPlaylistTracks: (id, songIds) => api.post(`/api/playlists/${id}/tracks`, { songIds }),
   removePlaylistTrack: (id, entryId) => api.del(`/api/playlists/${id}/tracks/${entryId}`),
-  reorderPlaylistTracks: (id, from, to) => api.put(`/api/playlists/${id}/tracks`, { from, to }),
 
   liked: () => api.get('/api/me/liked'),
   likedAlbums: () => api.get('/api/me/liked/albums'),
@@ -129,9 +154,6 @@ export const endpoints = {
   history: () => api.get('/api/me/history'),
   registerPlay: (id) => api.post(`/api/me/history/${id}`),
 
-  queue: () => api.get('/api/queue'),
-  saveQueue: (q) => api.put('/api/queue', q),
-
   admin: {
     users: () => api.get('/api/admin/users'),
     createUser: (u) => api.post('/api/admin/users', u),
@@ -142,12 +164,8 @@ export const endpoints = {
     createCategory: (name) => api.post('/api/admin/categories', { name }),
     updateCategory: (id, body) => api.put(`/api/admin/categories/${id}`, body),
     deleteCategory: (id) => api.del(`/api/admin/categories/${id}`),
-    albums: () => api.get('/api/admin/albums'),
-    artists: () => api.get('/api/admin/artists'),
     songs: () => api.get('/api/admin/songs'),
     uploadSong: (fd) => apiFetch('/api/admin/songs', { method: 'POST', body: fd }),
-    uploadPhoto: (id, file) => api.upload(`/api/admin/albums/${id}/photo`, file),
-    deletePhoto: (id) => api.del(`/api/admin/albums/${id}/photo`),
     uploadSongPhoto: (id, file) => api.upload(`/api/admin/songs/${id}/photo`, file),
     deleteSongPhoto: (id) => api.del(`/api/admin/songs/${id}/photo`),
     uploadCategoryPhoto: (id, file) => api.upload(`/api/admin/categories/${id}/photo`, file),
@@ -156,26 +174,22 @@ export const endpoints = {
 }
 
 export function artworkUrl(id, size = 300) {
-  // <img> tags cannot send the Authorization header, so the JWT travels as a
-  // query parameter (the server accepts ?jwt= via jwtauth.TokenFromQuery).
+  // <img> cannot send the Authorization header, so the JWT travels as a query
+  // parameter (?jwt=).
   const q = new URLSearchParams({ size: String(size) })
   const token = getToken()
   if (token) q.set('jwt', token)
-  if (chatGPTNotificationBypass()) q.set('pushUnavailable', '1')
+  if (isChatGPTBrowser()) q.set('pushUnavailable', '1')
   return resolve(`/api/artwork/${id}?${q.toString()}`)
 }
 
-// Formats browsers can usually play natively; anything else is transcoded to mp3.
-const nativeFormats = new Set(['mp3', 'm4a', 'aac', 'ogg', 'opus', 'wav', 'flac'])
-
 export function streamUrl(song) {
-  // <audio> cannot send the Authorization header, so the JWT travels as a query
-  // parameter (the server accepts ?jwt= via jwtauth.TokenFromQuery).
+  // <audio> cannot send the Authorization header either. The server picks
+  // between the stored file and an mp3 transcode from the song's format.
   const q = new URLSearchParams()
-  if (!nativeFormats.has(song.format.toLowerCase())) q.set('format', 'mp3')
   const token = getToken()
   if (token) q.set('jwt', token)
-  if (chatGPTNotificationBypass()) q.set('pushUnavailable', '1')
+  if (isChatGPTBrowser()) q.set('pushUnavailable', '1')
   const qs = q.toString()
   return resolve(`/api/stream/${song.id}${qs ? `?${qs}` : ''}`)
 }
@@ -209,15 +223,7 @@ export function applyPhoneMask(input) {
   input.setSelectionRange(pos, pos)
 }
 
+// readAppConfig is the app config the shell inlined into index.html.
 export function readAppConfig() {
-  const raw = window.__APP_CONFIG__
-  if (!raw) return { version: 'dev', firstTime: false, baseURL: '' }
-  if (typeof raw === 'string') {
-    try {
-      return JSON.parse(raw)
-    } catch {
-      return { version: 'dev', firstTime: false, baseURL: '' }
-    }
-  }
-  return raw
+  return window.__APP_CONFIG__ ?? { version: 'dev', baseURL: '' }
 }

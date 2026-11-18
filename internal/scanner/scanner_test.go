@@ -17,6 +17,7 @@ func TestCollectInventoryRejectsPartialListing(t *testing.T) {
 		t.Fatal("partial inventory must never be used")
 	}
 }
+
 func TestCollectInventoryCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -27,6 +28,7 @@ func TestCollectInventoryCancellation(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
 func TestCollectInventoryClassifiesAudioAndIgnoresHLS(t *testing.T) {
 	objects := make(chan minio.ObjectInfo, 4)
 	objects <- minio.ObjectInfo{Key: "Album/song.MP3", Size: 42}

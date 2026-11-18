@@ -2,12 +2,15 @@ package server
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 )
+
+// adHost is the only origin an ad embed may come from: the partner serves the
+// embeds, so this is an external contract, not our routing.
+const adHost = "ads.nuvexaia.online"
 
 type adEntry struct {
 	Name     string `json:"name"`
@@ -15,6 +18,7 @@ type adEntry struct {
 	Duration int    `json:"duration"`
 	Active   bool   `json:"active"`
 }
+
 type adConfig struct {
 	Frequency int       `json:"frequency"`
 	Ads       []adEntry `json:"ads"`
@@ -31,15 +35,17 @@ func validateAds(c *adConfig) bool {
 		a := &c.Ads[i]
 		a.Name = strings.TrimSpace(a.Name)
 		u, err := url.Parse(strings.TrimSpace(a.EmbedURL))
-		if err != nil || u.Scheme != "https" || u.Host != "ads.nuvexaia.online" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || !strings.HasPrefix(u.Path, "/embed/") {
+		if err != nil || u.Scheme != "https" || u.Host != adHost || u.User != nil ||
+			u.RawQuery != "" || u.Fragment != "" || !strings.HasPrefix(u.Path, "/embed/") {
 			return false
 		}
 		id := strings.TrimPrefix(u.Path, "/embed/")
-		if !adID.MatchString(id) || seen[id] || a.Name == "" || len(a.Name) > 120 || a.Duration < 1 || a.Duration > 3600 {
+		if !adID.MatchString(id) || seen[id] || a.Name == "" || len(a.Name) > 120 ||
+			a.Duration < 1 || a.Duration > 3600 {
 			return false
 		}
 		seen[id] = true
-		a.EmbedURL = "https://ads.nuvexaia.online/embed/" + id
+		a.EmbedURL = "https://" + adHost + "/embed/" + id
 	}
 	if c.Ads == nil {
 		c.Ads = []adEntry{}
@@ -47,17 +53,20 @@ func validateAds(c *adConfig) bool {
 	return true
 }
 
+// adsSettingKey is the settings row the ad configuration lives in. The reader
+// and the writer must name the same row; nothing checks that they do.
+const adsSettingKey = "ads_config"
+
 func (s *Server) readAds(r *http.Request) (adConfig, error) {
 	c := adConfig{Frequency: 1, Ads: []adEntry{}}
-	raw, ok, err := s.store.GetSetting(r.Context(), "ads_config")
+	raw, ok, err := s.store.GetSetting(r.Context(), adsSettingKey)
 	if err != nil || !ok {
 		return c, err
 	}
-	if err = json.Unmarshal([]byte(raw), &c); err != nil {
-		return c, err
-	}
-	return c, nil
+	err = json.Unmarshal([]byte(raw), &c)
+	return c, err
 }
+
 func (s *Server) handleAdminAds(w http.ResponseWriter, r *http.Request) {
 	c, err := s.readAds(r)
 	if err != nil {
@@ -67,6 +76,7 @@ func (s *Server) handleAdminAds(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	writeJSON(w, http.StatusOK, c)
 }
+
 func (s *Server) handleAds(w http.ResponseWriter, r *http.Request) {
 	c, err := s.readAds(r)
 	if err != nil {
@@ -83,14 +93,18 @@ func (s *Server) handleAds(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	writeJSON(w, http.StatusOK, c)
 }
+
 func (s *Server) handleSaveAds(w http.ResponseWriter, r *http.Request) {
 	var c adConfig
-	if err := json.NewDecoder(io.LimitReader(r.Body, 65536)).Decode(&c); err != nil || !validateAds(&c) {
+	if !decodeJSON(w, r, &c) {
+		return
+	}
+	if !validateAds(&c) {
 		writeError(w, http.StatusBadRequest, "Configuração de anúncios inválida")
 		return
 	}
 	b, _ := json.Marshal(c)
-	if err := s.store.SetSetting(r.Context(), "ads_config", string(b)); err != nil {
+	if err := s.store.SetSetting(r.Context(), adsSettingKey, string(b)); err != nil {
 		handleStoreError(w, err)
 		return
 	}

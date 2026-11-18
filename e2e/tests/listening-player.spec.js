@@ -1,5 +1,5 @@
 const { test, expect } = require('playwright/test')
-const { loginAdmin, ensureSilenceWav } = require('./helpers')
+const { loginAdmin, stubStream } = require('./helpers')
 test.use({ serviceWorkers: 'block' })
 
 test('player registra uma escuta por reprodução sem contar salto ou pausa', async ({ page }) => {
@@ -14,7 +14,7 @@ test('player registra uma escuta por reprodução sem contar salto ou pausa', as
     return route.fulfill({ json: [] })
   })
   await loginAdmin(page)
-  await page.route('**/api/stream/**', route => route.fulfill({ path: ensureSilenceWav(30), contentType: 'audio/wav', headers: { 'Accept-Ranges': 'bytes' } }))
+  await stubStream(page)
   await page.route('**/api/me/listens', route => { plays.push(route.request().postDataJSON()); return route.fulfill({ status: 204 }) })
   await page.locator('.card-play').first().click()
   await page.waitForFunction(() => window.__player?.audio.currentTime > 0.2)
@@ -26,10 +26,10 @@ test('player registra uma escuta por reprodução sem contar salto ou pausa', as
     audio.currentTime = 10
     audio.playbackRate = 4
   })
-  await page.waitForTimeout(700)
-  expect(plays).toHaveLength(0)
+  // The pause and the seek must not register a listen. That is enforced by the
+  // exact count below: two playbacks must produce exactly two listens, so a
+  // spurious one from this window would make the total three.
   await page.evaluate(() => window.__player.audio.play())
-  await expect.poll(() => plays.length, { timeout: 14000 }).toBeGreaterThanOrEqual(1)
   await expect.poll(() => plays.length, { timeout: 14000 }).toBeGreaterThanOrEqual(2)
   expect(plays).toHaveLength(2)
   expect(plays[0].songId).toBe(plays[1].songId)

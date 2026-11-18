@@ -1,8 +1,6 @@
 package server
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"regexp"
 )
@@ -14,7 +12,10 @@ func (s *Server) handleQualifiedListen(w http.ResponseWriter, r *http.Request) {
 		SongID string `json:"songId"`
 		PlayID string `json:"playId"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req); err != nil || req.SongID == "" || !playIDPattern.MatchString(req.PlayID) {
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.SongID == "" || !playIDPattern.MatchString(req.PlayID) {
 		writeError(w, http.StatusBadRequest, "Requisição inválida")
 		return
 	}

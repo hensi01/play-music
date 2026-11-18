@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"os"
 	"play-music/internal/config"
 	"play-music/internal/db"
 	"play-music/internal/store"
@@ -12,12 +11,8 @@ import (
 	"testing"
 )
 
-// TEST_DATABASE_URL must name a disposable, dedicated PostgreSQL database.
 func TestCampaignClaimConcurrentPostgres(t *testing.T) {
-	databaseURL := os.Getenv("TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("TEST_DATABASE_URL not configured for disposable database")
-	}
+	databaseURL := testDisposableDB(t)
 	ctx := context.Background()
 	pool, err := db.Connect(ctx, databaseURL)
 	if err != nil {

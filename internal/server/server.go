@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"play-music/internal/artwork"
@@ -26,202 +27,205 @@ type Server struct {
 	log     *slog.Logger
 }
 
-type Dependencies struct {
-	Config  *config.Config
-	Store   *store.Store
-	Auth    *auth.Auth
-	Stream  *stream.Service
-	Storage *storage.Storage
-	Artwork *artwork.Service
-	Scanner *scanner.Scanner
-	Log     *slog.Logger
-}
-
-func New(deps Dependencies) *Server {
+func New(cfg *config.Config, st *store.Store, a *auth.Auth, strm *stream.Service, strg *storage.Storage, art *artwork.Service, sc *scanner.Scanner, log *slog.Logger) *Server {
 	return &Server{
-		cfg:     deps.Config,
-		store:   deps.Store,
-		auth:    deps.Auth,
-		stream:  deps.Stream,
-		storage: deps.Storage,
-		artwork: deps.Artwork,
-		scanner: deps.Scanner,
-		log:     deps.Log,
+		cfg:     cfg,
+		store:   st,
+		auth:    a,
+		stream:  strm,
+		storage: strg,
+		artwork: art,
+		scanner: sc,
+		log:     log,
 	}
 }
 
-var nativeFormats = map[string]bool{
-	"mp3": true, "m4a": true, "aac": true, "ogg": true, "opus": true,
-	"wav": true, "flac": true,
+// route is one HTTP route: the "METHOD /path" pattern the mux registers and its
+// handler.
+type route struct {
+	Pattern string
+	Handler http.HandlerFunc
+}
+
+func (s *Server) routes() []route {
+	requireAuth := s.requireAuth
+	requireAdmin := s.requireAdmin
+	return []route{
+		// Auth (public).
+		{"POST /auth/login", s.handleLogin},
+		{"POST /auth/admin/login", s.handleAdminLogin},
+		{"POST /api/register", s.handleRegister},
+
+		// Push.
+		{"POST /api/push/status", requireAuth(s.handlePushStatus)},
+		{"GET /api/push/config", requireAuth(s.handlePushConfig)},
+		{"POST /api/push/subscriptions", requireAuth(s.handlePushSubscribe)},
+		{"DELETE /api/push/subscriptions", requireAuth(s.handlePushUnsubscribe)},
+		{"POST /api/admin/notifications", requireAdmin(s.handleCreateCampaign)},
+		{"GET /api/admin/notifications", requireAdmin(s.handleListCampaigns)},
+		{"DELETE /api/admin/notifications/{id}", requireAdmin(s.handleCancelCampaign)},
+
+		// Account.
+		{"GET /api/me", requireAuth(s.handleMe)},
+		{"GET /api/settings", requireAuth(s.handleSettings)},
+		{"GET /api/recommendations", requireAuth(s.handleRecommendations)},
+		{"POST /api/me/listens", requireAuth(s.handleQualifiedListen)},
+		{"GET /api/queue", requireAuth(s.handleGetQueue)},
+		{"PUT /api/queue", requireAuth(s.handleSaveQueue)},
+
+		// Ads.
+		{"GET /api/ads", requireAuth(s.handleAds)},
+		{"GET /api/admin/ads", requireAdmin(s.handleAdminAds)},
+		{"PUT /api/admin/ads", requireAdmin(s.handleSaveAds)},
+
+		// Catalogue.
+		{"GET /api/home", requireAuth(s.handleHome)},
+		{"GET /api/search", requireAuth(s.handleSearch)},
+		{"GET /api/categories", requireAuth(s.handleCategories)},
+		{"GET /api/categories/{id}", requireAuth(s.handleCategory)},
+		{"GET /api/albums", requireAuth(s.handleAlbums)},
+		{"GET /api/albums/{id}", requireAuth(s.handleAlbum)},
+		{"GET /api/artists", requireAuth(s.handleArtists)},
+		{"GET /api/artists/{id}", requireAuth(s.handleArtist)},
+		{"GET /api/songs", requireAuth(s.handleSongs)},
+		{"GET /api/songs/{id}", requireAuth(s.handleSong)},
+
+		// Playlists (owner-scoped).
+		{"GET /api/playlists", requireAuth(s.handlePlaylists)},
+		{"POST /api/playlists", requireAuth(s.handleCreatePlaylist)},
+		{"GET /api/playlists/{id}", requireAuth(s.handlePlaylist)},
+		{"PUT /api/playlists/{id}", requireAuth(s.handleUpdatePlaylist)},
+		{"DELETE /api/playlists/{id}", requireAuth(s.handleDeletePlaylist)},
+		{"POST /api/playlists/{id}/tracks", requireAuth(s.handleAddPlaylistTracks)},
+		{"DELETE /api/playlists/{id}/tracks/{entryId}", requireAuth(s.handleRemovePlaylistTrack)},
+		{"PUT /api/playlists/{id}/tracks", requireAuth(s.handleReorderPlaylistTracks)},
+
+		// Likes, history, downloads (owner-scoped).
+		{"GET /api/me/liked", requireAuth(s.handleLiked)},
+		{"PUT /api/me/liked/{id}", requireAuth(s.handleLikeSong)},
+		{"DELETE /api/me/liked/{id}", requireAuth(s.handleUnlikeSong)},
+		{"GET /api/me/liked/albums", requireAuth(s.handleLikedAlbums)},
+		{"PUT /api/me/liked/albums/{id}", requireAuth(s.handleLikeAlbum)},
+		{"DELETE /api/me/liked/albums/{id}", requireAuth(s.handleUnlikeAlbum)},
+		{"GET /api/me/history", requireAuth(s.handleHistory)},
+		{"POST /api/me/history/{id}", requireAuth(s.handleRegisterPlay)},
+		{"GET /api/me/downloads", requireAuth(s.handleDownloads)},
+		{"POST /api/songs/{id}/download", requireAuth(s.handleDownload)},
+
+		// Media.
+		{"GET /api/artwork/{id}", requireAuth(s.handleArtwork)},
+		{"GET /api/stream/{id}", requireAuth(s.handleStream)},
+
+		// API keys.
+		{"GET /api/admin/api-keys", requireAdmin(s.handleListAPIKeys)},
+		{"POST /api/admin/api-keys", requireAdmin(s.handleCreateAPIKey)},
+		{"DELETE /api/admin/api-keys/{id}", requireAdmin(s.handleRevokeAPIKey)},
+
+		// Admin users.
+		{"GET /api/admin/users", requireAdmin(s.handleAdminListUsers)},
+		{"POST /api/admin/users", requireAdmin(s.handleAdminCreateUser)},
+		{"PUT /api/admin/users/{id}", requireAdmin(s.handleAdminUpdateUser)},
+		{"DELETE /api/admin/users/{id}", requireAdmin(s.handleAdminDeleteUser)},
+
+		// Admin catalogue. The album and artist listings are the public ones;
+		// only the admin route needs the admin credential.
+		{"GET /api/admin/categories", requireAdmin(s.handleCategories)},
+		{"POST /api/admin/categories", requireAdmin(s.handleAdminCreateCategory)},
+		{"GET /api/admin/categories/{id}", requireAdmin(s.handleAdminCategoryDetail)},
+		{"PUT /api/admin/categories/{id}", requireAdmin(s.handleAdminUpdateCategory)},
+		{"DELETE /api/admin/categories/{id}", requireAdmin(s.handleAdminDeleteCategory)},
+		{"GET /api/admin/albums", requireAdmin(s.handleAlbums)},
+		{"GET /api/admin/artists", requireAdmin(s.handleArtists)},
+		{"GET /api/admin/songs", requireAdmin(s.handleAdminSongs)},
+		{"POST /api/admin/songs", requireAdmin(s.handleAdminUploadSong)},
+		{"POST /api/admin/albums/{id}/photo", requireAdmin(s.uploadPhoto(store.EntityAlbum))},
+		{"DELETE /api/admin/albums/{id}/photo", requireAdmin(s.deletePhoto(store.EntityAlbum))},
+		{"POST /api/admin/songs/{id}/photo", requireAdmin(s.uploadPhoto(store.EntitySong))},
+		{"DELETE /api/admin/songs/{id}/photo", requireAdmin(s.deletePhoto(store.EntitySong))},
+		{"POST /api/admin/categories/{id}/photo", requireAdmin(s.uploadPhoto(store.EntityCategory))},
+		{"DELETE /api/admin/categories/{id}/photo", requireAdmin(s.deletePhoto(store.EntityCategory))},
+		{"POST /api/scan", requireAdmin(s.handleScan)},
+	}
 }
 
 // Handler builds the HTTP handler with all routes and middleware.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-
-	// Auth (public).
-	mux.HandleFunc("POST /auth/login", s.handleLogin)
-	mux.HandleFunc("POST /auth/admin/login", s.handleAdminLogin)
-
-	mux.HandleFunc("POST /api/register", s.handleRegister)
-
-	// API (JWT required).
-	mux.Handle("POST /api/push/status", s.requireAuth(http.HandlerFunc(s.handlePushStatus)))
-	mux.Handle("GET /api/push/config", s.requireAuth(http.HandlerFunc(s.handlePushConfig)))
-	mux.Handle("POST /api/push/subscriptions", s.requireAuth(http.HandlerFunc(s.handlePushSubscribe)))
-	mux.Handle("DELETE /api/push/subscriptions", s.requireAuth(http.HandlerFunc(s.handlePushUnsubscribe)))
-	mux.Handle("POST /api/admin/notifications", s.requireAdmin(http.HandlerFunc(s.handleCreateCampaign)))
-	mux.Handle("GET /api/admin/notifications", s.requireAdmin(http.HandlerFunc(s.handleListCampaigns)))
-	mux.Handle("DELETE /api/admin/notifications/{id}", s.requireAdmin(http.HandlerFunc(s.handleCancelCampaign)))
-	mux.Handle("GET /api/me", s.requireAuth(http.HandlerFunc(s.handleMe)))
-	mux.Handle("GET /api/settings", s.requireAuth(http.HandlerFunc(s.handleSettings)))
-	mux.Handle("GET /api/ads", s.requireAuth(http.HandlerFunc(s.handleAds)))
-	mux.Handle("GET /api/admin/ads", s.requireAdmin(http.HandlerFunc(s.handleAdminAds)))
-	mux.Handle("PUT /api/admin/ads", s.requireAdmin(http.HandlerFunc(s.handleSaveAds)))
-	mux.Handle("GET /api/recommendations", s.requireAuth(http.HandlerFunc(s.handleRecommendations)))
-	mux.Handle("POST /api/me/listens", s.requireAuth(http.HandlerFunc(s.handleQualifiedListen)))
-	mux.Handle("GET /api/home", s.requireAuth(http.HandlerFunc(s.handleHome)))
-	mux.Handle("GET /api/search", s.requireAuth(http.HandlerFunc(s.handleSearch)))
-	mux.Handle("GET /api/categories", s.requireAuth(http.HandlerFunc(s.handleCategories)))
-	mux.Handle("GET /api/categories/{id}", s.requireAuth(http.HandlerFunc(s.handleCategory)))
-
-	mux.Handle("GET /api/albums", s.requireAuth(http.HandlerFunc(s.handleAlbums)))
-	mux.Handle("GET /api/albums/{id}", s.requireAuth(http.HandlerFunc(s.handleAlbum)))
-	mux.Handle("GET /api/artists", s.requireAuth(http.HandlerFunc(s.handleArtists)))
-	mux.Handle("GET /api/artists/{id}", s.requireAuth(http.HandlerFunc(s.handleArtist)))
-	mux.Handle("GET /api/songs", s.requireAuth(http.HandlerFunc(s.handleSongs)))
-	mux.Handle("GET /api/songs/{id}", s.requireAuth(http.HandlerFunc(s.handleSong)))
-
-	mux.Handle("GET /api/playlists", s.requireAuth(http.HandlerFunc(s.handlePlaylists)))
-	mux.Handle("POST /api/playlists", s.requireAuth(http.HandlerFunc(s.handleCreatePlaylist)))
-	mux.Handle("GET /api/playlists/{id}", s.requireAuth(http.HandlerFunc(s.handlePlaylist)))
-	mux.Handle("PUT /api/playlists/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdatePlaylist)))
-	mux.Handle("DELETE /api/playlists/{id}", s.requireAuth(http.HandlerFunc(s.handleDeletePlaylist)))
-	mux.Handle("POST /api/playlists/{id}/tracks", s.requireAuth(http.HandlerFunc(s.handleAddPlaylistTracks)))
-	mux.Handle("DELETE /api/playlists/{id}/tracks/{entryId}", s.requireAuth(http.HandlerFunc(s.handleRemovePlaylistTrack)))
-	mux.Handle("PUT /api/playlists/{id}/tracks", s.requireAuth(http.HandlerFunc(s.handleReorderPlaylistTracks)))
-
-	mux.Handle("GET /api/me/liked", s.requireAuth(http.HandlerFunc(s.handleLiked)))
-	mux.Handle("GET /api/me/liked/albums", s.requireAuth(http.HandlerFunc(s.handleLikedAlbums)))
-	mux.Handle("PUT /api/me/liked/{id}", s.requireAuth(http.HandlerFunc(s.handleLike)))
-	mux.Handle("DELETE /api/me/liked/{id}", s.requireAuth(http.HandlerFunc(s.handleUnlike)))
-	mux.Handle("GET /api/me/downloads", s.requireAuth(http.HandlerFunc(s.handleDownloads)))
-	mux.Handle("POST /api/songs/{id}/download", s.requireAuth(http.HandlerFunc(s.handleDownload)))
-	mux.Handle("PUT /api/me/liked/albums/{id}", s.requireAuth(http.HandlerFunc(s.handleLikeAlbum)))
-	mux.Handle("DELETE /api/me/liked/albums/{id}", s.requireAuth(http.HandlerFunc(s.handleUnlikeAlbum)))
-	mux.Handle("GET /api/me/history", s.requireAuth(http.HandlerFunc(s.handleHistory)))
-	mux.Handle("POST /api/me/history/{id}", s.requireAuth(http.HandlerFunc(s.handleRegisterPlay)))
-
-	mux.Handle("GET /api/queue", s.requireAuth(http.HandlerFunc(s.handleGetQueue)))
-	mux.Handle("PUT /api/queue", s.requireAuth(http.HandlerFunc(s.handleSaveQueue)))
-
-	// Media (JWT via header or ?jwt= query) — access-guarded.
-	mux.Handle("GET /api/artwork/{id}", s.requireAuth(http.HandlerFunc(s.handleArtwork)))
-	mux.Handle("GET /api/stream/{id}", s.requireAuth(http.HandlerFunc(s.handleStream)))
-
-	// API key management requires administrator authentication.
-	mux.Handle("GET /api/admin/api-keys", s.requireAdmin(http.HandlerFunc(s.handleListAPIKeys)))
-	mux.Handle("POST /api/admin/api-keys", s.requireAdmin(http.HandlerFunc(s.handleCreateAPIKey)))
-	mux.Handle("DELETE /api/admin/api-keys/{id}", s.requireAdmin(http.HandlerFunc(s.handleRevokeAPIKey)))
-
-	// Admin (JWT + is_admin).
-	mux.Handle("GET /api/admin/users", s.requireAdmin(http.HandlerFunc(s.handleAdminListUsers)))
-	mux.Handle("POST /api/admin/users", s.requireAdmin(http.HandlerFunc(s.handleAdminCreateUser)))
-	mux.Handle("PUT /api/admin/users/{id}", s.requireAdmin(http.HandlerFunc(s.handleAdminUpdateUser)))
-	mux.Handle("DELETE /api/admin/users/{id}", s.requireAdmin(http.HandlerFunc(s.handleAdminDeleteUser)))
-	mux.Handle("GET /api/admin/categories", s.requireAdmin(http.HandlerFunc(s.handleAdminListCategories)))
-	mux.Handle("POST /api/admin/categories", s.requireAdmin(http.HandlerFunc(s.handleAdminCreateCategory)))
-	mux.Handle("GET /api/admin/categories/{id}", s.requireAdmin(http.HandlerFunc(s.handleAdminCategoryDetail)))
-	mux.Handle("PUT /api/admin/categories/{id}", s.requireAdmin(http.HandlerFunc(s.handleAdminUpdateCategory)))
-	mux.Handle("DELETE /api/admin/categories/{id}", s.requireAdmin(http.HandlerFunc(s.handleAdminDeleteCategory)))
-	mux.Handle("GET /api/admin/albums", s.requireAdmin(http.HandlerFunc(s.handleAdminAlbums)))
-	mux.Handle("GET /api/admin/artists", s.requireAdmin(http.HandlerFunc(s.handleAdminArtists)))
-	mux.Handle("GET /api/admin/songs", s.requireAdmin(http.HandlerFunc(s.handleAdminSongs)))
-	mux.Handle("POST /api/admin/songs", s.requireAdmin(http.HandlerFunc(s.handleAdminUploadSong)))
-	mux.Handle("POST /api/admin/albums/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminUploadPhoto)))
-	mux.Handle("DELETE /api/admin/albums/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminDeletePhoto)))
-	mux.Handle("POST /api/admin/songs/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminUploadSongPhoto)))
-	mux.Handle("DELETE /api/admin/songs/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminDeleteSongPhoto)))
-	mux.Handle("POST /api/admin/categories/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminUploadCategoryPhoto)))
-	mux.Handle("DELETE /api/admin/categories/{id}/photo", s.requireAdmin(http.HandlerFunc(s.handleAdminDeleteCategoryPhoto)))
-
-	mux.Handle("POST /api/scan", s.requireAdmin(http.HandlerFunc(s.handleScan)))
-
-	// Static UI.
+	for _, rt := range s.routes() {
+		mux.Handle(rt.Pattern, rt.Handler)
+	}
+	// Static UI: everything the API did not claim.
 	mux.Handle("/", s.handleStatic())
-
 	return s.middleware(mux)
+}
+
+// authenticate resolves the bearer token of a request. ok is false when the
+// response is already written (missing/invalid token); adminOnly turns a
+// valid non-admin token into a 403.
+func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, adminOnly bool) (*auth.Claims, bool) {
+	token := s.auth.TokenFromRequest(r)
+	if token == "" {
+		writeError(w, http.StatusUnauthorized, "Não autenticado")
+		return nil, false
+	}
+	claims, err := s.auth.Parse(token)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "Não autenticado")
+		return nil, false
+	}
+	if adminOnly && !claims.IsAdmin {
+		writeError(w, http.StatusForbidden, "Sem permissão")
+		return nil, false
+	}
+	if s.auth.NeedsRefresh(claims) {
+		if fresh, err := s.auth.Sign(modelUserFromClaims(claims)); err == nil {
+			w.Header().Set(auth.HeaderName, fresh)
+		}
+	}
+	return claims, true
 }
 
 // requireAuth validates the JWT (header or ?jwt=), stores the user in the
 // context and refreshes the token when past half its lifetime.
-func (s *Server) requireAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := s.auth.TokenFromRequest(r)
-		if token == "" {
-			writeError(w, http.StatusUnauthorized, "Não autenticado")
-			return
-		}
-		claims, err := s.auth.Parse(token)
-		if err != nil {
-			writeError(w, http.StatusUnauthorized, "Não autenticado")
+func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := s.authenticate(w, r, false)
+		if !ok {
 			return
 		}
 		if !claims.IsAdmin && !s.pushAccessAllowed(w, r, claims.UserID) {
 			return
 		}
-		if s.auth.NeedsRefresh(claims) {
-			if fresh, err := s.auth.Sign(r.Context(), modelUserFromClaims(claims)); err == nil {
-				w.Header().Set(auth.HeaderName, fresh)
-			}
-		}
 		ctx := context.WithValue(r.Context(), ctxUserID, claims.UserID)
-		ctx = context.WithValue(ctx, ctxIsAdmin, claims.IsAdmin)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+		next(w, r.WithContext(ctx))
+	}
 }
 
-// requireAdmin requires a valid JWT with the admin flag.
-func (s *Server) requireAdmin(next http.Handler) http.Handler {
+func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	apiKey := s.requireAdminAPIKey(next)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-API-Key") != "" {
-			apiKey.ServeHTTP(w, r)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(apiKeyHeader) != "" {
+			apiKey(w, r)
 			return
 		}
-		token := s.auth.TokenFromRequest(r)
-		if token == "" {
-			writeError(w, http.StatusUnauthorized, "Não autenticado")
+		claims, ok := s.authenticate(w, r, true)
+		if !ok {
 			return
-		}
-		claims, err := s.auth.Parse(token)
-		if err != nil {
-			writeError(w, http.StatusUnauthorized, "Não autenticado")
-			return
-		}
-		if !claims.IsAdmin {
-			writeError(w, http.StatusForbidden, "Sem permissão")
-			return
-		}
-		if s.auth.NeedsRefresh(claims) {
-			if fresh, err := s.auth.Sign(r.Context(), modelUserFromClaims(claims)); err == nil {
-				w.Header().Set(auth.HeaderName, fresh)
-			}
 		}
 		ctx := context.WithValue(r.Context(), ctxUserID, claims.UserID)
-		ctx = context.WithValue(ctx, ctxIsAdmin, true)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+		next(w, r.WithContext(ctx))
+	}
 }
 
-// middleware applies CORS, logging and panic recovery.
 func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-ND-Authorization, Authorization, X-API-Key, X-Mi-Ritmo-Push-Unavailable")
+		w.Header().Set("Access-Control-Allow-Headers", strings.Join([]string{
+			"Content-Type", auth.HeaderName, "Authorization", apiKeyHeader, pushUnavailableHeader,
+		}, ", "))
 		w.Header().Set("Access-Control-Expose-Headers", auth.HeaderName)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -256,11 +260,4 @@ type statusRecorder struct {
 func (r *statusRecorder) WriteHeader(status int) {
 	r.status = status
 	r.ResponseWriter.WriteHeader(status)
-}
-
-func (r *statusRecorder) Write(b []byte) (int, error) {
-	if r.status == 0 {
-		r.status = http.StatusOK
-	}
-	return r.ResponseWriter.Write(b)
 }

@@ -1,26 +1,8 @@
 const { test, expect } = require('playwright/test')
 const { mockActivatedPush, tokenFor } = require('./push-fixture.cjs')
+const { markPwaSeen } = require('./client-keys')
+const { registerCliente, stubStream, stubArtwork, expectNoOverflow } = require('./helpers')
 test.use({ serviceWorkers: 'block' })
-
-function silentWav(seconds = 30) {
-  const sampleRate = 22050
-  const dataSize = sampleRate * seconds * 2
-  const buffer = Buffer.alloc(44 + dataSize)
-  buffer.write('RIFF', 0)
-  buffer.writeUInt32LE(36 + dataSize, 4)
-  buffer.write('WAVE', 8)
-  buffer.write('fmt ', 12)
-  buffer.writeUInt32LE(16, 16)
-  buffer.writeUInt16LE(1, 20)
-  buffer.writeUInt16LE(1, 22)
-  buffer.writeUInt32LE(sampleRate, 24)
-  buffer.writeUInt32LE(sampleRate * 2, 28)
-  buffer.writeUInt16LE(2, 32)
-  buffer.writeUInt16LE(16, 34)
-  buffer.write('data', 36)
-  buffer.writeUInt32LE(dataSize, 40)
-  return buffer
-}
 
 const songs = [
   { id: 'album-song-1', title: 'Abertura', artist: 'Banda Horizonte', album: 'Luz do Dia', duration: 30, format: 'wav', liked: false, trackNumber: 1 },
@@ -39,14 +21,15 @@ const album = {
 test('cliente encontra álbuns, escolhe faixas e controla a fila', async ({ page }, testInfo) => {
   let albumSaved = false
   await mockActivatedPush(page, 'u1')
-  await page.addInitScript(() => sessionStorage.setItem('pm_pwa_seen', '1'))
+  await markPwaSeen(page)
+  await stubStream(page)
+  await stubArtwork(page)
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url())
     const path = url.pathname
     if (path === '/api/register') {
       return route.fulfill({ json: { token: tokenFor('u1'), id: 'u1', name: 'Cliente', isAdmin: false } })
     }
-    if (path === '/api/me') return route.fulfill({ json: { id: 'u1', name: 'Cliente', isAdmin: false } })
     if (path === '/api/push/status') return route.fulfill({ json: { active: true } })
     if (path === '/api/home') return route.fulfill({ json: { sections: [] } })
     if (path === '/api/recommendations') return route.fulfill({ json: { songs: [], artists: [], tastes: [] } })
@@ -65,21 +48,10 @@ test('cliente encontra álbuns, escolhe faixas e controla a fila', async ({ page
         json: url.searchParams.get('type') === 'albums' ? { songs: [], albums: [album], artists: [], categories: [], playlists: [] } : { songs: [], albums: [], artists: [], categories: [], playlists: [] },
       })
     }
-    if (path.startsWith('/api/stream/')) {
-      return route.fulfill({ status: 200, contentType: 'audio/wav', headers: { 'Accept-Ranges': 'bytes' }, body: silentWav() })
-    }
-    if (path.startsWith('/api/artwork/')) {
-      const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=', 'base64')
-      return route.fulfill({ status: 200, contentType: 'image/png', body: png })
-    }
     return route.fulfill({ json: [] })
   })
 
-  await page.goto('/')
-  await page.getByRole('button', { name: 'Criar conta' }).click()
-  await page.getByPlaceholder('Telefone (99) 99999-9999').fill('11987654321')
-  await page.locator('.login-submit').click()
-  await expect(page.locator('.app-shell')).toBeVisible()
+  await registerCliente(page)
   await expect(page.locator('.section').filter({ hasText: 'Álbuns' })).toBeVisible()
   await expect(page.getByText('Sua biblioteca está vazia.')).toBeHidden()
 
@@ -106,8 +78,7 @@ test('cliente encontra álbuns, escolhe faixas e controla a fila', async ({ page
   await page.getByRole('button', { name: 'Álbuns' }).click()
   await page.locator('.card').filter({ hasText: 'Luz do Dia' }).click()
 
-  const dimensions = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth }))
-  expect(dimensions.width).toBeLessThanOrEqual(dimensions.viewport)
+  await expectNoOverflow(page)
 
   if (testInfo.project.name !== 'mobile') await page.locator('.album-track-list .track-row').nth(1).hover()
   await page.getByRole('button', { name: 'Adicionar Caminho à fila' }).click()
@@ -140,5 +111,18 @@ test('cliente encontra álbuns, escolhe faixas e controla a fila', async ({ page
   await page.getByRole('button', { name: 'Voltar', exact: true }).click()
   await expect(page.locator('.search-type-select')).toHaveValue('albums')
   await expect(page.locator('.search-input')).toHaveValue('Luz do Dia')
+
+  // The queue page renders its own rows and each row plays from that same queue.
+  // Clicking a row that is not the current song must make that row current.
+  const queue = await page.evaluate(() => window.__player.getState().queue.map((song) => song.id))
+  const current = await page.evaluate(() => window.__player.getState().current?.id)
+  expect(queue.length).toBeGreaterThan(1)
+  const targetIndex = queue.findIndex((id) => id !== current)
+  expect(targetIndex).toBeGreaterThan(-1)
+  await page.evaluate(() => { window.location.hash = '#/queue' })
+  await expect(page.locator('.page-title', { hasText: 'Fila' })).toBeVisible()
+  await page.locator('.track-list .track-main').nth(targetIndex).click()
+  await expect.poll(() => page.evaluate(() => window.__player.getState().current?.id)).toBe(queue[targetIndex])
+
   await page.evaluate(() => window.__player.audio.pause())
 })

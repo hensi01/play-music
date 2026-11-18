@@ -3,198 +3,116 @@ package server
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"play-music/internal/artwork"
 	"play-music/internal/config"
 	"play-music/internal/db"
-	"play-music/internal/metadata"
 	"play-music/internal/model"
 	"play-music/internal/scanner"
 	"play-music/internal/storage"
 	"play-music/internal/store"
 )
 
-// These tests exercise handler fixes (B2, B-NEW-2, B-NEW-3) against a real
-// Postgres — the Server depends on a concrete *store.Store, so a unit-level
-// mock is not possible without an invasive interface refactor. They are
-// integration tests that skip cleanly when DATABASE_URL (env or repo .env)
-// is unavailable, keeping `go test ./...` green in any environment.
-
-// testDBURL resolves DATABASE_URL from the environment, falling back to the
-// repo .env (the test process runs with the package dir as CWD). Skips when
-// no database is available.
-func testDBURL(t *testing.T) string {
-	t.Helper()
-	if u := os.Getenv("DATABASE_URL"); u != "" {
-		return u
-	}
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Skipf("resolve repo root: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(root, ".env"))
-	if err != nil {
-		t.Skip("DATABASE_URL not set and repo .env not found — integration test skipped")
-		return "" // unreachable; satisfies the vet missing-return check
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if v, ok := strings.CutPrefix(line, "DATABASE_URL="); ok {
-			if v = strings.Trim(strings.TrimSpace(v), `"'`); v != "" {
-				return v
-			}
-		}
-	}
-	t.Skip("DATABASE_URL not set in environment or repo .env — integration test skipped")
-	return "" // unreachable; satisfies the vet missing-return check
-}
-
+// newTestServerStore builds a Server against a throwaway database. Every test
+// here writes rows, so it must not run against the database the app uses.
 func newTestServerStore(t *testing.T) (*Server, *store.Store) {
 	t.Helper()
-	pool, err := db.Connect(context.Background(), testDBURL(t))
+	pool, err := db.Connect(context.Background(), testDisposableDB(t))
 	if err != nil {
 		t.Skipf("postgres unreachable: %v", err)
-		return nil, nil // unreachable; satisfies the vet missing-return check
+		return nil, nil
 	}
 	t.Cleanup(pool.Close)
 	st := store.New(pool)
-	return &Server{store: st, log: slog.Default()}, st
-}
-
-// loadDotEnv loads the repo .env into the process environment for keys that
-// are not already set (config.Load reads only from os.Getenv).
-func loadDotEnv(t *testing.T) {
-	t.Helper()
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Skipf("resolve repo root: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(root, ".env"))
-	if err != nil {
-		t.Skipf("repo .env not found: %v", err)
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		k, v, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		k = strings.TrimSpace(k)
-		v = strings.Trim(strings.TrimSpace(v), `"'`)
-		if os.Getenv(k) == "" && v != "" {
-			os.Setenv(k, v)
-		}
-	}
+	return &Server{store: st, cfg: &config.Config{}, log: slog.Default()}, st
 }
 
 // newFullTestServer builds a Server with the real wiring (store + storage +
-// scanner) so upload happy paths can be exercised end-to-end. Skips when the
-// database or the S3/MinIO config is unavailable.
+// scanner) so upload happy paths can be exercised end-to-end. The database is
+// the throwaway one the other integration tests use; only the S3 settings come
+// from the app configuration, because uploads need a bucket to write to.
 func newFullTestServer(t *testing.T) (*Server, *store.Store) {
 	t.Helper()
-	loadDotEnv(t)
-	cfg := config.Load()
-	if cfg.DatabaseURL == "" {
-		t.Skip("DATABASE_URL not set — integration test skipped")
+	url := testDisposableDB(t)
+	for k, v := range dotEnv(t) {
+		if os.Getenv(k) == "" {
+			t.Setenv(k, v)
+		}
 	}
+	cfg := config.Load()
 	if cfg.S3.Endpoint == "" || cfg.S3.AccessKey == "" || cfg.S3.SecretKey == "" {
 		t.Skip("S3/MinIO config missing — integration test skipped")
 	}
-	pool, err := db.Connect(context.Background(), cfg.DatabaseURL)
+	pool, err := db.Connect(context.Background(), url)
 	if err != nil {
 		t.Skipf("postgres unreachable: %v", err)
-		return nil, nil // unreachable; satisfies the vet missing-return check
+		return nil, nil
 	}
 	t.Cleanup(pool.Close)
 	st := store.New(pool)
 	strg, err := storage.New(cfg.S3)
 	if err != nil {
 		t.Skipf("storage init: %v", err)
-		return nil, nil // unreachable; satisfies the vet missing-return check
+		return nil, nil
 	}
-	metadata.SetFFmpegPath(cfg.FfmpegPath)
-	sc := scanner.New(cfg, strg, st, slog.Default())
-	return &Server{store: st, storage: strg, scanner: sc, log: slog.Default()}, st
+	artSvc, err := artwork.New(cfg, st, strg, slog.Default())
+	if err != nil {
+		t.Skipf("artwork init: %v", err)
+		return nil, nil
+	}
+	sc := scanner.New(cfg, strg, st, artSvc, slog.Default())
+	return &Server{cfg: cfg, store: st, storage: strg, scanner: sc, log: slog.Default()}, st
 }
 
-// randomDigits returns n uniform decimal digits (test phone numbers).
-func randomDigits(n int) string {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		panic(err)
-	}
-	var sb strings.Builder
-	for i := 0; i < n; i++ {
-		sb.WriteByte(byte('0' + b[i]%10))
-	}
-	return sb.String()
+// uniquePhone returns a valid 11-digit phone number unlikely to collide with
+// rows left by earlier runs (the create endpoint rejects duplicates).
+func uniquePhone(t *testing.T) string {
+	t.Helper()
+	digits := strconv.FormatInt(time.Now().UnixNano(), 10)
+	return "11" + digits[len(digits)-9:]
 }
 
-// B2: POST /api/admin/users used to echo createdAt "0001-01-01T00:00:00Z"
-// (zero-value) because the INSERT computed now() but never returned it.
-// The store now does RETURNING created_at; the handler response must carry
-// a real timestamp and the JSON must not serialize the zero-value.
+// omitempty does not omit a zero time.Time, so the create response must carry
+// a real createdAt instead of "0001-01-01T00:00:00Z".
 func TestAdminCreateUserReturnsCreatedAt(t *testing.T) {
 	s, st := newTestServerStore(t)
 
-	var (
-		u   model.User
-		rec *httptest.ResponseRecorder
-	)
-	for i := 0; i < 3; i++ {
-		phone := "1" + randomDigits(9)
-		body := `{"name":"Test Worker","phone":"` + phone + `"}`
-		rec = httptest.NewRecorder()
-		s.handleAdminCreateUser(rec,
-			httptest.NewRequest(http.MethodPost, "/api/admin/users", strings.NewReader(body)))
-		if rec.Code == http.StatusConflict { // phone collision: retry
-			continue
-		}
-		if rec.Code != http.StatusCreated {
-			t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
-		}
-		if err := json.Unmarshal(rec.Body.Bytes(), &u); err != nil {
-			t.Fatalf("decode response: %v", err)
-		}
-		break
+	phone := uniquePhone(t)
+	body := `{"name":"Test Worker","phone":"` + phone + `"}`
+	rec := httptest.NewRecorder()
+	s.handleAdminCreateUser(rec,
+		httptest.NewRequest(http.MethodPost, "/api/admin/users", strings.NewReader(body)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	if u.ID == "" {
-		t.Fatal("could not create a test user (phone collisions)")
+	var u model.User
+	if err := json.Unmarshal(rec.Body.Bytes(), &u); err != nil {
+		t.Fatalf("decode response: %v", err)
 	}
 	t.Cleanup(func() { _ = st.DeleteUser(context.Background(), u.ID) })
 
-	if u.CreatedAt.IsZero() {
-		t.Fatal("B2 not fixed: user.CreatedAt is zero-value after create")
-	}
-	if u.CreatedAt.Year() < 2020 {
-		t.Fatalf("createdAt looks wrong: %v", u.CreatedAt)
-	}
 	var raw map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
 		t.Fatal(err)
 	}
-	if raw["createdAt"] == "0001-01-01T00:00:00Z" {
-		t.Fatal("B2 not fixed: createdAt still serialized as zero-value")
-	}
-	if v, _ := raw["createdAt"].(string); v == "" {
-		t.Fatal("B2 not fixed: createdAt missing from JSON response")
+	created, _ := raw["createdAt"].(string)
+	if created == "" || created == "0001-01-01T00:00:00Z" {
+		t.Fatalf("createdAt not echoed with a real timestamp: %q", created)
 	}
 }
 
-// B-NEW-3: liking/unliking a song that does not exist used to return 204
-// silently, desyncing client state. It must now answer 404.
+// Liking something that does not exist must answer 404: a silent 204 desyncs
+// the client's like state.
 func TestLikeUnknownSongReturns404(t *testing.T) {
 	s, _ := newTestServerStore(t)
 	ctx := context.WithValue(context.Background(), ctxUserID, store.NewID())
@@ -202,8 +120,8 @@ func TestLikeUnknownSongReturns404(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPut, "/api/me/liked/"+unknown, nil).WithContext(ctx)
-	req.SetPathValue("id", unknown) // handleLike reads r.PathValue("id")
-	s.handleLike(rec, req)
+	req.SetPathValue("id", unknown)
+	s.handleLikeSong(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("like unknown: status = %d, want 404 (body %s)", rec.Code, rec.Body.String())
 	}
@@ -211,27 +129,26 @@ func TestLikeUnknownSongReturns404(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodDelete, "/api/me/liked/"+unknown, nil).WithContext(ctx)
 	req.SetPathValue("id", unknown)
-	s.handleUnlike(rec, req)
+	s.handleUnlikeSong(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("unlike unknown: status = %d, want 404 (body %s)", rec.Code, rec.Body.String())
 	}
 }
 
-// Regression guard for the B-NEW-3 validation: a real song id must still
-// like/unlike with 204.
+// A real song id must still like/unlike with 204.
 func TestLikeExistingSongReturns204(t *testing.T) {
 	s, st := newTestServerStore(t)
-	var songID string
-	if err := st.Pool().QueryRow(context.Background(),
-		"SELECT id FROM songs LIMIT 1").Scan(&songID); err != nil {
+	songs, err := st.AllSongs(context.Background())
+	if err != nil || len(songs) == 0 {
 		t.Skipf("no songs in the catalog — skipping: %v", err)
 	}
+	songID := songs[0].ID
 	ctx := context.WithValue(context.Background(), ctxUserID, store.NewID())
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPut, "/api/me/liked/"+songID, nil).WithContext(ctx)
 	req.SetPathValue("id", songID)
-	s.handleLike(rec, req)
+	s.handleLikeSong(rec, req)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("like existing: status = %d, want 204 (body %s)", rec.Code, rec.Body.String())
 	}
@@ -239,7 +156,7 @@ func TestLikeExistingSongReturns204(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodDelete, "/api/me/liked/"+songID, nil).WithContext(ctx)
 	req.SetPathValue("id", songID)
-	s.handleUnlike(rec, req)
+	s.handleUnlikeSong(rec, req)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("unlike existing: status = %d, want 204 (body %s)", rec.Code, rec.Body.String())
 	}
@@ -263,13 +180,14 @@ func multipartSong(t *testing.T, filename string, content []byte) (*bytes.Buffer
 	return &buf, mw.FormDataContentType()
 }
 
-// Upload validation: a file renamed to .mp3 whose content is not decodable
-// audio (junk bytes, no metadata, no duration) used to be accepted with a
-// 201 and indexed with duration 0. It must now be rejected with 400 and the
-// message must state the file is invalid — and nothing may be inserted.
+// A file renamed to .mp3 whose content is not decodable audio must be rejected
+// before it reaches the bucket, so nothing is inserted into the catalog.
 func TestAdminUploadRejectsInvalidAudio(t *testing.T) {
 	s, st := newTestServerStore(t)
-	before := countSongs(t, st)
+	before, err := st.AllSongs(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	body, contentType := multipartSong(t, "fake.mp3", bytes.Repeat([]byte("x"), 1024))
 	rec := httptest.NewRecorder()
@@ -284,27 +202,44 @@ func TestAdminUploadRejectsInvalidAudio(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if msg, _ := resp["error"].(string); !strings.Contains(msg, "Áudio inválido") && !strings.Contains(msg, "áudio inválido") {
+	if msg, _ := resp["error"].(string); !strings.Contains(strings.ToLower(msg), "áudio inválido") {
 		t.Fatalf("error message does not mention invalid audio: %q", msg)
 	}
-	if after := countSongs(t, st); after != before {
-		t.Fatalf("catalog changed by the rejected upload: before=%d after=%d", before, after)
+	after, err := st.AllSongs(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("catalog changed by the rejected upload: before=%d after=%d", len(before), len(after))
 	}
 }
 
-// A valid untagged WAV (RIFF/PCM) must pass the pre-Put validation and be
-// indexed with a real duration (>0), never 0. Requires the full
-// server wiring (storage + scanner); skipped when those are unavailable.
+// A valid untagged WAV must pass the pre-Put validation and be indexed with a
+// real duration (>0). Cleaning up uses the same prune the scanner performs.
 func TestAdminUploadValidWavHasDurationAndCreatedAt(t *testing.T) {
 	s, st := newFullTestServer(t)
-	before := countSongs(t, st)
+	before, err := st.AllSongs(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	var songID string
+	var songPath string
 	defer func() {
-		if songID != "" {
-			if _, err := st.Pool().Exec(context.Background(), "DELETE FROM songs WHERE id=$1", songID); err != nil {
-				t.Logf("cleanup of uploaded WAV song: %v", err)
-			}
+		if songPath == "" {
+			return
+		}
+		paths, err := st.LoadSongPaths(context.Background())
+		if err != nil {
+			t.Logf("cleanup of uploaded WAV song: %v", err)
+			return
+		}
+		delete(paths, songPath)
+		keep := make([]string, 0, len(paths))
+		for path := range paths {
+			keep = append(keep, path)
+		}
+		if _, err := st.DeleteMissing(context.Background(), keep); err != nil {
+			t.Logf("cleanup of uploaded WAV song: %v", err)
 		}
 	}()
 
@@ -321,25 +256,20 @@ func TestAdminUploadValidWavHasDurationAndCreatedAt(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &song); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	songID = song.ID
+	songPath = song.Path
 	if song.Duration <= 0 {
 		t.Fatalf("valid WAV indexed with duration <= 0: %v", song.Duration)
 	}
 	if song.CreatedAt.IsZero() {
-		t.Fatal("upload 201 echoes zero-value createdAt (fix 2 not applied)")
+		t.Fatal("upload 201 echoes zero-value createdAt")
 	}
-	if after := countSongs(t, st); after != before+1 {
-		t.Fatalf("catalog count wrong: before=%d after=%d", before, after)
+	after, err := st.AllSongs(context.Background())
+	if err != nil {
+		t.Fatal(err)
 	}
-}
-
-func countSongs(t *testing.T, st *store.Store) int {
-	t.Helper()
-	var n int
-	if err := st.Pool().QueryRow(context.Background(), "SELECT count(*) FROM songs").Scan(&n); err != nil {
-		t.Skipf("cannot count songs: %v", err)
+	if len(after) != len(before)+1 {
+		t.Fatalf("catalog count wrong: before=%d after=%d", len(before), len(after))
 	}
-	return n
 }
 
 // testWAV returns a minimal valid PCM WAV of the given duration (seconds).

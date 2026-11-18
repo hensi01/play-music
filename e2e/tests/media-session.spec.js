@@ -1,26 +1,7 @@
 const { test, expect } = require('playwright/test')
+const { trackConsole, expectClean, stubStream, stubArtwork, USER_PLACEHOLDER } = require('./helpers')
 const { tokenFor } = require('./push-fixture.cjs')
 test.use({ serviceWorkers: 'block' })
-
-function silentWav(seconds = 30) {
-  const sampleRate = 22050
-  const dataSize = sampleRate * seconds * 2
-  const buffer = Buffer.alloc(44 + dataSize)
-  buffer.write('RIFF', 0)
-  buffer.writeUInt32LE(36 + dataSize, 4)
-  buffer.write('WAVE', 8)
-  buffer.write('fmt ', 12)
-  buffer.writeUInt32LE(16, 16)
-  buffer.writeUInt16LE(1, 20)
-  buffer.writeUInt16LE(1, 22)
-  buffer.writeUInt32LE(sampleRate, 24)
-  buffer.writeUInt32LE(sampleRate * 2, 28)
-  buffer.writeUInt16LE(2, 32)
-  buffer.writeUInt16LE(16, 34)
-  buffer.write('data', 36)
-  buffer.writeUInt32LE(dataSize, 40)
-  return buffer
-}
 
 const songs = [
   { id: 'media-song-1', title: 'Faixa de teste 1', artist: 'Artista de teste', album: 'Álbum de teste', duration: 30, format: 'wav', liked: false },
@@ -28,8 +9,8 @@ const songs = [
 ]
 
 test('player móvel e comandos Media Session mantêm faixa e posição sincronizadas', async ({ page }) => {
-  const consoleErrors = []
-  page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()) })
+  const testInfo = test.info()
+  const clean = trackConsole(page)
 
   await page.addInitScript(() => {
     const state = { handlers: {}, metadata: null, position: null, playbackState: 'none' }
@@ -59,19 +40,10 @@ test('player móvel e comandos Media Session mantêm faixa e posição sincroniz
     contentType: 'application/json',
     body: JSON.stringify({ token, id: 'media-admin', username: 'teste', name: 'Admin de teste', isAdmin: true }),
   }))
+  await stubStream(page)
+  await stubArtwork(page)
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname
-    if (path === '/api/push/status') return route.fulfill({ json: { active: true } })
-    if (path.startsWith('/api/stream/')) {
-      return route.fulfill({ status: 200, contentType: 'audio/wav', headers: { 'Accept-Ranges': 'bytes' }, body: silentWav() })
-    }
-    if (path.startsWith('/api/artwork/')) {
-      const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=', 'base64')
-      return route.fulfill({ status: 200, contentType: 'image/png', body: png })
-    }
-    if (path === '/api/me') {
-      return route.fulfill({ json: { id: 'media-admin', username: 'teste', name: 'Admin de teste', isAdmin: true } })
-    }
     if (path === '/api/home') {
       return route.fulfill({ json: { sections: [{ title: 'Músicas de teste', songs }] } })
     }
@@ -87,7 +59,7 @@ test('player móvel e comandos Media Session mantêm faixa e posição sincroniz
   await installOverlay.waitFor({ state: 'visible', timeout: 7000 })
   await installOverlay.click({ position: { x: 1, y: 1 } })
   await page.goto('/admin/login')
-  await page.getByPlaceholder('Usuário ou e-mail').fill('teste')
+  await page.getByPlaceholder(USER_PLACEHOLDER).fill('teste')
   await page.getByPlaceholder('Senha').fill('teste')
   await page.getByRole('button', { name: 'Entrar' }).click()
   await page.locator('.app-shell').waitFor({ state: 'visible', timeout: 15000 })
@@ -156,5 +128,5 @@ test('player móvel e comandos Media Session mantêm faixa e posição sincroniz
   await expect.poll(() => page.evaluate(() => window.__testMediaSession.playbackState)).toBe('paused')
   await expect.poll(() => page.evaluate(() => window.__testMediaSession.position?.position)).toBe(0)
 
-  expect(consoleErrors).toEqual([])
+  expectClean(testInfo, clean)
 })

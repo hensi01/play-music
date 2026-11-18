@@ -1,54 +1,12 @@
-// Mi Ritmo web UI — vanilla JS, hash-based router.
-
-import { api, endpoints, artworkUrl, getToken, setToken, readAppConfig, applyPhoneMask, phoneMask } from './api.js'
+import { api, endpoints, artworkUrl, getToken, setToken, readAppConfig, applyPhoneMask, phoneMask, tokenUserId, tokenExpiry, isChatGPTBrowser, TOKEN_KEY, RERENDER_EVENT, UNAUTHORIZED_EVENT, PLAYLISTS_CHANGED_EVENT, decodeBase64URL } from './api.js'
+import { el } from './dom.js'
+import { fmtDuration, fmtDurationLong, pluralize } from './format.js'
 import * as player from './player.js'
 // admin.js is imported with the build version so the service worker (which
 // caches by URL) never serves a stale copy after a redeploy.
 const { renderAdmin, clearPendingAPIKey } = await import(`./admin.js?v=${readAppConfig().version}`)
 
-const appConfig = readAppConfig()
-
 const root = document.getElementById('app')
-
-// ---------- Helpers ----------
-
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag)
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v === undefined || v === null || v === false) continue
-    if (k === 'class') node.className = v
-    else if (k === 'html') node.innerHTML = v
-    else if (k === 'style') node.setAttribute('style', v)
-    else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v)
-    else node.setAttribute(k, v === true ? '' : String(v))
-  }
-  for (const c of children.flat()) {
-    if (c == null) continue
-    node.append(c instanceof Node ? c : document.createTextNode(String(c)))
-  }
-  return node
-}
-
-function fmtDuration(seconds) {
-  if (!Number.isFinite(seconds) || seconds <= 0) return '0:00'
-  const s = Math.floor(seconds % 60)
-  const m = Math.floor(seconds / 60)
-  if (m < 60) return `${m}:${String(s).padStart(2, '0')}`
-  const h = Math.floor(m / 60)
-  return `${h}:${String(m % 60).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-
-function fmtDurationLong(seconds) {
-  if (!Number.isFinite(seconds) || seconds <= 0) return '0 min'
-  const m = Math.max(1, Math.round(seconds / 60))
-  if (m < 60) return `${m} min`
-  const h = Math.floor(m / 60)
-  return `${h} h ${m % 60} min`
-}
-
-function musicas(n) {
-  return `${n} ${n === 1 ? 'música' : 'músicas'}`
-}
 
 function greeting() {
   const h = new Date().getHours()
@@ -62,35 +20,35 @@ function spinner(text = 'Carregando…') {
   return el('div', { class: 'spinner-wrap' }, el('div', { class: 'spinner' }), text)
 }
 
-function emptyState(msg) {
-  return el('div', { class: 'empty-state' }, el('p', {}, msg))
+function emptyState(msg, hint) {
+  return el('div', { class: 'empty-state' }, el('p', {}, msg), hint ? el('p', {}, hint) : null)
 }
 
-function emptyState2(msg, hint) {
-  return el('div', { class: 'empty-state' }, el('p', {}, msg), el('p', {}, hint))
+// renderError replaces the page content with the failure message. Every page
+// renderer reports through it, so a failed fetch looks the same everywhere.
+function renderError(container, err) {
+  container.innerHTML = ''
+  container.append(emptyState(err.message))
 }
 
 let toastTimer
+let toastEl = null
 function showToast(message) {
-  let toast = document.getElementById('app-toast')
-  if (!toast) {
-    toast = el('div', { id: 'app-toast', class: 'app-toast', role: 'status', 'aria-live': 'polite' })
-    document.body.append(toast)
+  if (!toastEl) {
+    toastEl = el('div', { class: 'app-toast', role: 'status', 'aria-live': 'polite' })
+    document.body.append(toastEl)
   }
-  toast.textContent = message
-  toast.classList.add('visible')
+  toastEl.textContent = message
+  toastEl.classList.add('visible')
   window.clearTimeout(toastTimer)
-  toastTimer = window.setTimeout(() => toast.classList.remove('visible'), 2200)
+  toastTimer = window.setTimeout(() => toastEl.classList.remove('visible'), 2200)
 }
-
-// ---------- Icons (inline SVG) ----------
 
 const icons = {
   home: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
   search: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
   library: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg>',
   heart: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>',
-  video: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>',
   link: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.1 0l3-3a5 5 0 0 0-7.1-7.1l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.1 0l-3 3a5 5 0 0 0 7.1 7.1l1.7-1.7"/></svg>',
   download: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-5-5 5 5 5-5M4 17v3h16v-3"/></svg>',
   clock: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
@@ -98,7 +56,6 @@ const icons = {
   settings: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
   logout: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>',
   list: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>',
-  cart: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>',
   play: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
   pause: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
   playSmall: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
@@ -127,8 +84,6 @@ function icon(name) {
   return node
 }
 
-// ---------- Auth state ----------
-
 let auth = { user: null, loading: true }
 let notificationGate = { userId: null, status: 'checking' }
 let notificationGateNeedsRedirect = false
@@ -150,43 +105,18 @@ function setAuth(patch) {
     player.clearSession()
   }
   auth = { ...auth, ...patch }
-  window.__pmAdmin = !!auth.user?.isAdmin
-  if (window.__pmAdmin) document.querySelector('.pwa-overlay')?.remove()
+  window.__pmPlatform.admin = !!auth.user?.isAdmin
+  if (window.__pmPlatform.admin) window.__pmPlatform.dismissInstall?.()
   if (previousId !== nextId) { notificationGateSeq++; notificationGateNeedsRedirect = false; notificationGate = { userId: nextId, status: 'checking' } }
   render()
   if (previousId !== nextId && nextId) void reconcilePushSubscription(nextId).finally(() => { if (auth.user?.id === nextId) void verifyNotificationGate(nextId) })
 }
 
-// Sessions share localStorage across tabs. Clear sensitive admin UI when a
-// different account signs in or the session is removed elsewhere.
 window.addEventListener('storage', (event) => {
-  if ((event.key !== 'pm_token' && event.key !== null) || !auth.user) return
-  try {
-    const part = (getToken() || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
-    const uid = JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, '='))).uid
-    if (uid === auth.user.id) return
-  } catch { /* missing or invalid token ends this tab's session */ }
+  if ((event.key !== TOKEN_KEY && event.key !== null) || !auth.user) return
+  if (tokenUserId() === auth.user.id) return
   setAuth({ user: null, loading: false })
 })
-
-// Lê a claim `exp` de um JWT (header.payload.signature, base64url) sem
-// validar a assinatura — suficiente para evitar o fetch de /api/me com token
-// expirado (o 401 resultante vira ruído no console na tela de login).
-// Retorna timestamp em ms, ou null se o token não tiver exp decodificável.
-function jwtExpiry(token) {
-  try {
-    const payload = token.split('.')[1]
-    if (!payload) return null
-    // JWT (RFC 7515) é base64url SEM padding; atob() no browser é estrito e
-    // lança InvalidCharacterError se o comprimento não for múltiplo de 4 —
-    // repor o padding '=' antes de decodificar.
-    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (payload.length % 4)) % 4)
-    const json = JSON.parse(atob(b64))
-    return typeof json.exp === 'number' ? json.exp * 1000 : null
-  } catch {
-    return null
-  }
-}
 
 async function refreshAuth() {
   const token = getToken()
@@ -194,11 +124,8 @@ async function refreshAuth() {
     setAuth({ loading: false, user: null })
     return
   }
-  const exp = jwtExpiry(token)
+  const exp = tokenExpiry(token)
   if (exp !== null && exp <= Date.now()) {
-    // Token expirado: limpa silenciosamente e nem faz o fetch — sem 401 no
-    // console. (Token sem exp decodificável segue o fluxo antigo: fetch e,
-    // em 401, o api.js já limpa o token.)
     setToken(null)
     setAuth({ user: null, loading: false })
     return
@@ -233,13 +160,9 @@ function doLogout() {
   navigate('/')
 }
 
-window.addEventListener('pm:unauthorized', () => {
-  // Sessão expirada/inválida durante o uso: desloga. Durante uma tentativa de
-  // login falha (401), o usuário já está deslogado — preserva a mensagem de erro.
+window.addEventListener(UNAUTHORIZED_EVENT, () => {
   if (auth.user) setAuth({ user: null })
 })
-
-// ---------- Router (hash-based) ----------
 
 function parseHash() {
   const raw = window.location.hash.replace(/^#/, '') || '/'
@@ -252,10 +175,8 @@ function navigate(to) {
   window.location.hash = to
 }
 
-// ---------- Track row ----------
-
 function trackRow(song, index, opts = {}) {
-  const { onPlay, onQueue, compactActions = false } = opts
+  const { onPlay, onQueue, compactActions } = opts
   const isCurrent = player.getPlayerState().current?.id === song.id
 
   const numCell = el(
@@ -321,14 +242,15 @@ function trackRow(song, index, opts = {}) {
   }, 'Mais')
   const moreMenu = el('div', { class: 'track-more-menu', 'aria-label': 'Ações da música' })
   const moreActions = el('div', { class: 'track-more' }, moreToggle, moreMenu)
-  const optionLabels = new Map([
+  // Absent actions are dropped here rather than by a null check in the loop, so
+  // the menu only ever holds buttons.
+  const options = [
     [queueBtn, 'Adicionar à fila'],
     [addBtn, 'Adicionar à playlist'],
     [shareBtn, 'Copiar link da música'],
     [downloadBtn, 'Baixar música'],
-  ])
-  for (const [button, label] of optionLabels) {
-    if (!button) continue
+  ].filter(([button]) => button)
+  for (const [button, label] of options) {
     button.classList.add('track-more-option')
     button.append(el('span', { class: 'track-action-label' }, label))
     button.addEventListener('click', () => closeTrackMore(moreActions))
@@ -398,7 +320,6 @@ function downloadButton(song) {
   } }, icon('download'))
 }
 
-// The public-facing path stays stable; authentication is checked on opening.
 async function copySongLink(songId) {
   const link = `${window.location.origin}${window.location.pathname}#/song/${encodeURIComponent(songId)}`
   try {
@@ -408,8 +329,6 @@ async function copySongLink(songId) {
     window.prompt('Copie o link da música:', link)
   }
 }
-
-// ---------- Add to playlist ----------
 
 function openPlaylistPicker(song) {
   const overlay = el(
@@ -451,7 +370,7 @@ function openPlaylistPicker(song) {
             if (!name?.trim()) return
             try {
               await endpoints.createPlaylist(name.trim(), [song.id])
-              window.dispatchEvent(new Event('pm:playlists-changed'))
+              window.dispatchEvent(new Event(PLAYLISTS_CHANGED_EVENT))
               alert('Playlist criada com a música.')
             } catch (err) {
               alert(err.message)
@@ -474,20 +393,15 @@ async function toggleLike(songId, btn) {
     if (!wasLiked) await endpoints.like(songId)
     else await endpoints.unlike(songId)
   } catch (err) {
-    // Falha: reverte o botão E o estado do player (barra inferior) — o
-    // otimismo só vale em sucesso, senão a lista e a barra dessincronizam.
     btn.classList.toggle('liked', wasLiked)
     if (isCurrent()) player.setLiked(wasLiked)
     console.error('Falha ao alternar curtida:', err)
     return
   }
-  // Sincroniza a barra inferior quando a música curtida é a atual.
   if (isCurrent()) player.setLiked(!wasLiked)
 }
 
-// ---------- Card ----------
-
-function card({ image, title, subtitle, onClick, onPlay, square = true }) {
+function card({ image, title, subtitle, onClick, onPlay }) {
   return el(
     'div',
     {
@@ -504,7 +418,7 @@ function card({ image, title, subtitle, onClick, onPlay, square = true }) {
     },
     el(
       'div',
-      { class: `card-image-wrap ${square ? 'square' : ''}` },
+      { class: 'card-image-wrap square' },
       el('img', { class: 'card-image', src: image, alt: '', loading: 'lazy' }),
       onPlay
         ? el(
@@ -528,7 +442,6 @@ function section(title, children) {
   )
 }
 
-// songCard: a playable card for a song (photo, title, artist).
 function songCard(song, onPlay) {
   return card({
     image: artworkUrl(song.id, 300),
@@ -539,22 +452,26 @@ function songCard(song, onPlay) {
   })
 }
 
-// categoryCard: a card that opens a category page with its songs.
 function categoryCard(c) {
   return card({
     image: artworkUrl(c.id, 300),
     title: c.name,
-    subtitle: musicas(c.songCount ?? 0),
+    subtitle: pluralize(c.songCount ?? 0, 'música', 'músicas'),
     onClick: () => navigate(`/category/${c.id}`),
   })
 }
 
-function albumCard(album, from = '/library') {
+// albumReturnPaths is where an album page's "Voltar" may lead. An album card
+// passes its own screen, and renderAlbum refuses anything not in this set, so a
+// new caller must add itself here rather than silently landing on /library.
+const albumReturnPaths = new Set(['/library', '/', '/search', '/liked'])
+
+function albumCard(album, from) {
   const details = [album.artist, album.year > 0 ? album.year : null].filter(Boolean).join(' • ')
   return card({
     image: artworkUrl(album.id, 300),
     title: album.name,
-    subtitle: [details, musicas(album.songCount ?? 0)].filter(Boolean).join(' • '),
+    subtitle: [details, pluralize(album.songCount ?? 0, 'música', 'músicas')].filter(Boolean).join(' • '),
     onClick: () => navigate(`/album/${encodeURIComponent(album.id)}?from=${encodeURIComponent(from)}`),
   })
 }
@@ -577,8 +494,6 @@ async function toggleAlbumLike(album, button) {
     button.disabled = false
   }
 }
-
-// ---------- Pages ----------
 
 const pages = {
   '/': renderHome,
@@ -627,8 +542,6 @@ function matchRoute(path) {
   return { fn: renderHome, params: {} }
 }
 
-// ---------- Home ----------
-
 async function renderHome(container) {
   container.innerHTML = ''
   container.append(el('div', { class: 'page-padding' }, el('h1', { class: 'page-title' }, greeting())))
@@ -657,7 +570,7 @@ async function renderHome(container) {
         section(
           'Playlists',
           myPlaylists.map((p) =>
-            card({ image: artworkUrl(p.id, 300), title: p.name, subtitle: musicas(p.songCount), onClick: () => navigate(`/playlist/${p.id}`) }),
+            card({ image: artworkUrl(p.id, 300), title: p.name, subtitle: pluralize(p.songCount, 'música', 'músicas'), onClick: () => navigate(`/playlist/${p.id}`) }),
           ),
         ),
       )
@@ -665,18 +578,17 @@ async function renderHome(container) {
     container.append(...sectionsEl)
     if (sectionsEl.length === 0) {
       container.append(
-        emptyState2(
+        emptyState(
           'Sua biblioteca está vazia.',
           'O administrador precisa adicionar músicas ao catálogo.',
         ),
       )
     }
   } catch (err) {
-    container.append(emptyState(err.message))
+    renderError(container, err)
   }
 }
 
-// ---------- Personalized recommendations ----------
 async function renderRecommendations(container) {
   container.innerHTML = ''
   container.append(spinner())
@@ -689,7 +601,7 @@ async function renderRecommendations(container) {
     if (!rec.songs?.length) page.append(emptyState('Ainda não há músicas no catálogo.'))
     container.innerHTML = ''
     container.append(page)
-  } catch (err) { container.innerHTML = ''; container.append(emptyState(err.message)) }
+  } catch (err) { renderError(container, err) }
 }
 
 async function renderArtist(container, params) {
@@ -703,34 +615,26 @@ async function renderArtist(container, params) {
     else page.append(emptyState('Nenhuma música disponível.'))
     container.innerHTML = ''
     container.append(page)
-  } catch (err) { container.innerHTML = ''; container.append(emptyState(err.message)) }
+  } catch (err) { renderError(container, err) }
 }
 
-// ---------- Search ----------
-
-// searchSeq guards against stale responses: only the latest request may
-// write results (typing fast can leave several requests in flight).
 let searchSeq = 0
 let searchResults = null
 let searchQuery = ''
 let searchType = 'all'
 
-// runSearch updates ONLY the #search-results container. It must never call
-// render() — rebuilding the page would destroy the input mid-typing and the
-// next keystrokes would go nowhere (the "search freezes" bug).
-async function runSearch(q) {
+// runSearch updates only the results node: calling render() here would destroy
+// the input mid-typing.
+async function runSearch(q, resultsEl) {
   searchQuery = q
   const seq = ++searchSeq
-  const resultsEl = document.getElementById('search-results')
   if (!q.trim()) {
     searchResults = null
-    if (resultsEl) resultsEl.innerHTML = ''
+    resultsEl.innerHTML = ''
     return
   }
-  if (resultsEl) {
-    resultsEl.innerHTML = ''
-    resultsEl.append(spinner())
-  }
+  resultsEl.innerHTML = ''
+  resultsEl.append(spinner())
   let results = null
   try {
     results = await endpoints.search(q, searchType)
@@ -739,7 +643,7 @@ async function runSearch(q) {
   }
   if (seq !== searchSeq) return
   searchResults = results
-  if (resultsEl) renderSearchResults(resultsEl, results)
+  renderSearchResults(resultsEl, results)
 }
 
 function renderSearchResults(container, results) {
@@ -801,17 +705,15 @@ const searchTypes = [
 ]
 
 async function renderSearch(container) {
-  const { params } = parseHash()
   container.innerHTML = ''
-  // Preserves the typed text across re-renders (searchQuery) or the genre
-  // filter coming from ?genre=.
-  const initial = params.get('genre') || searchQuery || ''
+  const initial = searchQuery || ''
+  const resultsEl = el('div', { id: 'search-results' })
 
   const input = el('input', { class: 'search-input', placeholder: 'O que você quer ouvir?', value: initial })
   let debounce
   input.addEventListener('input', (e) => {
     window.clearTimeout(debounce)
-    debounce = window.setTimeout(() => runSearch(e.target.value), 300)
+    debounce = window.setTimeout(() => runSearch(e.target.value, resultsEl), 300)
   })
 
   const typeSelect = el(
@@ -819,7 +721,7 @@ async function renderSearch(container) {
     {
       class: 'search-type-select',
       'aria-label': 'Tipo de pesquisa',
-      onchange: (e) => { searchType = e.target.value; runSearch(input.value) },
+      onchange: (e) => { searchType = e.target.value; runSearch(input.value, resultsEl) },
     },
     ...searchTypes.map((t) => el('option', { value: t.id }, t.label)),
   )
@@ -832,24 +734,18 @@ async function renderSearch(container) {
       el('div', { class: 'search-input-wrap' }, el('span', { class: 'search-icon', html: icons.search }), input),
       typeSelect,
     ),
+    resultsEl,
   )
-  const resultsEl = el('div', { id: 'search-results' })
-  page.append(resultsEl)
   container.append(page)
 
-  // Render the cached results without a refetch when possible; otherwise
-  // fire the search. Never await inside render: the container updates in
-  // place and the input keeps focus.
   if (initial) {
     if (searchResults && searchQuery === initial) renderSearchResults(resultsEl, searchResults)
-    else void runSearch(initial)
+    else void runSearch(initial, resultsEl)
   } else {
     searchQuery = ''
     renderSearchResults(resultsEl, null)
   }
 }
-
-// ---------- Library ----------
 
 let libTab = 'songs'
 let libData = null
@@ -898,7 +794,7 @@ async function renderLibrary(container) {
 
   if (libTab === 'songs') {
     if (libData.songs.length === 0) {
-      wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhuma música na biblioteca.'))
+      wrap.append(emptyState('Nenhuma música na biblioteca.'))
       return
     }
     const rows = libData.songs.map((s, i) =>
@@ -907,13 +803,13 @@ async function renderLibrary(container) {
     page.append(el('div', { class: 'track-list' }, ...rows))
   } else if (libTab === 'albums') {
     if (libData.albums.length === 0) {
-      wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhum álbum disponível.'))
+      wrap.append(emptyState('Nenhum álbum disponível.'))
       return
     }
-    for (const album of libData.albums) wrap.append(albumCard(album))
+    for (const album of libData.albums) wrap.append(albumCard(album, '/library'))
   } else if (libTab === 'categories') {
     if (libData.categories.length === 0) {
-      wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhuma categoria ainda.'))
+      wrap.append(emptyState('Nenhuma categoria ainda.'))
       return
     }
     for (const c of libData.categories) {
@@ -921,16 +817,15 @@ async function renderLibrary(container) {
     }
   } else {
     if (libData.playlists.length === 0) {
-      wrap.append(el('p', { style: 'color:var(--subtext)' }, 'Nenhuma playlist criada.'))
+      wrap.append(emptyState('Nenhuma playlist criada.'))
       return
     }
     for (const p of libData.playlists) {
-      wrap.append(card({ image: artworkUrl(p.id, 300), title: p.name, subtitle: musicas(p.songCount), onClick: () => navigate(`/playlist/${p.id}`) }))
+      wrap.append(card({ image: artworkUrl(p.id, 300), title: p.name, subtitle: pluralize(p.songCount, 'música', 'músicas'), onClick: () => navigate(`/playlist/${p.id}`) }))
     }
   }
 }
 
-// Permanent, access-controlled share link for a song.
 async function renderSong(container, params) {
   container.innerHTML = ''
   container.append(spinner())
@@ -950,13 +845,8 @@ async function renderSong(container, params) {
     )
     container.innerHTML = ''
     container.append(el('div', { class: 'page' }, header))
-  } catch (err) {
-    container.innerHTML = ''
-    container.append(emptyState(err.message))
-  }
+  } catch (err) { renderError(container, err) }
 }
-
-// ---------- Category ----------
 
 async function renderCategory(container, params) {
   container.innerHTML = ''
@@ -974,7 +864,7 @@ async function renderCategory(container, params) {
         { class: 'detail-info' },
         el('p', { class: 'detail-type' }, 'Categoria'),
         el('h1', { class: 'detail-title' }, cat.name),
-        el('p', { class: 'detail-meta' }, musicas(songs.length)),
+        el('p', { class: 'detail-meta' }, pluralize(songs.length, 'música', 'músicas')),
         el(
           'div',
           { class: 'detail-actions' },
@@ -1004,10 +894,7 @@ async function renderCategory(container, params) {
 
     container.innerHTML = ''
     container.append(el('div', { class: 'page' }, header, content))
-  } catch (err) {
-    container.innerHTML = ''
-    container.append(emptyState(err.message))
-  }
+  } catch (err) { renderError(container, err) }
 }
 
 async function renderAlbum(container, params) {
@@ -1015,7 +902,7 @@ async function renderAlbum(container, params) {
   container.append(spinner())
   const { params: query } = parseHash()
   const requestedReturn = query.get('from')
-  const returnTo = ['/search', '/', '/liked'].includes(requestedReturn) ? requestedReturn : '/library'
+  const returnTo = albumReturnPaths.has(requestedReturn) ? requestedReturn : '/library'
   try {
     const album = await endpoints.album(params.id)
     const songs = album.songs ?? []
@@ -1023,7 +910,7 @@ async function renderAlbum(container, params) {
     const meta = [
       album.artist || 'Artista desconhecido',
       album.year > 0 ? album.year : null,
-      musicas(songs.length),
+      pluralize(songs.length, 'música', 'músicas'),
       fmtDurationLong(duration),
     ].filter(Boolean).join(' • ')
     const header = el(
@@ -1054,7 +941,7 @@ async function renderAlbum(container, params) {
           el(
             'button',
             {
-              class: 'btn-secondary album-shuffle',
+              class: 'btn-secondary',
               disabled: songs.length === 0,
               'aria-label': 'Tocar álbum aleatoriamente',
               onclick: () => playShuffle(songs),
@@ -1095,10 +982,7 @@ async function renderAlbum(container, params) {
     content.append(el('button', { class: 'back-link', onclick: () => navigate(returnTo) }, icon('arrowLeft'), 'Voltar'))
     container.innerHTML = ''
     container.append(el('div', { class: 'page' }, header, content))
-  } catch (err) {
-    container.innerHTML = ''
-    container.append(emptyState(err.message))
-  }
+  } catch (err) { renderError(container, err) }
 }
 
 function playShuffle(songs) {
@@ -1111,8 +995,6 @@ function playShuffle(songs) {
   }
   player.playContext(shuffled, 0)
 }
-
-// ---------- Playlist ----------
 
 async function renderPlaylist(container, params) {
   container.innerHTML = ''
@@ -1131,7 +1013,7 @@ async function renderPlaylist(container, params) {
         el('p', { class: 'detail-type' }, 'Playlist'),
         el('h1', { class: 'detail-title' }, playlist.name),
         playlist.comment ? el('p', { class: 'detail-meta' }, playlist.comment) : null,
-        el('p', { class: 'detail-meta' }, `${playlist.owner} • ${musicas(playlist.songCount)} • ${fmtDurationLong(playlist.duration)}`),
+        el('p', { class: 'detail-meta' }, `${playlist.owner} • ${pluralize(playlist.songCount, 'música', 'músicas')} • ${fmtDurationLong(playlist.duration)}`),
         el(
           'div',
           { class: 'detail-actions' },
@@ -1148,7 +1030,7 @@ async function renderPlaylist(container, params) {
     const content = el('div', { class: 'detail-content' })
     if ((playlist.songs ?? []).length === 0) {
       content.append(
-        emptyState2(
+        emptyState(
           'Esta playlist está vazia.',
           'Crie uma playlist pela página de Configurações e adicione músicas.',
         ),
@@ -1175,10 +1057,7 @@ async function renderPlaylist(container, params) {
 
     container.innerHTML = ''
     container.append(el('div', { class: 'page' }, header, content))
-  } catch (err) {
-    container.innerHTML = ''
-    container.append(emptyState(err.message))
-  }
+  } catch (err) { renderError(container, err) }
 }
 
 async function removePlaylistTrack(id, entryId) {
@@ -1186,13 +1065,9 @@ async function removePlaylistTrack(id, entryId) {
     await endpoints.removePlaylistTrack(id, entryId)
     render()
   } catch (err) {
-    // Falha do DELETE: a lista permanece intacta (nenhum render) e o erro
-    // vira feedback visível em vez de unhandled promise rejection.
     alert(err.message)
   }
 }
-
-// ---------- Liked ----------
 
 async function renderLiked(container) {
   container.innerHTML = ''
@@ -1208,7 +1083,7 @@ async function renderLiked(container) {
         { class: 'detail-info' },
         el('p', { class: 'detail-type' }, 'Playlist'),
         el('h1', { class: 'detail-title' }, 'Curtidas'),
-        el('p', { class: 'detail-meta' }, `${musicas(songs.length)} • ${albums.length} ${albums.length === 1 ? 'álbum salvo' : 'álbuns salvos'}`),
+        el('p', { class: 'detail-meta' }, `${pluralize(songs.length, 'música', 'músicas')} • ${pluralize(albums.length, 'álbum salvo', 'álbuns salvos')}`),
         el(
           'div',
           { class: 'detail-actions' },
@@ -1223,7 +1098,7 @@ async function renderLiked(container) {
     )
     const content = el('div', { class: 'detail-content' })
     if (songs.length === 0 && albums.length === 0) {
-      content.append(emptyState2('Nenhuma música curtida ainda.', 'Toque no coração de uma música para salvá-la aqui.'))
+      content.append(emptyState('Nenhuma música curtida ainda.', 'Toque no coração de uma música para salvá-la aqui.'))
     } else {
       if (songs.length) {
         content.append(el('h2', { class: 'section-title liked-section-title' }, 'Músicas'))
@@ -1237,13 +1112,8 @@ async function renderLiked(container) {
     }
     container.innerHTML = ''
     container.append(el('div', { class: 'page' }, header, content))
-  } catch (err) {
-    container.innerHTML = ''
-    container.append(emptyState(err.message))
-  }
+  } catch (err) { renderError(container, err) }
 }
-
-// ---------- History ----------
 
 async function renderHistory(container) {
   container.innerHTML = ''
@@ -1264,10 +1134,7 @@ async function renderHistory(container) {
     }
     container.innerHTML = ''
     container.append(el('div', { class: 'page' }, page))
-  } catch (err) {
-    container.innerHTML = ''
-    container.append(emptyState(err.message))
-  }
+  } catch (err) { renderError(container, err) }
 }
 
 async function renderDownloads(container) {
@@ -1280,10 +1147,20 @@ async function renderDownloads(container) {
     else page.append(el('div', { class: 'track-list' }, ...entries.map(entry => el('div', { class: 'download-history-row' },
       el('div', {}, el('p', { class: 'track-title' }, entry.title), el('p', { class: 'track-artist' }, `${entry.artist || 'Desconhecido'} · ${new Date(entry.downloadedAt).toLocaleString('pt-BR')}`)), entry.id ? downloadButton(entry) : el('span', { class: 'track-artist' }, 'Indisponível')))))
     container.innerHTML = ''; container.append(el('div', { class: 'page' }, page))
-  } catch (err) { container.innerHTML = ''; container.append(emptyState(err.message)) }
+  } catch (err) { renderError(container, err) }
 }
 
-// ---------- Queue ----------
+// currentMarker is the accent bar that marks the playing row in the queue page
+// and in the queue panel; both build it, so it lives here.
+function currentMarker() {
+  return el('span', { class: 'queue-current-marker' }, el('span', { style: 'display:block;width:4px;height:12px;border-radius:2px;background:var(--accent)' }))
+}
+
+function queueRow(song, index, currentIndex, queue) {
+  const row = trackRow(song, index, { onPlay: (_song, idx) => player.playContext(queue, idx) })
+  if (index !== currentIndex) return row
+  return el('div', { class: 'queue-track-wrap' }, currentMarker(), row)
+}
 
 function renderQueue(container) {
   const { queue, currentIndex } = player.getPlayerState()
@@ -1296,27 +1173,13 @@ function renderQueue(container) {
   if (queue.length === 0) {
     page.append(emptyState('A fila está vazia. Toque uma música para começar.'))
   } else {
-    const rows = queue.map((s, i) => {
-      const row = trackRow(s, i, { onPlay: (_song, idx) => player.playContext(queue, idx) })
-      if (i === currentIndex) {
-        return el(
-          'div',
-          { class: 'queue-track-wrap' },
-          el('span', { class: 'queue-current-marker' }, el('span', { style: 'display:block;width:4px;height:12px;border-radius:2px;background:var(--accent)' })),
-          row,
-        )
-      }
-      return row
-    })
+    const rows = queue.map((s, i) => queueRow(s, i, currentIndex, queue))
     page.append(el('div', { class: 'track-list' }, ...rows))
   }
   container.innerHTML = ''
   container.append(el('div', { class: 'page' }, page))
 }
 
-// ---------- Settings ----------
-
-// Avoid leaving the activation screen stuck if registration fails.
 async function pushServiceWorker() {
   let timer
   try {
@@ -1327,20 +1190,11 @@ async function pushServiceWorker() {
   } finally { clearTimeout(timer) }
 }
 
-function isChatGPTBrowser() {
-  return new URLSearchParams(window.location.search).get('chatgpt') === '1' ||
-    /ChatGPT|Codex Browser/i.test(navigator.userAgent || '')
-}
-
 function supportsPushNotifications() {
   return window.isSecureContext === true && 'serviceWorker' in navigator &&
     'PushManager' in window && 'Notification' in window && !!navigator.locks
 }
 
-function pushVapidPublicKeyBytes(publicKey) {
-  const raw = atob(publicKey.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(publicKey.length / 4) * 4, '='))
-  return Uint8Array.from(raw, c => c.charCodeAt(0))
-}
 
 function pushSubscriptionUsesVapidKey(subscription, expectedKey) {
   const currentKey = subscription?.options?.applicationServerKey
@@ -1349,7 +1203,6 @@ function pushSubscriptionUsesVapidKey(subscription, expectedKey) {
   return currentBytes.length === expectedKey.length && currentBytes.every((byte, index) => byte === expectedKey[index])
 }
 
-// Serialize device operations so an opt-out always runs after an in-flight update.
 let pushOperation = Promise.resolve()
 function queuePushOperation(action) {
   const next = pushOperation.catch(() => undefined).then(() =>
@@ -1357,6 +1210,8 @@ function queuePushOperation(action) {
   pushOperation = next.catch(() => undefined)
   return next
 }
+// Both keys are per browser profile; the e2e fixture writes the same names.
+const PUSH_OWNER_KEY = 'pm_push_owner'
 function pushStateKey(userId) { return `pm_push_state:${userId}` }
 function readPushState(userId) {
   try { return JSON.parse(localStorage.getItem(pushStateKey(userId)) || 'null') || { enabled: false } }
@@ -1364,12 +1219,9 @@ function readPushState(userId) {
 }
 function writePushState(userId, state) { localStorage.setItem(pushStateKey(userId), JSON.stringify(state)) }
 function ensurePushAccount(userId) {
-  let tokenUser = null
-  try {
-    const part = getToken().split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
-    tokenUser = JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, '='))).uid
-  } catch { /* A missing or malformed token cannot authorize this operation. */ }
-  if (auth.user?.id !== userId || tokenUser !== userId) throw new Error('A conta mudou. Entre novamente para concluir a operação.')
+  if (auth.user?.id !== userId || tokenUserId() !== userId) {
+    throw new Error('A conta mudou. Entre novamente para concluir a operação.')
+  }
 }
 
 async function pushRequest(path, method = 'GET', body) {
@@ -1382,10 +1234,20 @@ async function pushRequest(path, method = 'GET', body) {
 async function removePushEndpoint(endpoint) {
   await pushRequest('/api/push/subscriptions', 'DELETE', { endpoint })
 }
+
+// removePushEndpoints drops every endpoint recorded for this account and re-pins
+// the account after each delete: recording them may have happened under another
+// account, and the endpoint list is read again from storage each time.
+async function removePushEndpoints(userId, ...endpoints) {
+  for (const endpoint of new Set(endpoints.filter(Boolean))) {
+    await removePushEndpoint(endpoint)
+    ensurePushAccount(userId)
+  }
+}
 async function reconcilePushSubscription(userId) {
   return queuePushOperation(async () => {
     let state = readPushState(userId)
-    const owner = localStorage.getItem('pm_push_owner')
+    const owner = localStorage.getItem(PUSH_OWNER_KEY)
     if (owner !== userId) return
     if (!navigator.locks && state.enabled) return
     if (!('serviceWorker' in navigator) || !('Notification' in window)) return
@@ -1395,23 +1257,21 @@ async function reconcilePushSubscription(userId) {
       ensurePushAccount(userId)
       state = readPushState(userId)
       if (!state.enabled) {
-        if (localStorage.getItem('pm_push_owner') !== userId) return
-        const endpoints = [...new Set([state.endpoint, state.pendingEndpoint].filter(Boolean))]
-        for (const endpoint of endpoints) { await removePushEndpoint(endpoint); ensurePushAccount(userId) }
+        if (localStorage.getItem(PUSH_OWNER_KEY) !== userId) return
+        await removePushEndpoints(userId, state.endpoint, state.pendingEndpoint)
         if (current) await current.unsubscribe()
         ensurePushAccount(userId)
         writePushState(userId, { enabled: false })
-        localStorage.removeItem('pm_push_owner')
+        localStorage.removeItem(PUSH_OWNER_KEY)
         return
       }
       if (Notification.permission !== 'granted' || !current) {
-        // Keep the old endpoint until the server confirms revocation.
-        for (const endpoint of new Set([state.endpoint, state.pendingEndpoint].filter(Boolean))) { await removePushEndpoint(endpoint); ensurePushAccount(userId) }
+        await removePushEndpoints(userId, state.endpoint, state.pendingEndpoint)
         ensurePushAccount(userId)
         state = readPushState(userId)
         if (state.enabled) {
           writePushState(userId, { enabled: false })
-          if (localStorage.getItem('pm_push_owner') === userId) localStorage.removeItem('pm_push_owner')
+          if (localStorage.getItem(PUSH_OWNER_KEY) === userId) localStorage.removeItem(PUSH_OWNER_KEY)
         }
         return
       }
@@ -1446,9 +1306,9 @@ async function verifyNotificationGate(userId) {
   let allowed = false
   try {
     ensurePushAccount(userId)
-    if (!window.isSecureContext || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window) || !navigator.locks || Notification.permission !== 'granted') throw new Error('Permissão necessária')
+    if (!supportsPushNotifications() || Notification.permission !== 'granted') throw new Error('Permissão necessária')
     const state = readPushState(userId)
-    if (!state.enabled || !state.endpoint || state.pendingEndpoint || localStorage.getItem('pm_push_owner') !== userId) throw new Error('Inscrição necessária')
+    if (!state.enabled || !state.endpoint || state.pendingEndpoint || localStorage.getItem(PUSH_OWNER_KEY) !== userId) throw new Error('Inscrição necessária')
     const registration = await pushServiceWorker()
     const subscription = await registration.pushManager.getSubscription()
     ensurePushAccount(userId)
@@ -1468,21 +1328,22 @@ async function verifyNotificationGate(userId) {
   if (allowed) void loadPlaylists()
 }
 function installButton() {
-  if (window.isPlayMusicInstalled?.()) return null
-  return el('button', { class: 'install-app-btn', type: 'button', onclick: () => window.installPlayMusic?.() }, 'Instalar aplicativo')
+  if (window.__pmPlatform.isInstalled()) return null
+  return el('button', { class: 'install-app-btn', type: 'button', onclick: () => window.__pmPlatform.install?.() }, 'Instalar aplicativo')
 }
 function renderNotificationGate() {
-  document.querySelector('.pwa-overlay')?.remove()
+  window.__pmPlatform.gateVisible = true
+  window.__pmPlatform.dismissInstall?.()
   root.innerHTML = ''
   const checking = notificationGate.status === 'checking'
-  const bell = el('span', { class: 'notification-gate-icon', 'aria-hidden': 'true', html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>' })
+  const bell = el('span', { class: 'promo-icon', 'aria-hidden': 'true', html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>' })
   root.append(el('main', { class: 'notification-gate' },
     el('div', { class: 'notification-gate-brand' }, icon('music'), el('strong', {}, 'Mi Ritmo')),
     el('section', { class: 'notification-gate-content', 'aria-labelledby': 'notification-gate-title' },
       bell,
-      el('p', { class: 'notification-gate-eyebrow' }, 'FIQUE POR DENTRO'),
+      el('p', { class: 'promo-eyebrow' }, 'FIQUE POR DENTRO'),
       el('h1', { id: 'notification-gate-title' }, checking ? 'Verificando notificações' : 'Ative as notificações'),
-      el('p', { class: 'notification-gate-description' }, checking ? 'Estamos preparando seu acesso.' : 'Permita as notificações para continuar e receber avisos e novidades do Mi Ritmo.'),
+      el('p', { class: 'promo-description' }, checking ? 'Estamos preparando seu acesso.' : 'Permita as notificações para continuar e receber avisos e novidades do Mi Ritmo.'),
       checking ? spinner('Só um instante…') : notificationSettingsCard(true))))
 }
 
@@ -1494,7 +1355,7 @@ window.addEventListener('appinstalled', () => render())
 function notificationSettingsCard(required = false) {
   const userId = auth.user?.id
   const pushState = readPushState(userId)
-  const active = !required && notificationGate.userId === userId && notificationGate.status === 'allowed' && window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && !!navigator.locks && Notification.permission === 'granted' && localStorage.getItem('pm_push_owner') === userId && pushState.enabled === true && !!pushState.endpoint && !pushState.pendingEndpoint
+  const active = !required && notificationGate.userId === userId && notificationGate.status === 'allowed' && supportsPushNotifications() && Notification.permission === 'granted' && localStorage.getItem(PUSH_OWNER_KEY) === userId && pushState.enabled === true && !!pushState.endpoint && !pushState.pendingEndpoint
   const status = el('p', { class: required ? 'notification-gate-status' : 'settings-text', role: 'status', 'aria-live': 'polite' }, required ? '' : active ? 'As notificações já estão ativadas neste dispositivo.' : 'Ative para receber avisos e promoções neste dispositivo.')
   const enable = el('button', { class: 'btn-accent', type: 'button' }, 'Ativar notificações')
   const disable = el('button', { class: 'btn-secondary', type: 'button' }, 'Desativar notificações')
@@ -1502,15 +1363,13 @@ function notificationSettingsCard(required = false) {
     status.textContent = 'As notificações não são exigidas no modo ChatGPT.'
     enable.disabled = true; disable.disabled = true
   } else if (!supportsPushNotifications()) {
-    const ios = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-    status.textContent = ios ? 'No iPhone ou iPad, abra no Safari, toque em Compartilhar e em Adicionar à Tela de Início. Depois, abra o aplicativo instalado.' : 'As notificações não estão disponíveis neste navegador. Abra o aplicativo em um navegador compatível.'
+    status.textContent = window.__pmPlatform.isIOS() ? 'No iPhone ou iPad, abra no Safari, toque em Compartilhar e em Adicionar à Tela de Início. Depois, abra o aplicativo instalado.' : 'As notificações não estão disponíveis neste navegador. Abra o aplicativo em um navegador compatível.'
     enable.disabled = true; disable.disabled = true
   }
-  else if (!navigator.locks) { status.textContent = 'Atualize o navegador para ativar notificações com segurança.'; enable.disabled = true }
   let config = null
   if (!enable.disabled && !active) {
     enable.disabled = true
-    pushRequest('/api/push/config').then(value => { config = value; enable.disabled = false; if (!value.enabled) status.textContent = 'Notificações indisponíveis. Toque para tentar novamente.' }).catch(() => { enable.disabled = false; status.textContent = 'Não foi possível verificar as notificações. Toque para tentar novamente.' })
+    endpoints.pushConfig({ signal: AbortSignal.timeout(8000) }).then(value => { config = value; enable.disabled = false; if (!value.enabled) status.textContent = 'Notificações indisponíveis. Toque para tentar novamente.' }).catch(() => { enable.disabled = false; status.textContent = 'Não foi possível verificar as notificações. Toque para tentar novamente.' })
   }
   enable.addEventListener('click', async () => {
     const intent = `${Date.now()}-${Math.random()}`
@@ -1518,7 +1377,7 @@ function notificationSettingsCard(required = false) {
     try {
       ensurePushAccount(userId)
       if (!config?.enabled) {
-        config = await pushRequest('/api/push/config')
+        config = await endpoints.pushConfig({ signal: AbortSignal.timeout(8000) })
         ensurePushAccount(userId)
         status.textContent = config.enabled ? 'Tudo pronto. Toque novamente para permitir.' : 'Notificações indisponíveis. Tente novamente em instantes.'
         return
@@ -1532,11 +1391,11 @@ function notificationSettingsCard(required = false) {
       await queuePushOperation(async () => {
         ensurePushAccount(userId)
         if (!readPushState(userId).enabled || readPushState(userId).intent !== intent) return
-        const owner = localStorage.getItem('pm_push_owner')
+        const owner = localStorage.getItem(PUSH_OWNER_KEY)
         if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela e desative as notificações primeiro.')
-        localStorage.setItem('pm_push_owner', userId)
+        localStorage.setItem(PUSH_OWNER_KEY, userId)
         const reg = await pushServiceWorker()
-        const applicationServerKey = pushVapidPublicKeyBytes(config.publicKey)
+        const applicationServerKey = decodeBase64URL(config.publicKey)
         let sub = await reg.pushManager.getSubscription()
         ensurePushAccount(userId)
         if (!readPushState(userId).enabled) return
@@ -1570,14 +1429,14 @@ function notificationSettingsCard(required = false) {
         if (next.enabled) writePushState(userId, { enabled: true, endpoint: sub.endpoint })
       })
       status.textContent = readPushState(userId).enabled ? 'Notificações ativadas neste dispositivo.' : 'Cancelamento em andamento.'
-      if (typeof verifyNotificationGate === 'function') void verifyNotificationGate(userId)
+      void verifyNotificationGate(userId)
     } catch (err) {
       if (pushServiceRegistrationFailed) {
         await queuePushOperation(async () => {
           const state = readPushState(userId)
           if (state.intent !== intent) return
           writePushState(userId, { ...state, enabled: false, intent: '' })
-          if (!state.endpoint && !state.pendingEndpoint && localStorage.getItem('pm_push_owner') === userId) localStorage.removeItem('pm_push_owner')
+          if (!state.endpoint && !state.pendingEndpoint && localStorage.getItem(PUSH_OWNER_KEY) === userId) localStorage.removeItem(PUSH_OWNER_KEY)
         }).catch(() => undefined)
         status.textContent = 'O navegador não conseguiu se conectar ao serviço de notificações. Verifique sua conexão e tente novamente mais tarde.'
       } else {
@@ -1588,26 +1447,25 @@ function notificationSettingsCard(required = false) {
   disable.addEventListener('click', async () => {
     try {
       ensurePushAccount(userId)
-      const owner = localStorage.getItem('pm_push_owner')
+      const owner = localStorage.getItem(PUSH_OWNER_KEY)
       if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela para desativar as notificações.')
       // Record opt-out synchronously, before waiting for any earlier network call.
       writePushState(userId, { ...readPushState(userId), enabled: false, intent: '' })
-      if (typeof verifyNotificationGate === 'function') void verifyNotificationGate(userId)
+      void verifyNotificationGate(userId)
       await queuePushOperation(async () => {
         ensurePushAccount(userId)
-        const owner = localStorage.getItem('pm_push_owner')
+        const owner = localStorage.getItem(PUSH_OWNER_KEY)
         if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela para desativar as notificações.')
         const state = readPushState(userId)
         if (owner !== userId && !state.endpoint && !state.pendingEndpoint) throw new Error('Não foi possível confirmar a conta desta inscrição. Entre na conta que ativou as notificações.')
         const reg = await pushServiceWorker()
         const sub = await reg.pushManager.getSubscription()
         ensurePushAccount(userId)
-        const endpoints = [...new Set([state.endpoint, state.pendingEndpoint, sub?.endpoint].filter(Boolean))]
-        for (const endpoint of endpoints) { await removePushEndpoint(endpoint); ensurePushAccount(userId) }
+        await removePushEndpoints(userId, state.endpoint, state.pendingEndpoint, sub?.endpoint)
         if (sub) await sub.unsubscribe()
         ensurePushAccount(userId)
         writePushState(userId, { enabled: false })
-        if (localStorage.getItem('pm_push_owner') === userId) localStorage.removeItem('pm_push_owner')
+        if (localStorage.getItem(PUSH_OWNER_KEY) === userId) localStorage.removeItem(PUSH_OWNER_KEY)
       })
       status.textContent = 'Notificações desativadas neste dispositivo.'
     } catch (err) { status.textContent = err.message || 'Não foi possível desativar notificações. Tente novamente.' }
@@ -1626,7 +1484,6 @@ async function renderSettings(container) {
     /* ignore */
   }
 
-  // Clients: the account page only shows the phone and the playlists.
   if (!auth.user?.isAdmin) {
     const phoneCard = el(
       'section',
@@ -1650,7 +1507,7 @@ async function renderSettings(container) {
             { class: 'settings-playlist-item', onclick: () => navigate(`/playlist/${p.id}`) },
             icon('list'),
             el('span', { style: 'flex:1;min-width:0;text-align:left' }, p.name),
-            el('span', { style: 'color:var(--faint);font-size:12px' }, musicas(p.songCount)),
+            el('span', { style: 'color:var(--faint);font-size:12px' }, pluralize(p.songCount, 'música', 'músicas')),
           ),
         )
       }
@@ -1724,14 +1581,12 @@ async function createPlaylist() {
   if (!name?.trim()) return
   try {
     await endpoints.createPlaylist(name.trim(), [])
-    window.dispatchEvent(new Event('pm:playlists-changed'))
+    window.dispatchEvent(new Event(PLAYLISTS_CHANGED_EVENT))
     render()
   } catch (err) {
     alert(err.message)
   }
 }
-
-// ---------- Login ----------
 
 let loginMode = 'client' // client, register
 
@@ -1838,8 +1693,6 @@ function renderAdminLogin(container) {
   ))
 }
 
-// ---------- Sidebar ----------
-
 let playlistsCache = []
 let menuOpen = false
 
@@ -1919,7 +1772,6 @@ function sidebarContent(onNavigate) {
   )
 }
 
-// Compact navigation keeps the most used destinations one tap away on phones.
 function mobileNavigation() {
   const { path } = parseHash()
   const destinations = [
@@ -1935,31 +1787,39 @@ function mobileNavigation() {
   )
 }
 
-// ---------- Bottom bar ----------
+// playerProgress clamps the raw timeupdate value to the track length, which is
+// unknown (0) until the browser reports a duration.
+function playerProgress() {
+  const { current, progress, duration } = player.getPlayerState()
+  const total = player.resolveDuration(duration, current?.duration ?? 0)
+  const position = Number.isFinite(progress) ? Math.min(Math.max(progress, 0), total) : 0
+  return { total, position, percent: total > 0 ? (position / total) * 100 : 0 }
+}
 
-// refs holds live element references so progress/volume updates can mutate
-// the DOM in place instead of rebuilding the whole bar (rebuilding every
-// 50ms was destroying the seek track mid-gesture and breaking clicks/drags).
+// progressTrack builds the seekable bar; the returned refs let updateBarInPlace
+// move it without re-rendering the player.
+function progressTrack(refs) {
+  const { total, position, percent } = playerProgress()
+  const fill = el('div', { class: 'progress-fill', style: `width:${percent}%` })
+  const cur = el('span', { class: 'progress-time' }, fmtDuration(position))
+  const dur = el('span', { class: 'progress-time' }, fmtDuration(total))
+  const track = el(
+    'div',
+    { class: 'progress-track', role: 'slider', 'aria-valuemin': 0, 'aria-valuemax': total, 'aria-valuenow': position },
+    fill,
+  )
+  refs.fill = fill
+  refs.cur = cur
+  refs.dur = dur
+  refs.track = track
+  return { track, fill, cur, dur }
+}
+
 function bottomBar(refs) {
-  const { current, playing, progress, duration, volume, shuffle, repeat } = player.getPlayerState()
+  const { current, playing, volume, shuffle, repeat } = player.getPlayerState()
   if (!current) return null
 
-  const totalDuration = player.resolveDuration(duration, current.duration)
-  const safeProgress = Number.isFinite(progress) ? Math.min(Math.max(progress, 0), totalDuration) : 0
-  const progressPercent = totalDuration > 0 ? (safeProgress / totalDuration) * 100 : 0
-
-  const progressFill = el('div', { class: 'progress-fill', style: `width:${progressPercent}%` })
-  const curTime = el('span', { class: 'progress-time' }, fmtDuration(safeProgress))
-  const durTime = el('span', { class: 'progress-time' }, fmtDuration(totalDuration))
-  refs.fill = progressFill
-  refs.cur = curTime
-  refs.dur = durTime
-  const progressTrack = el(
-    'div',
-    { class: 'progress-track', role: 'slider', 'aria-valuemin': 0, 'aria-valuemax': totalDuration, 'aria-valuenow': safeProgress },
-    progressFill,
-  )
-  refs.track = progressTrack
+  const { track, cur: curTime, dur: durTime } = progressTrack(refs)
 
   const likeBtn = el(
     'button',
@@ -2021,7 +1881,7 @@ function bottomBar(refs) {
         'div',
         { class: 'player-progress' },
         curTime,
-        progressTrack,
+        track,
         durTime,
       ),
     ),
@@ -2036,20 +1896,16 @@ function bottomBar(refs) {
   )
 }
 
-// Delegated seek: pointerdown/move/up on the document. Works on click, drag
-// and touch, and survives the bar being rebuilt (listeners live on
-// document, not on the ephemeral track element).
 let seekDrag = null
 
 function seekToClientX(clientX, track) {
   if (!track) return
   const rect = track.getBoundingClientRect()
   if (rect.width === 0) return
-  const st = player.getPlayerState()
-  const totalDuration = player.resolveDuration(st.duration, st.current?.duration ?? 0)
-  if (totalDuration === 0) return
+  const { total } = playerProgress()
+  if (total === 0) return
   const ratio = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1)
-  player.seek(ratio * totalDuration)
+  player.seek(ratio * total)
   updateBarInPlace()
 }
 
@@ -2092,15 +1948,11 @@ async function toggleLikeCurrent() {
     if (next) await endpoints.like(state.current.id)
     else await endpoints.unlike(state.current.id)
   } catch (err) {
-    // Reverte o estado do player (barra e listas) — sem desync nem
-    // unhandled rejection.
     player.setLiked(wasLiked)
     console.error('Falha ao alternar curtida:', err)
   }
   refreshPlayerBar()
 }
-
-// ---------- Fullscreen player ----------
 
 let fullscreenReturnTarget = null
 let fullscreenFocusRequest = 0
@@ -2145,19 +1997,10 @@ function closeFullscreen() {
 }
 
 function fullscreenPlayer(refs) {
-  const { current, playing, progress, duration, shuffle, repeat } = player.getPlayerState()
+  const { current, playing, shuffle, repeat } = player.getPlayerState()
   if (!current) return null
 
-  const totalDuration = player.resolveDuration(duration, current.duration)
-  const safeProgress = Number.isFinite(progress) ? Math.min(Math.max(progress, 0), totalDuration) : 0
-  const progressPercent = totalDuration > 0 ? (safeProgress / totalDuration) * 100 : 0
-
-  const progressFill = el('div', { class: 'progress-fill', style: `width:${progressPercent}%` })
-  const curTime = el('span', { class: 'progress-time' }, fmtDuration(safeProgress))
-  const durTime = el('span', { class: 'progress-time' }, fmtDuration(totalDuration))
-  refs.fill = progressFill
-  refs.cur = curTime
-  refs.dur = durTime
+  const { track, cur: curTime, dur: durTime } = progressTrack(refs)
 
   return el(
     'div',
@@ -2194,7 +2037,7 @@ function fullscreenPlayer(refs) {
         'div',
         { class: 'player-progress' },
         curTime,
-        el('div', { class: 'progress-track', role: 'slider', 'aria-valuemin': 0, 'aria-valuemax': totalDuration, 'aria-valuenow': safeProgress }, progressFill),
+        track,
         durTime,
       ),
       el(
@@ -2212,16 +2055,16 @@ function fullscreenPlayer(refs) {
   )
 }
 
-// ---------- Render ----------
-
 function render() {
+  // pwa.js checks this instead of querying app.js's markup.
+  window.__pmPlatform.gateVisible = false
   if (auth.loading) {
     root.innerHTML = ''
     root.append(el('div', { class: 'loading-screen' }, icon('music'), 'Carregando…'))
     return
   }
 
-  if (window.location.pathname.replace(/\/+$/, '') === '/admin/login') {
+  if (window.__pmPlatform.onAdminLogin()) {
     renderAdminLogin(root)
     return
   }
@@ -2238,6 +2081,10 @@ function render() {
     menuOpen = false
     render()
   }
+
+  const pageEl = el('div', { class: 'page' })
+  barHost = el('div')
+  fullHost = el('div')
 
   const app = el(
     'div',
@@ -2256,12 +2103,12 @@ function render() {
           el('span', {}, icon('music'), 'Mi Ritmo'),
           installButton(),
         ),
-        el('div', { class: 'page', id: 'page-content' }),
+        pageEl,
       ),
     ),
-    el('div', { id: 'player-bar' }),
+    barHost,
     mobileNavigation(),
-    el('div', { id: 'player-full' }),
+    fullHost,
   )
 
   root.innerHTML = ''
@@ -2278,7 +2125,6 @@ function render() {
     )
   }
 
-  const pageEl = document.getElementById('page-content')
   const { path, params } = parseHash()
   const { fn, params: routeParams } = matchRoute(path)
   void fn(pageEl, routeParams)
@@ -2286,14 +2132,11 @@ function render() {
   renderPlayerBar()
 }
 
-// ---------- Player UI updates (structural rebuild vs in-place) ----------
-
-// The bar is rebuilt only when something structural changes (track, play
-// state, shuffle/repeat/like, fullscreen). Progress ticks update the existing
-// DOM in place, so the seek track and volume slider are never destroyed under
-// an active gesture.
 let barKey = null
 let barRefs = null
+// Hosts for the bottom bar and the fullscreen player, owned by render().
+let barHost = null
+let fullHost = null
 
 function structuralKey() {
   const s = player.getPlayerState()
@@ -2301,9 +2144,6 @@ function structuralKey() {
 }
 
 function renderPlayerBar() {
-  const barHost = document.getElementById('player-bar')
-  const fullHost = document.getElementById('player-full')
-  if (!barHost) return
   const { fullScreen } = player.getPlayerState()
   barHost.innerHTML = ''
   fullHost.innerHTML = ''
@@ -2317,17 +2157,13 @@ function renderPlayerBar() {
 function updateBarInPlace() {
   if (!barRefs) return
   const s = player.getPlayerState()
-  const total = player.resolveDuration(s.duration, s.current?.duration ?? 0)
-  const prog = Number.isFinite(s.progress) ? Math.min(Math.max(s.progress, 0), total) : 0
-  const pct = total > 0 ? (prog / total) * 100 : 0
-  if (barRefs.fill) barRefs.fill.style.width = `${pct}%`
-  if (barRefs.cur) barRefs.cur.textContent = fmtDuration(prog)
+  const { total, position, percent } = playerProgress()
+  if (barRefs.fill) barRefs.fill.style.width = `${percent}%`
+  if (barRefs.cur) barRefs.cur.textContent = fmtDuration(position)
   if (barRefs.dur) barRefs.dur.textContent = fmtDuration(total)
-  // Keep the slider's ARIA values in sync with the live state (they are
-  // baked at render time when duration may still be unknown — a11y bug fix).
   if (barRefs.track) {
     barRefs.track.setAttribute('aria-valuemax', String(Math.round(total)))
-    barRefs.track.setAttribute('aria-valuenow', String(Math.round(prog)))
+    barRefs.track.setAttribute('aria-valuenow', String(Math.round(position)))
   }
   if (barRefs.volIcon) {
     const want = s.volume === 0 ? 'volumeX' : 'volume'
@@ -2335,8 +2171,6 @@ function updateBarInPlace() {
     if (cur !== want) {
       barRefs.volIcon.innerHTML = icons[want]
       const svg = barRefs.volIcon.firstElementChild
-      // data-icon lives on the <svg> (same as the initial render) so both
-      // render paths stay consistent for selectors/tests.
       if (svg) svg.dataset.icon = want
     }
   }
@@ -2365,10 +2199,6 @@ function refreshPlayerBar() {
   syncPagePlayerState()
 }
 
-// Sincroniza a página aberta com o estado do player (marker da fila, linha
-// em reprodução e corações) sem re-renderizar a página — assim a troca de
-// música por next/prev/fim reflete na fila e nas playlists na hora, e o
-// estado curtido fica consistente entre a barra e as listas.
 let lastPageStateKey = null
 
 function syncPagePlayerState() {
@@ -2379,7 +2209,6 @@ function syncPagePlayerState() {
 
   const currentId = s.current?.id
 
-  // Fila: move o marker para a linha do índice atual.
   const list = document.querySelector('.track-list')
   if (list && currentId) {
     const oldWrap = list.querySelector('.queue-track-wrap')
@@ -2389,20 +2218,14 @@ function syncPagePlayerState() {
     }
     const target = list.querySelector(`.track-row[data-song-id="${CSS.escape(currentId)}"]`)
     if (target && !target.closest('.queue-track-wrap')) {
-      const marker = el(
-        'span',
-        { class: 'queue-current-marker' },
-        el('span', { style: 'display:block;width:4px;height:12px;border-radius:2px;background:var(--accent)' }),
-      )
       // Substitui a linha pelo wrapper e move a linha para dentro depois
       // (anexar primeiro moveria a linha e o replaceWith falharia).
-      const wrap = el('div', { class: 'queue-track-wrap' }, marker)
+      const wrap = el('div', { class: 'queue-track-wrap' }, currentMarker())
       target.replaceWith(wrap)
       wrap.append(target)
     }
   }
 
-  // Todas as listas: linha em reprodução + corações sincronizados.
   const likedById = new Map()
   for (const q of s.queue) likedById.set(q.id, q.liked)
   if (s.current) likedById.set(s.current.id, s.current.liked)
@@ -2422,8 +2245,6 @@ function syncPagePlayerState() {
 }
 
 player.subscribe(refreshPlayerBar)
-
-// ---------- Keyboard shortcuts ----------
 
 document.addEventListener('keydown', (e) => {
   const dialog = document.querySelector('.fullscreen-player[role="dialog"]')
@@ -2487,11 +2308,9 @@ document.addEventListener('keydown', (e) => {
   }
 })
 
-// ---------- Init ----------
-
 window.addEventListener('hashchange', render)
-window.addEventListener('pm:rerender', render)
-window.addEventListener('pm:playlists-changed', () => {
+window.addEventListener(RERENDER_EVENT, render)
+window.addEventListener(PLAYLISTS_CHANGED_EVENT, () => {
   if (auth.user) void loadPlaylists()
 })
 

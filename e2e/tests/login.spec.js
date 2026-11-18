@@ -1,10 +1,13 @@
-﻿// Login flows: admin (toggle + credentials), client (phone), logout,
-// wrong password (no crash) and the B1 regression: a real expired token
-// must produce zero console errors on the login screen.
+﻿// Login flows: admin (/admin/login credentials), client (phone), logout and
+// wrong password (no crash). An expired token must produce zero console errors
+// on the login screen.
 
 const { test, expect } = require('playwright/test')
 const {
+  ADMIN_USER,
   CLIENT_PHONE,
+  CLIENT_NAME,
+  USER_PLACEHOLDER,
   dismissPwa,
   trackConsole,
   expectClean,
@@ -13,17 +16,17 @@ const {
   logout,
   apiAdminLogin,
 } = require('./helpers')
+const { TOKEN_KEY } = require('./client-keys')
 
 test.describe('Login', () => {
   test('admin login via UI — app shell + nav Administração', async ({ page }) => {
     const testInfo = test.info()
     const clean = trackConsole(page)
     await loginAdmin(page)
-    await expect(page.locator('.app-shell')).toBeVisible()
     // DOM presence (the sidebar itself is hidden on mobile, the nav item
     // must still exist for admins).
     await expect(page.locator('.sidebar-nav .nav-link', { hasText: 'Administração' })).toHaveCount(1)
-    await expect(page.locator('.sidebar-user-name')).toHaveText('admin')
+    await expect(page.locator('.sidebar-user-name')).toHaveText(ADMIN_USER)
     expectClean(testInfo, clean)
   })
 
@@ -31,8 +34,7 @@ test.describe('Login', () => {
     const testInfo = test.info()
     const clean = trackConsole(page)
     await loginCliente(page, CLIENT_PHONE)
-    await expect(page.locator('.app-shell')).toBeVisible()
-    await expect(page.locator('.sidebar-user-name')).toHaveText('Cliente Teste')
+    await expect(page.locator('.sidebar-user-name')).toHaveText(CLIENT_NAME)
     expectClean(testInfo, clean)
   })
 
@@ -51,20 +53,21 @@ test.describe('Login', () => {
     // resource load as a console error. That is correct product behaviour,
     // so we allow this specific 401 while still failing on any other error.
     const clean = trackConsole(page, { ignore: (t) => t.includes('status of 401') })
-    await page.goto('/')
+    // The admin form lives only at /admin/login; the client login screen has no
+    // admin entry, so the wrong-password case starts there.
+    await page.goto('/admin/login')
     await dismissPwa(page)
-    await page.getByRole('button', { name: 'Administrador' }).click()
-    await page.getByPlaceholder('Usuário ou e-mail').fill('admin')
+    await page.getByPlaceholder(USER_PLACEHOLDER).fill(ADMIN_USER)
     await page.getByPlaceholder('Senha').fill('senha-errada-123')
-    await page.getByRole('button', { name: 'Entrar' }).click()
+    await page.getByRole('button', { name: 'Entrar no painel' }).click()
     await expect(page.locator('.login-error')).toContainText('usuário ou senha inválidos')
     await expect(page.locator('.app-shell')).toHaveCount(0)
     // Still on the login screen, form usable again.
-    await expect(page.getByRole('button', { name: 'Entrar' })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Entrar no painel' })).toBeEnabled()
     expectClean(testInfo, clean)
   })
 
-  test('token expirado REAL → 0 console errors (B1 regressão)', async ({ request, page }) => {
+  test('token expirado REAL → 0 console errors', async ({ request, page }) => {
     const testInfo = test.info()
     const clean = trackConsole(page)
     const token = await apiAdminLogin(request)
@@ -80,14 +83,14 @@ test.describe('Login', () => {
     }, token)
 
     await page.goto('/')
-    await page.evaluate((t) => localStorage.setItem('pm_token', t), expired)
+    await page.evaluate(([key, t]) => localStorage.setItem(key, t), [TOKEN_KEY, expired])
     await page.reload()
     await dismissPwa(page)
 
     await expect(page.locator('.login-screen')).toBeVisible()
     await expect(page.locator('.app-shell')).toHaveCount(0)
     // refreshAuth cleared the expired token silently (no 401 fetch).
-    const stored = await page.evaluate(() => localStorage.getItem('pm_token'))
+    const stored = await page.evaluate((key) => localStorage.getItem(key), TOKEN_KEY)
     expect(stored).toBeNull()
     expectClean(testInfo, clean, 'expired token')
   })

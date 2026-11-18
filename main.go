@@ -15,12 +15,12 @@ import (
 	"play-music/internal/auth"
 	"play-music/internal/config"
 	"play-music/internal/db"
-	"play-music/internal/metadata"
 	"play-music/internal/scanner"
 	"play-music/internal/server"
 	"play-music/internal/storage"
 	"play-music/internal/store"
 	"play-music/internal/stream"
+	"play-music/internal/version"
 )
 
 func main() {
@@ -31,7 +31,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// --- PostgreSQL (the only supported database) ---
 	if cfg.DatabaseURL == "" {
 		logger.Error("DATABASE_URL não configurada (PostgreSQL é obrigatório)")
 		os.Exit(1)
@@ -50,23 +49,18 @@ func main() {
 
 	st := store.New(pool)
 
-	// --- Auth (JWT secret persists in the database) ---
 	authSvc, err := auth.New(ctx, cfg, st)
 	if err != nil {
 		logger.Error("falha ao inicializar auth", "err", err)
 		os.Exit(1)
 	}
 
-	// --- MinIO/S3 ---
 	strg, err := storage.New(cfg.S3)
 	if err != nil {
 		logger.Error("falha ao inicializar o storage S3", "err", err)
 		os.Exit(1)
 	}
 
-	metadata.SetFFmpegPath(cfg.FfmpegPath)
-
-	sc := scanner.New(cfg, strg, st, logger)
 	streamSvc, err := stream.New(cfg, strg, logger)
 	if err != nil {
 		logger.Error("falha ao inicializar stream", "err", err)
@@ -77,21 +71,12 @@ func main() {
 		logger.Error("falha ao inicializar artwork", "err", err)
 		os.Exit(1)
 	}
+	sc := scanner.New(cfg, strg, st, artSvc, logger)
 
-	srv := server.New(server.Dependencies{
-		Config:  cfg,
-		Store:   st,
-		Auth:    authSvc,
-		Stream:  streamSvc,
-		Storage: strg,
-		Artwork: artSvc,
-		Scanner: sc,
-		Log:     logger,
-	})
+	srv := server.New(cfg, st, authSvc, streamSvc, strg, artSvc, sc, logger)
 
 	go srv.RunPushScheduler(ctx)
 
-	// --- HTTP server ---
 	httpSrv := &http.Server{
 		Addr:              cfg.ListenAddr(),
 		Handler:           srv.Handler(),
@@ -99,20 +84,18 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 	go func() {
-		logger.Info("play music backend iniciado", "addr", cfg.ListenAddr(), "version", "1.0.0")
+		logger.Info("play music backend iniciado", "addr", cfg.ListenAddr(), "version", version.Version)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("servidor http", "err", err)
 			stop()
 		}
 	}()
 
-	// --- Initial scan (background) ---
 	go func() {
 		logger.Info("varredura inicial iniciada")
 		sc.Run(context.Background())
 	}()
 
-	// --- Scheduled scans (ND_SCANNER_SCHEDULE, e.g. "@every 1h") ---
 	if cfg.ScannerSchedule != "" {
 		c := cron.New()
 		if _, err := c.AddFunc(cfg.ScannerSchedule, func() {

@@ -6,23 +6,13 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"play-music/internal/model"
 )
 
 func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	id := parseID(r)
-	if user := s.filterUser(r); user != "" {
-		ok, err := s.store.CanAccessSong(ctx, user, id)
-		if err != nil {
-			handleStoreError(w, err)
-			return
-		}
-		if !ok {
-			writeError(w, http.StatusForbidden, "Sem permissão")
-			return
-		}
-	}
-	song, err := s.store.GetSong(ctx, id)
+	song, err := s.store.GetSong(ctx, r.PathValue("id"))
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -36,7 +26,20 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Arquivo da música indisponível")
 		return
 	}
-	ext := path.Ext(song.Path)
+	link, err := s.storage.DownloadURL(ctx, song.Path, attachmentDisposition(song), 15*time.Minute)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Não foi possível preparar o download")
+		return
+	}
+	if err = s.store.RecordDownload(ctx, userIDOf(ctx), song.ID, song.Title, song.Artist); err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	writeJSON(w, http.StatusOK, map[string]string{"url": link})
+}
+
+func attachmentDisposition(song *model.Song) string {
 	name := strings.TrimSpace(song.Title)
 	if name == "" {
 		name = "musica"
@@ -47,46 +50,14 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 		}
 		return r
 	}, name)
-	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": name + ext})
-	link, err := s.storage.DownloadURL(ctx, song.Path, disposition, 15*time.Minute)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Não foi possível preparar o download")
-		return
-	}
-	_, err = s.store.Pool().Exec(ctx, "INSERT INTO download_history(user_id,song_id,title,artist) VALUES($1,$2,$3,$4)", userIDOf(ctx), id, song.Title, song.Artist)
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	w.Header().Set("Cache-Control", "private, no-store")
-	writeJSON(w, http.StatusOK, map[string]string{"url": link})
+	return mime.FormatMediaType("attachment", map[string]string{"filename": name + path.Ext(song.Path)})
 }
 
 func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.store.Pool().Query(r.Context(), `SELECT COALESCE(d.song_id, ''), d.title, d.artist, d.downloaded_at FROM download_history d WHERE d.user_id=$1 ORDER BY d.downloaded_at DESC, d.id DESC LIMIT 500`, userIDOf(r.Context()))
+	downloads, err := s.store.Downloads(r.Context(), userIDOf(r.Context()))
 	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
-	defer rows.Close()
-	type entry struct {
-		ID           string    `json:"id"`
-		Title        string    `json:"title"`
-		Artist       string    `json:"artist"`
-		DownloadedAt time.Time `json:"downloadedAt"`
-	}
-	result := []entry{}
-	for rows.Next() {
-		var e entry
-		if err := rows.Scan(&e.ID, &e.Title, &e.Artist, &e.DownloadedAt); err != nil {
-			handleStoreError(w, err)
-			return
-		}
-		result = append(result, e)
-	}
-	if err := rows.Err(); err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, result)
+	writeJSON(w, http.StatusOK, downloads)
 }

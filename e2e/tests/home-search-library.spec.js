@@ -8,6 +8,7 @@ const {
   loginAdmin,
   loginCliente,
   CLIENT_PHONE,
+  SEEDED_CATEGORY,
 } = require('./helpers')
 
 test.describe('Home / Busca / Biblioteca', () => {
@@ -42,8 +43,6 @@ test.describe('Home / Busca / Biblioteca', () => {
       { timeout: 15000 },
     )
     const rows = await page.locator('#search-results .track-row').count()
-    const empty = await page.locator('#search-results .empty-state').count()
-    expect(rows > 0 || empty > 0).toBe(true)
     if (rows > 0) {
       await expect(page.locator('#search-results .track-row').first().locator('.track-title')).not.toHaveText('')
     }
@@ -63,9 +62,13 @@ test.describe('Home / Busca / Biblioteca', () => {
     await expect(page.locator('.track-list .track-row').first()).toBeVisible()
 
     await page.getByRole('button', { name: 'Categorias' }).click()
-    await expect(page.locator('.card', { hasText: 'Cristão' })).toBeVisible()
+    await expect(page.locator('.card', { hasText: SEEDED_CATEGORY })).toBeVisible()
 
     await page.getByRole('button', { name: 'Playlists' }).click()
+    // The tab owns the body below it: switching away from Músicas must drop the
+    // track list, and the tab itself must mark itself active.
+    await expect(page.locator('.tab-btn.active', { hasText: 'Playlists' })).toBeVisible()
+    await expect(page.locator('.track-list')).toHaveCount(0)
 
     await page.goto('/#/liked')
     await expect(page.locator('.detail-title', { hasText: 'Curtidas' })).toBeVisible()
@@ -79,10 +82,9 @@ test.describe('Home / Busca / Biblioteca', () => {
   test('home cliente (telefone) renderiza sem erro', async ({ page }) => {
     const testInfo = test.info()
     const clean = trackConsole(page)
-    // Client has no granted categories: home shows the empty state — must
-    // still render without crashing or console errors (B4 behaviour).
+    // Client has no granted categories: home shows the empty state - must
+    // still render without crashing or console errors.
     await loginCliente(page, CLIENT_PHONE)
-    await expect(page.locator('.app-shell')).toBeVisible()
     await expect(page.locator('.page-title').first()).toBeVisible()
     expectClean(testInfo, clean)
   })

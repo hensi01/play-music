@@ -1,8 +1,9 @@
 // Advertisement playback is owned by the app, not by a cross-origin iframe.
-const origin = 'https://ads.nuvexaia.online'
-
+// The server normalizes embedUrl to the partner's origin, so the API calls go
+// back to the same origin the embed came from.
 export function showAd(ad, onDone, onPlaybackState = () => {}) {
-  const id = new URL(ad.embedUrl).pathname.split('/').pop()
+  const embed = new URL(ad.embedUrl)
+  const id = embed.pathname.split('/').pop()
   const instanceId = crypto.randomUUID()
   const overlay = document.createElement('section')
   overlay.className = 'ad-overlay'
@@ -14,7 +15,7 @@ export function showAd(ad, onDone, onPlaybackState = () => {}) {
   overlay.append(slot, status, button, destination)
   document.body.append(overlay)
   let media, timer, mediaTimeout, running = false, ended = false, elapsed = 0, anchor = 0, destroyed = false, loading = false, ready = false, impressed = false, mediaGeneration = 0
-  const event = (type) => fetch(`${origin}/api/v1/events`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ adId: id, type, instanceId }), keepalive: true }).catch(() => {})
+  const event = (type) => fetch(`${embed.origin}/api/v1/events`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ adId: id, type, instanceId }), keepalive: true }).catch(() => {})
   const impression = () => { if (!impressed) { impressed = true; event('impression') } }
   const update = () => {
     const time = elapsed + (running ? (performance.now() - anchor) / 1000 : 0)
@@ -32,12 +33,12 @@ export function showAd(ad, onDone, onPlaybackState = () => {}) {
     if (isPlayable(media) && !ended) { const generation = mediaGeneration; media.play().catch(() => { if (!destroyed && generation === mediaGeneration) fail() }) }
     else startClock()
   }
-  button.onclick = () => { if (button.disabled) return; button.hidden = true; retryPlayback() }
+  button.onclick = () => { button.hidden = true; retryPlayback() }
   async function load() {
     if (loading || destroyed) return
     loading = true; button.disabled = true; button.hidden = true; status.textContent = 'Carregando anúncio…'
     try {
-      const response = await fetch(`${origin}/api/v1/ads/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(15000) })
+      const response = await fetch(`${embed.origin}/api/v1/ads/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(15000) })
       if (!response.ok) throw new Error('Anúncio indisponível')
       const data = await response.json()
       if (destroyed) return

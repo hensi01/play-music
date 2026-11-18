@@ -2,8 +2,6 @@ package model
 
 import "time"
 
-// Song is the JSON shape returned by the API. The web UI relies on
-// id, title, artist, artistId, album, albumId, duration, format and liked.
 type Song struct {
 	ID          string    `json:"id"`
 	Title       string    `json:"title"`
@@ -59,7 +57,6 @@ type Playlist struct {
 	Name      string          `json:"name"`
 	Comment   string          `json:"comment,omitempty"`
 	Owner     string          `json:"owner"`
-	UserID    string          `json:"-"`
 	SongCount int             `json:"songCount"`
 	Duration  float64         `json:"duration,omitempty"`
 	Songs     []PlaylistEntry `json:"songs,omitempty"`
@@ -75,9 +72,9 @@ type SearchResults struct {
 
 type HomeSection struct {
 	Title string `json:"title"`
-	// Songs is the category/collection content (category -> songs model).
 	Songs []Song `json:"songs,omitempty"`
-	// Albums kept for API compatibility with legacy album-based sections.
+	// Albums is never filled by handleHome; it stays in the payload because the
+	// published schema declares it and older clients read it.
 	Albums []Album `json:"albums,omitempty"`
 }
 
@@ -88,7 +85,9 @@ type Genre struct {
 
 type Home struct {
 	Sections []HomeSection `json:"sections"`
-	Genres   []Genre       `json:"genres"`
+	// Genres is always empty: handleHome has no genre query. The field stays
+	// because the published schema declares it.
+	Genres []Genre `json:"genres"`
 }
 
 type User struct {
@@ -113,4 +112,45 @@ type Settings struct {
 	AppName     string `json:"appName"`
 	Version     string `json:"version"`
 	LibraryName string `json:"libraryName"`
+	// AudioExtensions is the accepted upload formats, so a client never has to
+	// keep its own copy of the list.
+	AudioExtensions []string `json:"audioExtensions"`
+}
+
+// APIKey is an integration key as the admin screen sees it. The raw key and its
+// hash are never part of the listing.
+type APIKey struct {
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	LastUsedAt *time.Time `json:"lastUsedAt"`
+}
+
+type Download struct {
+	ID           string    `json:"id"`
+	Title        string    `json:"title"`
+	Artist       string    `json:"artist"`
+	DownloadedAt time.Time `json:"downloadedAt"`
+}
+
+// PushSubscription is an inactive device waiting for remote revocation.
+type PushSubscription struct {
+	Endpoint         string
+	ManagementToken  string
+	SubscriptionData []byte
+}
+
+// PushCampaign is a scheduled notification. Status is one of
+// store.CampaignPending, CampaignSending, CampaignCompleted, CampaignPartial,
+// CampaignUnknown or CampaignCancelled.
+type PushCampaign struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Body        string    `json:"body"`
+	URL         string    `json:"url"`
+	ScheduledAt time.Time `json:"scheduledAt"`
+	Status      string    `json:"status"`
+	Selected    int       `json:"selected"`
+	Queued      int       `json:"queued"`
+	Detail      string    `json:"detail"`
 }

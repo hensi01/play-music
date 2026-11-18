@@ -10,6 +10,7 @@ test('escuta qualificada ignora pausas e saltos e registra uma vez', async ({ pa
     return { states, elapsed: t.elapsed }
   })
   expect(result.states.filter(Boolean)).toHaveLength(1)
+  // It fires on the sample where 30s of real playback has elapsed, not before.
   expect(result.states[6]).toBe(true)
   expect(result.elapsed).toBeCloseTo(30)
 })

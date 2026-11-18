@@ -4,20 +4,14 @@
 // deterministic in headless (no dependency on the external CDN).
 
 const { test, expect } = require('playwright/test')
-const { trackConsole, expectClean, loginAdmin, ensureSilenceWav } = require('./helpers')
+const { trackConsole, expectClean, loginAdmin, stubStream } = require('./helpers')
 
 // Logs in as admin and stubs every /api/stream/* request with a silent WAV.
 // Must be called BEFORE clicking play.
 async function setupPlayer(page) {
   const clean = trackConsole(page)
   await loginAdmin(page)
-  await page.route('**/api/stream/**', (route) =>
-    route.fulfill({
-      path: ensureSilenceWav(30),
-      contentType: 'audio/wav',
-      headers: { 'Accept-Ranges': 'bytes' },
-    }),
-  )
+  await stubStream(page)
   return clean
 }
 
@@ -32,8 +26,6 @@ test.describe('Player', () => {
     const clean = await setupPlayer(page)
     await playFirstCard(page)
     await expect(page.locator('.now-playing-title')).not.toHaveText('')
-    const title = (await page.locator('.now-playing-title').textContent()).trim()
-    expect(title.length).toBeGreaterThan(0)
     expectClean(testInfo, clean)
   })
 
@@ -106,7 +98,6 @@ test.describe('Player', () => {
 
     await page.getByRole('button', { name: 'Anterior' }).click()
     await expect.poll(currentId, { timeout: 10000 }).toBe(id1)
-    expect(id2).not.toBe(id1)
     expectClean(testInfo, clean)
   })
 

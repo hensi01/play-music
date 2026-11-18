@@ -2,17 +2,7 @@
 // (documentElement.scrollWidth <= innerWidth). Runs on the mobile project.
 
 const { test, expect } = require('playwright/test')
-const { trackConsole, expectClean, loginAdmin } = require('./helpers')
-
-async function assertNoOverflow(page) {
-  const r = await page.evaluate(() => ({
-    sw: document.documentElement.scrollWidth,
-    iw: window.innerWidth,
-    bodySw: document.body.scrollWidth,
-  }))
-  expect(r.sw, `scrollWidth ${r.sw} > innerWidth ${r.iw}`).toBeLessThanOrEqual(r.iw)
-  expect(r.bodySw, `body scrollWidth ${r.bodySw} > innerWidth ${r.iw}`).toBeLessThanOrEqual(r.iw)
-}
+const { trackConsole, expectClean, loginAdmin, expectNoOverflow } = require('./helpers')
 
 test.describe('Responsivo 375px', () => {
   test('sem overflow horizontal em todas as rotas', async ({ page }) => {
@@ -23,26 +13,26 @@ test.describe('Responsivo 375px', () => {
     // Login screen renders at 375px.
     await page.goto('/')
     await expect(page.locator('.login-screen')).toBeVisible()
-    await assertNoOverflow(page)
+    await expectNoOverflow(page)
 
     await loginAdmin(page)
-    await assertNoOverflow(page) // home
+    await expectNoOverflow(page) // home
 
     await page.goto('/#/search')
     await expect(page.locator('.search-input')).toBeVisible()
-    await assertNoOverflow(page)
+    await expectNoOverflow(page)
 
     await page.goto('/#/library')
     await expect(page.locator('.page-title', { hasText: 'Sua Biblioteca' })).toBeVisible()
-    await assertNoOverflow(page)
+    await expectNoOverflow(page)
 
     await page.goto('/#/admin')
     await expect(page.locator('.page-title', { hasText: 'Administração' })).toBeVisible()
-    await assertNoOverflow(page)
+    await expectNoOverflow(page)
 
     await page.goto('/#/recommendations')
     await expect(page.locator('.page-title', { hasText: 'Para você' })).toBeVisible()
-    await assertNoOverflow(page)
+    await expectNoOverflow(page)
 
     expectClean(testInfo, clean)
   })

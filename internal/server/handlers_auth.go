@@ -1,10 +1,9 @@
 package server
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 
+	"play-music/internal/model"
 	"play-music/internal/phone"
 )
 
@@ -14,10 +13,11 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-// handleLogin supports client phone login and the legacy administrator login.
+// handleLogin serves POST /auth/login: phone login for clients, and the legacy
+// administrator login when only username/password are sent.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	req, ok := decodeLoginRequest(w, r)
-	if !ok {
+	var req loginRequest
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if req.Phone == "" {
@@ -28,7 +28,6 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Use o acesso de clientes com seu telefone")
 		return
 	}
-
 	normalized, err := phone.Normalize(req.Phone)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "Telefone não cadastrado")
@@ -39,14 +38,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
-	writeLoginResponse(w, u.ID, u.Username, u.Name, u.Phone, false, token)
+	writeLoginResponse(w, u, false, token)
 }
 
-// handleAdminLogin serves POST /auth/admin/login. The legacy login route
-// continues to accept administrator credentials for existing integrations.
 func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
-	req, ok := decodeLoginRequest(w, r)
-	if !ok {
+	var req loginRequest
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	s.loginAdmin(w, r, req)
@@ -57,36 +54,33 @@ func (s *Server) loginAdmin(w http.ResponseWriter, r *http.Request, req loginReq
 		writeError(w, http.StatusBadRequest, "Informe usuário e senha de administrador")
 		return
 	}
-
 	u, token, err := s.auth.LoginUsername(r.Context(), req.Username, req.Password)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
-	writeLoginResponse(w, u.ID, u.Username, u.Name, u.Phone, true, token)
+	writeLoginResponse(w, u, true, token)
 }
 
-func decodeLoginRequest(w http.ResponseWriter, r *http.Request) (loginRequest, bool) {
-	var req loginRequest
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "Requisição inválida")
-		return loginRequest{}, false
-	}
-	if err := json.Unmarshal(body, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "Requisição inválida")
-		return loginRequest{}, false
-	}
-	return req, true
+// session is the identity a login or registration returns: the token plus the
+// fields the client needs to start a session.
+type session struct {
+	Token    string `json:"token"`
+	ID       string `json:"id"`
+	Username string `json:"username,omitempty"`
+	Name     string `json:"name"`
+	Phone    string `json:"phone,omitempty"`
+	IsAdmin  bool   `json:"isAdmin"`
 }
 
-func writeLoginResponse(w http.ResponseWriter, id, username, name, phone string, isAdmin bool, token string) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"token":    token,
-		"id":       id,
-		"username": username,
-		"name":     name,
-		"phone":    phone,
-		"isAdmin":  isAdmin,
+func writeLoginResponse(w http.ResponseWriter, u model.User, isAdmin bool, token string) {
+	formatPhone(&u)
+	writeJSON(w, http.StatusOK, session{
+		Token:    token,
+		ID:       u.ID,
+		Username: u.Username,
+		Name:     u.Name,
+		Phone:    u.Phone,
+		IsAdmin:  isAdmin,
 	})
 }

@@ -2,8 +2,6 @@ package scanner
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -14,24 +12,14 @@ import (
 
 	"github.com/minio/minio-go/v7"
 
+	"play-music/internal/artwork"
 	"play-music/internal/config"
 	"play-music/internal/metadata"
 	"play-music/internal/model"
 	"play-music/internal/storage"
 	"play-music/internal/store"
+	"play-music/internal/stream"
 )
-
-// ErrInvalidAudio marks files whose metadata cannot be read or that report
-// no duration — i.e. not actually decodable audio (junk bytes renamed to an
-// audio extension, truncated/corrupt files). Uploads map it to a 400; scans
-// skip the file instead of inserting a duration-0 song.
-var ErrInvalidAudio = errors.New("arquivo de áudio inválido ou corrompido")
-
-var audioExts = map[string]bool{
-	".mp3": true, ".flac": true, ".m4a": true, ".aac": true, ".ogg": true,
-	".opus": true, ".wav": true, ".wma": true, ".aiff": true, ".aif": true,
-	".wv": true, ".tak": true, ".ape": true,
-}
 
 var coverNames = map[string]bool{
 	"cover.jpg": true, "cover.jpeg": true, "cover.png": true, "cover.webp": true,
@@ -41,24 +29,22 @@ var coverNames = map[string]bool{
 	"art.jpg": true, "art.png": true, "artist.jpg": true, "artist.png": true,
 }
 
+// scanTempPrefix names the scratch copy of a file being indexed. A tag written
+// by a previous interrupted run can carry the prefix, so the title fallback
+// tests for it too.
+const scanTempPrefix = "pm-scan-"
+
 type Scanner struct {
 	cfg   *config.Config
 	st    *storage.Storage
 	store *store.Store
+	art   *artwork.Service
 	log   *slog.Logger
 	mu    sync.Mutex
 }
 
-func New(cfg *config.Config, st *storage.Storage, st2 *store.Store, log *slog.Logger) *Scanner {
-	return &Scanner{cfg: cfg, st: st, store: st2, log: log}
-}
-
-type Result struct {
-	Added   int
-	Updated int
-	Skipped int
-	Deleted int
-	Error   error
+func New(cfg *config.Config, st *storage.Storage, st2 *store.Store, art *artwork.Service, log *slog.Logger) *Scanner {
+	return &Scanner{cfg: cfg, st: st, store: st2, art: art, log: log}
 }
 
 type audioObj struct {
@@ -67,45 +53,43 @@ type audioObj struct {
 	mtime time.Time
 }
 
-// Run performs a full library scan: audio indexing, embedded/folder artwork
-// and .m3u playlist import.
-func (s *Scanner) Run(ctx context.Context) Result {
+// Run scans the bucket once. A scan never reports failures to a caller: both
+// callers are unconditional background runs, so every failure is logged here.
+func (s *Scanner) Run(ctx context.Context) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	res := Result{}
 	start := time.Now()
 	s.log.Info("scan started")
 
 	existing, err := s.store.LoadSongPaths(ctx)
 	if err != nil {
-		res.Error = err
-		return res
+		s.log.Error("load song paths", "err", err)
+		return
 	}
 
 	// Do not process an incomplete inventory or delete from it.
 	audios, coverByFolder, m3uFiles, seenPaths, err := collectInventory(ctx, s.st.List(ctx))
 	if err != nil {
 		s.log.Error("list error", "err", err)
-		res.Error = err
-		return res
+		return
 	}
 
-	// Pass 2: process audio files (changed ones) with a small worker pool.
 	const workers = 4
 	jobs := make(chan audioObj)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
+	var added, updated, skipped int
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for a := range jobs {
-				res2 := s.processAudio(ctx, a, existing[a.key])
+				res := s.processAudio(ctx, a, existing[a.key])
 				mu.Lock()
-				res.Added += res2.added
-				res.Updated += res2.updated
-				res.Skipped += res2.skipped
+				added += res.added
+				updated += res.updated
+				skipped += res.skipped
 				mu.Unlock()
 			}
 		}()
@@ -116,44 +100,42 @@ func (s *Scanner) Run(ctx context.Context) Result {
 	close(jobs)
 	wg.Wait()
 
-	// Pass 3: folder covers for albums still without artwork.
 	if err := s.importFolderCovers(ctx, coverByFolder); err != nil {
 		s.log.Error("folder covers failed", "err", err)
 	}
 
-	// Pruning is opt-in: switching buckets must not erase the existing catalog.
+	var deleted int
 	if s.cfg.ScannerDeleteMissing {
 		keep := make([]string, 0, len(seenPaths))
 		for k := range seenPaths {
 			keep = append(keep, k)
 		}
-		if deleted, err := s.store.DeleteMissing(ctx, keep); err != nil {
+		if n, err := s.store.DeleteMissing(ctx, keep); err != nil {
 			s.log.Error("delete missing failed", "err", err)
-			res.Error = err
 		} else {
-			res.Deleted = int(deleted)
+			deleted = int(n)
 		}
 	}
 
-	// Pass 5: import playlists (owned by the admin user).
+	// Imported playlists belong to the admin, so they cannot be created without
+	// one; without an admin owner the import is skipped rather than attempted
+	// with an empty user id.
 	adminID, err := s.store.GetAdminID(ctx)
 	if err != nil {
 		s.log.Warn("no admin user for playlist import", "err", err)
-	}
-	for _, m3u := range m3uFiles {
-		if err := s.importM3U(ctx, m3u, adminID); err != nil {
-			s.log.Warn("m3u import failed", "file", m3u, "err", err)
+	} else {
+		for _, m3u := range m3uFiles {
+			if err := s.importM3U(ctx, m3u, adminID); err != nil {
+				s.log.Warn("m3u import failed", "file", m3u, "err", err)
+			}
 		}
 	}
 
-	_ = s.store.SetSetting(ctx, "last_scan_at", time.Now().UTC().Format(time.RFC3339))
 	s.log.Info("scan finished",
-		"added", res.Added, "updated", res.Updated, "skipped", res.Skipped,
-		"deleted", res.Deleted, "duration", time.Since(start).Round(time.Millisecond).String())
-	return res
+		"added", added, "updated", updated, "skipped", skipped,
+		"deleted", deleted, "duration", time.Since(start).Round(time.Millisecond).String())
 }
 
-// collectInventory rejects partial listings to protect catalog associations.
 func collectInventory(ctx context.Context, objects <-chan minio.ObjectInfo) ([]audioObj, map[string]string, []string, map[string]bool, error) {
 	var audios []audioObj
 	covers := map[string]string{}
@@ -170,12 +152,12 @@ func collectInventory(ctx context.Context, objects <-chan minio.ObjectInfo) ([]a
 		seen[key] = true
 		lower := strings.ToLower(key)
 		switch {
-		case audioExts[filepath.Ext(lower)]:
+		case stream.IsAudioExt(filepath.Ext(lower)):
 			audios = append(audios, audioObj{key, obj.Size, obj.LastModified})
 		case strings.HasSuffix(lower, ".m3u"):
 			playlists = append(playlists, key)
 		case coverNames[filepath.Base(lower)]:
-			folder := folderOf(key)
+			folder := store.FolderOf(key)
 			if _, ok := covers[folder]; !ok {
 				covers[folder] = key
 			}
@@ -192,11 +174,10 @@ type audioResult struct{ added, updated, skipped int }
 func (s *Scanner) processAudio(ctx context.Context, a audioObj, prev store.SongFileInfo) audioResult {
 	key, size, mtime := a.key, a.size, a.mtime
 
-	// Skip unchanged files.
 	if prev.Size == size && mtimeEqual(prev.Mtime, mtime) {
 		return audioResult{skipped: 1}
 	}
-	if _, err := s.indexAudio(ctx, a, prev, filepath.Base(key)); err != nil {
+	if _, err := s.indexAudio(ctx, a, filepath.Base(key)); err != nil {
 		s.log.Error("audio index failed", "key", key, "err", err)
 		return audioResult{}
 	}
@@ -206,23 +187,18 @@ func (s *Scanner) processAudio(ctx context.Context, a audioObj, prev store.SongF
 	return audioResult{updated: 1}
 }
 
-// IndexFile downloads and indexes a single object, returning the song record
-// (used right after an admin upload so the song is playable immediately).
 func (s *Scanner) IndexFile(ctx context.Context, key, displayName string) (*model.Song, error) {
 	info, err := s.st.Stat(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	return s.indexAudio(ctx, audioObj{key: key, size: info.Size, mtime: info.LastModified}, store.SongFileInfo{}, displayName)
+	return s.indexAudio(ctx, audioObj{key: key, size: info.Size, mtime: info.LastModified}, displayName)
 }
 
-// indexAudio downloads an object, extracts metadata and upserts the song and
-// its embedded artwork. displayName is used as the title fallback when the
-// file has no tags (the temp file name must never leak into the catalog).
-func (s *Scanner) indexAudio(ctx context.Context, a audioObj, prev store.SongFileInfo, displayName string) (*model.Song, error) {
+func (s *Scanner) indexAudio(ctx context.Context, a audioObj, displayName string) (*model.Song, error) {
 	key, size, mtime := a.key, a.size, a.mtime
 
-	tmp, err := os.CreateTemp("", "pm-scan-*"+filepath.Ext(key))
+	tmp, err := os.CreateTemp("", scanTempPrefix+"*"+filepath.Ext(key))
 	if err != nil {
 		return nil, err
 	}
@@ -240,17 +216,14 @@ func (s *Scanner) indexAudio(ctx context.Context, a audioObj, prev store.SongFil
 	tmp.Close()
 
 	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(key)), ".")
-	tags, err := metadata.Read(tmp.Name(), size)
+	tags, err := metadata.ReadAudio(tmp.Name(), size, s.cfg.FfmpegPath)
 	if err != nil {
-		return nil, fmt.Errorf("%w: metadados ilegíveis (%v)", ErrInvalidAudio, err)
-	}
-	if tags.Duration <= 0 {
-		return nil, fmt.Errorf("%w: duração não detectada (arquivo sem áudio decodificável)", ErrInvalidAudio)
+		return nil, err
 	}
 	if displayName == "" {
 		displayName = key
 	}
-	if title := strings.TrimSpace(tags.Title); title == "" || strings.HasPrefix(title, "pm-scan-") {
+	if title := strings.TrimSpace(tags.Title); title == "" || strings.HasPrefix(title, scanTempPrefix) {
 		tags.Title = strings.TrimSuffix(filepath.Base(displayName), filepath.Ext(displayName))
 	}
 
@@ -270,7 +243,7 @@ func (s *Scanner) indexAudio(ctx context.Context, a audioObj, prev store.SongFil
 		DiscNumber:  tags.Disc,
 	}
 	if song.Album == "" {
-		song.Album = "Desconhecido"
+		song.Album = store.UnknownArtist
 	}
 
 	albumArtist := tags.AlbumArtist
@@ -310,10 +283,9 @@ func (s *Scanner) indexAudio(ctx context.Context, a audioObj, prev store.SongFil
 	song.ID = id
 
 	// Genres become categories automatically: each song with a genre tag is
-	// assigned to a category named after it (created on demand). The genre
-	// "music" is ignored: a category with that name was removed permanently
-	// (migration 0008) and must not be recreated on rescan.
-	if genre := strings.TrimSpace(song.Genre); genre != "" && !strings.EqualFold(genre, "music") {
+	// assigned to a category named after it (created on demand). IgnoredGenre is
+	// skipped because migration 0008 deleted that category for good.
+	if genre := strings.TrimSpace(song.Genre); genre != "" && !strings.EqualFold(genre, store.IgnoredGenre) {
 		if catID, cerr := s.store.GetOrCreateCategory(ctx, song.Genre); cerr != nil {
 			s.log.Warn("category from genre", "genre", song.Genre, "err", cerr)
 		} else if catID != "" {
@@ -324,17 +296,11 @@ func (s *Scanner) indexAudio(ctx context.Context, a audioObj, prev store.SongFil
 	}
 
 	if tags.Picture != nil && len(tags.Picture.Data) > 0 {
-		mime := tags.Picture.MIMEType
-		if mime == "" {
-			mime = "image/jpeg"
-		}
-		// Cover embedded in the file: link it to the SONG itself so every
-		// track keeps its own artwork (uploads + bucket scans).
-		if err := s.store.UpsertArt(ctx, "song", song.ID, tags.Picture.Data, mime); err != nil {
+		if err := s.art.Put(ctx, store.EntitySong, song.ID, tags.Picture.Data); err != nil {
 			s.log.Warn("art upsert", "song", song.ID, "err", err)
 		}
 		// Keep the album-level cover as a fallback for songs without art.
-		if err := s.store.UpsertArt(ctx, "album", albumID, tags.Picture.Data, mime); err != nil {
+		if err := s.art.Put(ctx, store.EntityAlbum, albumID, tags.Picture.Data); err != nil {
 			s.log.Warn("art upsert", "album", albumID, "err", err)
 		}
 	}
@@ -364,15 +330,13 @@ func (s *Scanner) importFolderCovers(ctx context.Context, coverByFolder map[stri
 		if err != nil || len(data) == 0 {
 			continue
 		}
-		mime := mimeForExt(filepath.Ext(cover))
-		if err := s.store.UpsertArt(ctx, "album", albumID, data, mime); err != nil {
+		if err := s.art.Put(ctx, store.EntityAlbum, albumID, data); err != nil {
 			s.log.Warn("folder cover upsert", "album", albumID, "err", err)
 		}
 	}
 	return nil
 }
 
-// importM3U parses an .m3u file and (re)creates the matching playlist.
 func (s *Scanner) importM3U(ctx context.Context, key, adminID string) error {
 	base := filepath.Base(key)
 	if strings.HasPrefix(base, ".") {
@@ -393,7 +357,7 @@ func (s *Scanner) importM3U(ctx context.Context, key, adminID string) error {
 		return nil
 	}
 	name := strings.TrimSuffix(base, filepath.Ext(base))
-	folder := folderOf(key)
+	folder := store.FolderOf(key)
 
 	var paths []string
 	for _, raw := range lines {
@@ -450,28 +414,6 @@ func runesFromUint16(u []uint16) []rune {
 		r[i] = rune(v)
 	}
 	return r
-}
-
-func mimeForExt(ext string) string {
-	switch strings.ToLower(ext) {
-	case ".png":
-		return "image/png"
-	case ".webp":
-		return "image/webp"
-	case ".gif":
-		return "image/gif"
-	default:
-		return "image/jpeg"
-	}
-}
-
-func folderOf(key string) string {
-	for i := len(key) - 1; i >= 0; i-- {
-		if key[i] == '/' {
-			return key[:i+1]
-		}
-	}
-	return ""
 }
 
 func mtimeEqual(a, b time.Time) bool {

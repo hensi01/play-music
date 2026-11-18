@@ -31,66 +31,71 @@ func (s *Store) RegisterQualifiedListen(ctx context.Context, userID, songID, pla
 }
 
 func (s *Store) Recommendations(ctx context.Context, userID string) (Recommendations, error) {
-	songs, err := s.AllSongs(ctx, "")
+	songs, err := s.AllSongs(ctx)
 	if err != nil {
 		return Recommendations{}, err
 	}
-	categories := map[string][]string{}
-	rows, err := s.pool.Query(ctx, `SELECT cs.song_id,c.name FROM category_songs cs JOIN categories c ON c.id=cs.category_id`)
+	categories, err := s.songCategories(ctx)
 	if err != nil {
 		return Recommendations{}, err
 	}
-	for rows.Next() {
-		var id, name string
-		if err = rows.Scan(&id, &name); err != nil {
-			rows.Close()
-			return Recommendations{}, err
-		}
-		categories[id] = append(categories[id], name)
-	}
-	err = rows.Err()
-	rows.Close()
+	plays, err := s.recentListens(ctx, userID)
 	if err != nil {
 		return Recommendations{}, err
 	}
-	rows, err = s.pool.Query(ctx, `SELECT song_id,listened_at FROM qualified_listens WHERE user_id=$1 ORDER BY listened_at DESC LIMIT 5000`, userID)
-	if err != nil {
-		return Recommendations{}, err
-	}
-	var plays []listenSignal
-	for rows.Next() {
-		var p listenSignal
-		if err = rows.Scan(&p.SongID, &p.At); err != nil {
-			rows.Close()
-			return Recommendations{}, err
-		}
-		plays = append(plays, p)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return Recommendations{}, err
-	}
-	rows, err = s.pool.Query(ctx, `SELECT entity_id,created_at FROM user_likes WHERE user_id=$1 AND entity_type='song'`, userID)
-	if err != nil {
-		return Recommendations{}, err
-	}
-	likes := map[string]time.Time{}
-	for rows.Next() {
-		var id string
-		var likedAt time.Time
-		if err = rows.Scan(&id, &likedAt); err != nil {
-			rows.Close()
-			return Recommendations{}, err
-		}
-		likes[id] = likedAt
-	}
-	err = rows.Err()
-	rows.Close()
+	likes, err := s.likedAt(ctx, userID)
 	if err != nil {
 		return Recommendations{}, err
 	}
 	return rankRecommendations(songs, categories, plays, likes, time.Now()), nil
+}
+
+func (s *Store) songCategories(ctx context.Context) (map[string][]string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT cs.song_id,c.name FROM category_songs cs JOIN categories c ON c.id=cs.category_id`)
+	if err != nil {
+		return nil, err
+	}
+	return groupSongCategories(rows)
+}
+
+func (s *Store) recentListens(ctx context.Context, userID string) ([]listenSignal, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT song_id,listened_at FROM qualified_listens WHERE user_id=$1 ORDER BY listened_at DESC LIMIT 5000`, userID)
+	if err != nil {
+		return nil, err
+	}
+	return collect(rows, func(row scanner) (listenSignal, error) {
+		var p listenSignal
+		err := row.Scan(&p.SongID, &p.At)
+		return p, err
+	})
+}
+
+func (s *Store) likedAt(ctx context.Context, userID string) (map[string]time.Time, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT entity_id,created_at FROM user_likes WHERE user_id=$1 AND entity_type='`+EntitySong+`'`, userID)
+	if err != nil {
+		return nil, err
+	}
+	pairs, err := collect(rows, func(row scanner) (struct {
+		id string
+		at time.Time
+	}, error) {
+		var p struct {
+			id string
+			at time.Time
+		}
+		err := row.Scan(&p.id, &p.at)
+		return p, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]time.Time, len(pairs))
+	for _, p := range pairs {
+		out[p.id] = p.at
+	}
+	return out, nil
 }
 
 func rankRecommendations(songs []model.Song, categories map[string][]string, plays []listenSignal, likes map[string]time.Time, now time.Time) Recommendations {
@@ -161,7 +166,6 @@ func rankRecommendations(songs []model.Song, categories map[string][]string, pla
 		for _, c := range categories[song.ID] {
 			score += categoryWeight[recommendationLabelKey(c)]
 		}
-		// A known favorite remains relevant even if it has no usable metadata.
 		score += math.Log1p(listenWeight[song.ID])
 		if likedAt, liked := likes[song.ID]; liked {
 			days := math.Max(0, now.Sub(likedAt).Hours()/24)
@@ -213,7 +217,7 @@ func rankRecommendations(songs []model.Song, categories map[string][]string, pla
 	for _, r := range rankedSongs {
 		name := strings.TrimSpace(r.song.Artist)
 		key := strings.ToLower(name)
-		if name != "" && key != "desconhecido" && !seenArtists[key] {
+		if name != "" && key != strings.ToLower(UnknownArtist) && !seenArtists[key] {
 			result.Artists = append(result.Artists, RecommendedArtist{Name: name, SongID: r.song.ID})
 			seenArtists[key] = true
 			if len(result.Artists) == 10 {
@@ -265,7 +269,7 @@ func recommendationAlbumKey(song model.Song) string {
 
 func recommendationArtistKey(song model.Song) string {
 	name := strings.ToLower(strings.TrimSpace(song.Artist))
-	if name == "desconhecido" {
+	if strings.EqualFold(name, UnknownArtist) {
 		return ""
 	}
 	if name != "" {

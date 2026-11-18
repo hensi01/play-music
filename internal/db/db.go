@@ -8,14 +8,12 @@ import (
 	"sort"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// Connect opens the PostgreSQL connection pool (the only supported database).
 func Connect(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
@@ -37,8 +35,6 @@ func Connect(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-// Migrate applies the embedded SQL migrations, tracking applied versions in
-// the schema_migrations table. Safe to run concurrently (advisory lock).
 func Migrate(ctx context.Context, pool *pgxpool.Pool, log *slog.Logger) error {
 	if _, err := pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
 		version TEXT PRIMARY KEY,
@@ -84,17 +80,4 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, log *slog.Logger) error {
 		log.Info("migration applied", "version", name)
 	}
 	return nil
-}
-
-// InTx runs fn inside a transaction.
-func InTx(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) error {
-	tx, err := pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(context.Background())
-	if err := fn(tx); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
 }

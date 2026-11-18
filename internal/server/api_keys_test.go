@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"regexp"
 	"strings"
 	"testing"
 )
 
+// The public API docs must be served, and every admin route documented in them
+// must be reachable only with an API key (or a dashboard session), never open.
 func TestPublicSwaggerFilesAndAdminSecurity(t *testing.T) {
 	h := testStaticServer().handleStatic()
 	for _, path := range []string{"/docs/", "/docs/swagger-ui-bundle.js", "/docs/swagger-ui.css", "/docs/docs.js"} {
@@ -26,8 +26,11 @@ func TestPublicSwaggerFilesAndAdminSecurity(t *testing.T) {
 			Security []map[string][]string `json:"security"`
 		} `json:"paths"`
 	}
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &spec) != nil {
-		t.Fatal("OpenAPI inválido")
+	if w.Code != 200 {
+		t.Fatalf("/docs/openapi.json: %d", w.Code)
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &spec); err != nil {
+		t.Fatalf("invalid OpenAPI document: %v", err)
 	}
 	upload := spec.Paths["/api/admin/songs"]["post"]
 	found := false
@@ -56,6 +59,7 @@ func TestPublicSwaggerFilesAndAdminSecurity(t *testing.T) {
 		}
 	}
 }
+
 func TestAdminRejectsMalformedKey(t *testing.T) {
 	s := &Server{}
 	called := false
@@ -71,24 +75,34 @@ func TestAdminRejectsMalformedKey(t *testing.T) {
 	}
 }
 
-func TestOpenAPICoversRegisteredAPIRoutes(t *testing.T) {
-	source, err := os.ReadFile("server.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+// Every registered route must be documented, and the spec must not advertise
+// paths the server does not serve.
+func TestOpenAPIAndRoutesAgree(t *testing.T) {
 	w := httptest.NewRecorder()
 	testStaticServer().handleStatic().ServeHTTP(w, httptest.NewRequest("GET", "/docs/openapi.json", nil))
 	var spec struct {
 		Paths map[string]map[string]json.RawMessage `json:"paths"`
 	}
-	if err = json.Unmarshal(w.Body.Bytes(), &spec); err != nil {
+	if err := json.Unmarshal(w.Body.Bytes(), &spec); err != nil {
 		t.Fatal(err)
 	}
-	rx := regexp.MustCompile(`mux\.Handle(?:Func)?\("(GET|POST|PUT|DELETE) ([^" ]+)"`)
-	for _, match := range rx.FindAllStringSubmatch(string(source), -1) {
-		method, path := strings.ToLower(match[1]), match[2]
-		if len(spec.Paths[path][method]) == 0 {
-			t.Errorf("rota sem documentação: %s %s", method, path)
+	registered := map[string]bool{}
+	for _, rt := range (&Server{}).routes() {
+		method, path, ok := strings.Cut(rt.Pattern, " ")
+		if !ok {
+			t.Fatalf("route without method: %q", rt.Pattern)
+		}
+		key := strings.ToLower(method) + " " + path
+		registered[key] = true
+		if len(spec.Paths[path][strings.ToLower(method)]) == 0 {
+			t.Errorf("rota sem documentação: %s", key)
+		}
+	}
+	for path, methods := range spec.Paths {
+		for method := range methods {
+			if !registered[method+" "+path] {
+				t.Errorf("documentação sem rota: %s %s", method, path)
+			}
 		}
 	}
 }

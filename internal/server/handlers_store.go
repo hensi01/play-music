@@ -3,9 +3,7 @@ package server
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 
@@ -18,8 +16,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Phone string `json:"phone"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Requisição inválida")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	normalized, err := phone.Normalize(strings.TrimSpace(req.Phone))
@@ -29,8 +26,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-
-	u, _, err := s.store.GetUserByPhone(ctx, normalized)
+	u, err := s.store.GetUserByPhone(ctx, normalized)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		handleStoreError(w, err)
 		return
@@ -45,26 +41,26 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u = &model.User{ID: store.NewID(), Phone: normalized, Name: normalized}
-	if err := s.store.CreateUser(ctx, u, hash, nil); err != nil {
+	if err = s.store.CreateUser(ctx, u, hash, nil); err != nil {
 		handleStoreError(w, err)
 		return
 	}
-	u.Phone = phone.Format(u.Phone)
 
-	token, err := s.auth.Sign(ctx, model.User{ID: u.ID, Phone: u.Phone, Name: u.Name})
+	token, err := s.auth.Sign(model.User{ID: u.ID, Phone: u.Phone, Name: u.Name})
 	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"token": token, "id": u.ID, "name": u.Name, "phone": u.Phone, "isAdmin": false})
+	writeLoginResponse(w, *u, false, token)
 }
 
-// randomSecret returns a random hex string (random password for phone-only
-// accounts, which never log in with a password).
+// randomSecret is the unusable password hash given to phone-only accounts: they
+// authenticate by phone, never by password. A failing crypto/rand is fatal here
+// for the same reason store.NewID treats it as fatal.
 func randomSecret() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		return "play-music"
+		panic("crypto/rand failure: " + err.Error())
 	}
 	return hex.EncodeToString(b)
 }

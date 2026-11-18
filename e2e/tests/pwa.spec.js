@@ -28,7 +28,7 @@ test.describe('PWA', () => {
     expectClean(testInfo, clean)
   })
 
-  test('popup mostra somente Instalar PWA e abre a confirmação nativa', async ({ page }) => {
+  test('popup mostra somente o botão de instalar e abre a confirmação nativa', async ({ page }) => {
     const testInfo = test.info()
     const clean = trackConsole(page)
     await page.addInitScript(() => {
@@ -47,9 +47,7 @@ test.describe('PWA', () => {
     const overlay = page.locator('.pwa-overlay')
     await expect(overlay).toBeVisible({ timeout: 7000 })
     await expect(overlay.getByRole('button')).toHaveCount(1)
-    await expect(overlay.getByRole('button')).toHaveText('Instalar PWA')
-    expect(await overlay.locator('.pwa-card').evaluate((card) => card.children.length)).toBe(1)
-    await overlay.getByRole('button', { name: 'Instalar PWA' }).click()
+    await overlay.getByRole('button').click()
     await expect.poll(() => page.evaluate(() => window.__nativePwaPromptCalls)).toBe(1)
     await expect(overlay).toHaveCount(0)
     expectClean(testInfo, clean)

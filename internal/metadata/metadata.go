@@ -14,7 +14,11 @@ import (
 	"github.com/dhowden/tag"
 )
 
-// Tags holds the metadata extracted from an audio file.
+// ErrInvalidAudio marks a file that is not decodable audio: junk bytes renamed
+// to an audio extension, or a truncated/corrupt file. Its text is the API error
+// for a rejected upload.
+var ErrInvalidAudio = errors.New("Arquivo de áudio inválido ou corrompido")
+
 type Tags struct {
 	Title       string
 	Artist      string
@@ -30,9 +34,7 @@ type Tags struct {
 	Picture     *tag.Picture
 }
 
-// Read extracts tags from a local audio file. size is the file size in bytes
-// (used for duration estimation when probing is unavailable).
-func Read(path string, size int64) (*Tags, error) {
+func read(path string, size int64, ffmpegPath string) (*Tags, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -63,23 +65,19 @@ func Read(path string, size int64) (*Tags, error) {
 		}
 	}
 
-	// Untagged WAV files: duration/sample rate/bitrate straight from the RIFF
-	// header (no ffprobe required).
 	if strings.EqualFold(filepath.Ext(path), ".wav") && t.Duration <= 0 {
 		if d, sr, br := probeWAV(f); d > 0 || sr > 0 || br > 0 {
 			t.Duration, t.SampleRate, t.Bitrate = d, sr, br
 		}
 	}
 
-	// Duration / technical data via ffprobe when available.
-	ffprobe := ProbePath(ffmpegConfigured)
+	ffprobe := probePath(ffmpegPath)
 	if ffprobe != "" {
-		if d, sr, br := Probe(path, ffprobe); d > 0 || sr > 0 || br > 0 {
+		if d, sr, br := probe(path, ffprobe); d > 0 || sr > 0 || br > 0 {
 			t.Duration, t.SampleRate, t.Bitrate = d, sr, br
 		}
 	}
 
-	// Fallbacks.
 	if t.Duration <= 0 && m != nil {
 		if v, ok := m.Raw()["LENGTH"]; ok {
 			if s, ok := v.(string); ok {
@@ -104,7 +102,22 @@ func Read(path string, size int64) (*Tags, error) {
 	return t, nil
 }
 
-// clean removes NUL bytes and other characters Postgres TEXT cannot store.
+// ReadAudio reads tags from a file that must be decodable audio. A file whose
+// tags are unreadable or that reports no duration is not audio at all (junk
+// bytes renamed to an audio extension, a truncated download), and comes back
+// wrapped in ErrInvalidAudio.
+func ReadAudio(path string, size int64, ffmpegPath string) (*Tags, error) {
+	t, err := read(path, size, ffmpegPath)
+	if err != nil {
+		return nil, fmt.Errorf("%w: metadados ilegíveis (%v)", ErrInvalidAudio, err)
+	}
+	if t.Duration <= 0 {
+		return nil, fmt.Errorf("%w: duração não detectada (arquivo sem áudio decodificável)", ErrInvalidAudio)
+	}
+	return t, nil
+}
+
+// clean strips NUL bytes, which Postgres TEXT cannot store.
 func clean(s string) string {
 	if !strings.ContainsRune(s, 0) {
 		return s
@@ -112,11 +125,12 @@ func clean(s string) string {
 	return strings.ReplaceAll(s, "\x00", "")
 }
 
-// ffmpegPath resolves the ffmpeg binary: the configured ND_FFMPEGPATH or PATH.
-func ffmpegPath() string {
-	if ffmpegConfigured != "" {
-		if fi, err := os.Stat(ffmpegConfigured); err == nil && !fi.IsDir() {
-			return ffmpegConfigured
+// FFmpegPath resolves the ffmpeg binary: the configured ND_FFMPEGPATH when it
+// is a real file, else whatever PATH offers.
+func FFmpegPath(configured string) string {
+	if configured != "" {
+		if fi, err := os.Stat(configured); err == nil && !fi.IsDir() {
+			return configured
 		}
 	}
 	if p, err := exec.LookPath("ffmpeg"); err == nil {
@@ -125,31 +139,6 @@ func ffmpegPath() string {
 	return ""
 }
 
-// ExtractThumb grabs a representative frame of a video file and writes it as
-// a JPEG thumbnail (max 640px wide). Returns an error when ffmpeg is missing
-// or the frame cannot be extracted — callers should treat it as best-effort
-// (a missing thumbnail falls back to the placeholder artwork).
-func ExtractThumb(path, outPath string) error {
-	ff := ffmpegPath()
-	if ff == "" {
-		return errors.New("ffmpeg não encontrado")
-	}
-	cmd := exec.Command(ff,
-		"-nostdin", "-hide_banner", "-loglevel", "error",
-		"-i", path,
-		"-vf", "thumbnail=100,scale=640:-1",
-		"-frames:v", "1", "-q:v", "4",
-		"-y", outPath)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("ffmpeg thumbnail falhou: %w (%s)", err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-// ---------- WAV header probing ----------
-
-// probeWAV reads the RIFF/WAVE header and returns (duration seconds, sample
-// rate, bitrate). Works for plain PCM WAVs without any tag metadata.
 func probeWAV(f *os.File) (float64, int, int) {
 	buf := make([]byte, 4096)
 	n, err := f.ReadAt(buf, 0)
@@ -184,20 +173,7 @@ func probeWAV(f *os.File) (float64, int, int) {
 	return duration, sampleRate, bitrate
 }
 
-// ---------- ffprobe ----------
-
-var ffmpegConfigured string
-
-// SetFFmpegPath registers the configured ND_FFMPEGPATH (if any).
-func SetFFmpegPath(path string) { ffmpegConfigured = path }
-
-// ConfiguredFFmpegPath returns the configured ffmpeg path (empty if unset),
-// so callers can locate ffprobe/ffmpeg next to it.
-func ConfiguredFFmpegPath() string { return ffmpegConfigured }
-
-// ProbePath resolves the ffprobe binary: next to the configured ffmpeg path,
-// else on PATH.
-func ProbePath(configured string) string {
+func probePath(configured string) string {
 	if configured != "" {
 		dir := filepath.Dir(configured)
 		for _, n := range []string{"ffprobe.exe", "ffprobe"} {
@@ -216,7 +192,6 @@ func ProbePath(configured string) string {
 type probeOutput struct {
 	Streams []struct {
 		CodecType  string `json:"codec_type"`
-		CodecName  string `json:"codec_name"`
 		SampleRate string `json:"sample_rate"`
 		BitRate    string `json:"bit_rate"`
 		Duration   string `json:"duration"`
@@ -227,8 +202,7 @@ type probeOutput struct {
 	} `json:"format"`
 }
 
-// Probe returns (duration seconds, sample rate, bitrate).
-func Probe(path, ffprobe string) (float64, int, int) {
+func probe(path, ffprobe string) (float64, int, int) {
 	cmd := exec.Command(ffprobe, "-v", "quiet", "-print_format", "json",
 		"-show_format", "-show_streams", path)
 	out, err := cmd.Output()

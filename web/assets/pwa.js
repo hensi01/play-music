@@ -1,20 +1,10 @@
-// PWA install popup: the card contains a single install button. Browsers that
+// PWA install popup: the card carries a single install button. Browsers that
 // expose beforeinstallprompt open their native install confirmation on click;
-// other browsers get a short fallback on the same button.
-
+// other browsers get a short fallback label on the same button.
 (function () {
-  const isInstalled = () =>
-    window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true
-
-  const isIOS = () =>
-    /iP(hone|od|ad)/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-
   let deferredPrompt = null
   let activeOverlay = null
 
-  // Ao dispensar o aviso, não mostrá-lo novamente na mesma sessão.
   const SEEN_KEY = 'pm_pwa_seen'
 
   function pwaSeen() {
@@ -46,7 +36,7 @@
   }
 
   function fallbackLabel() {
-    return isIOS()
+    return window.__pmPlatform.isIOS()
       ? 'Use Compartilhar para adicionar à tela inicial'
       : 'Instale pelo menu do navegador'
   }
@@ -88,10 +78,10 @@
     card.setAttribute('aria-modal', 'true')
     card.setAttribute('aria-label', 'Instalar Mi Ritmo')
     card.innerHTML =
-      '<span class="notification-gate-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 6v9m-3-3 3 3 3-3M10 19h4"/></svg></span>' +
-      '<p class="notification-gate-eyebrow">TENHA O MI RITMO SEMPRE COM VOCÊ</p>' +
+      '<span class="promo-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 6v9m-3-3 3 3 3-3M10 19h4"/></svg></span>' +
+      '<p class="promo-eyebrow">TENHA O MI RITMO SEMPRE COM VOCÊ</p>' +
       '<h1>Instale o Mi Ritmo</h1>' +
-      '<p class="notification-gate-description">Instale o aplicativo para acessar suas músicas diretamente pela tela inicial.</p>' +
+      '<p class="promo-description">Instale o aplicativo para acessar suas músicas diretamente pela tela inicial.</p>' +
       '<button type="button" class="pwa-btn primary" data-act="install">Instalar aplicativo</button>'
 
     card.querySelector('[data-act="install"]').addEventListener('click', async (event) => {
@@ -102,8 +92,8 @@
         return
       }
 
-      // prompt() precisa ser chamado diretamente na ação do usuário. Cada
-      // evento beforeinstallprompt pode ser usado uma única vez.
+      // Each beforeinstallprompt event can only be used once, and the prompt
+      // must be requested directly from the user's click.
       deferredPrompt = null
       button.disabled = true
       button.textContent = 'Abrindo instalação…'
@@ -113,10 +103,9 @@
   }
 
   function show(force = false) {
-    const onAdminLogin = window.location?.pathname?.replace(/\/+$/, '') === '/admin/login'
     if (
-      isInstalled() || activeOverlay ||
-      (!force && (window.__pmAdmin || onAdminLogin || pwaSeen() || document.querySelector('.notification-gate')))
+      window.__pmPlatform.isInstalled() || activeOverlay ||
+      (!force && (window.__pmPlatform.admin || window.__pmPlatform.onAdminLogin() || pwaSeen() || window.__pmPlatform.gateVisible))
     ) return
 
     const overlay = document.createElement('div')
@@ -130,8 +119,10 @@
     window.addEventListener('keydown', onOverlayKeydown)
   }
 
-  window.installPlayMusic = function () {
-    if (isInstalled()) return
+  window.__pmPlatform.dismissInstall = () => closeOverlay()
+
+  window.__pmPlatform.install = function () {
+    if (window.__pmPlatform.isInstalled()) return
     if (deferredPrompt) {
       const prompt = deferredPrompt
       deferredPrompt = null
@@ -140,9 +131,7 @@
     }
     show(true)
   }
-  window.isPlayMusicInstalled = isInstalled
 
-  // App aberto no navegador (não instalado): mostra uma vez por sessão.
   window.addEventListener('load', () => {
     setTimeout(show, 1500)
   })

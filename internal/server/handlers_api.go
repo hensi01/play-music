@@ -2,55 +2,53 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"time"
 
 	"play-music/internal/metadata"
 	"play-music/internal/model"
 	"play-music/internal/phone"
-	"play-music/internal/scanner"
 	"play-music/internal/store"
+	"play-music/internal/stream"
 	"play-music/internal/version"
 )
 
-// userFromContext resolves the full user record for the request.
-func (s *Server) userFromContext(ctx context.Context) (*model.User, error) {
-	return s.store.GetUser(ctx, userIDOf(ctx))
-}
-
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
-	u, err := s.userFromContext(r.Context())
+	u, err := s.store.GetUser(r.Context(), userIDOf(r.Context()))
 	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
+	formatPhone(u)
 	writeJSON(w, http.StatusOK, u)
 }
 
+// appName is the product name served to the UI. It appears twice in the
+// settings payload because the two fields serve different screens.
+const appName = "Mi Ritmo"
+
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, model.Settings{
-		AppName:     "Mi Ritmo",
-		Version:     version.Version,
-		LibraryName: "Mi Ritmo",
+		AppName:         appName,
+		Version:         version.Version,
+		LibraryName:     appName,
+		AudioExtensions: stream.AudioExtensions(),
 	})
 }
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	filter := s.filterUser(r)
-	var sections []model.HomeSection
-	recent, err := s.store.RecentlyAddedSongs(ctx, filter, 24)
+	recent, err := s.store.RecentlyAddedSongs(ctx, 24)
 	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
-	top, err := s.store.MostPlayedSongs(ctx, filter, 24)
+	top, err := s.store.MostPlayedSongs(ctx, 24)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -58,13 +56,16 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	if !s.addLikes(w, r, recent) || !s.addLikes(w, r, top) {
 		return
 	}
+	// An empty section list must marshal as [] rather than null: the published
+	// schema declares an array, and a library with nothing recent still has a
+	// home screen.
+	sections := []model.HomeSection{}
 	if len(recent) > 0 {
 		sections = append(sections, model.HomeSection{Title: "Adicionadas recentemente", Songs: recent})
 	}
 	if len(top) > 0 {
 		sections = append(sections, model.HomeSection{Title: "Mais ouvidas", Songs: top})
 	}
-
 	writeJSON(w, http.StatusOK, model.Home{Sections: sections, Genres: []model.Genre{}})
 }
 
@@ -72,7 +73,8 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	typ := strings.TrimSpace(r.URL.Query().Get("type"))
 	ctx := r.Context()
-	userID := userIDOf(ctx)
+	// Every field starts as an empty slice: a type-filtered search leaves the
+	// other kinds untouched, and the published schema says array, not null.
 	res := model.SearchResults{
 		Songs:      []model.Song{},
 		Albums:     []model.Album{},
@@ -84,42 +86,46 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, res)
 		return
 	}
-	// type=songs|albums|categories|playlists|all (default all)
+	// type=songs|albums|artists|categories|playlists|all (default all)
 	searchAll := typ == "" || typ == "all"
-	accessUser := s.filterUser(r) // "" for admin (sees everything)
 	var err error
 	if searchAll || typ == "songs" {
-		if res.Songs, err = s.store.SearchSongs(ctx, accessUser, q, 30); err != nil {
+		if res.Songs, err = s.store.SearchSongs(ctx, q, 30); err != nil {
 			handleStoreError(w, err)
 			return
 		}
 	}
 	if searchAll || typ == "categories" {
-		if res.Categories, err = s.store.SearchCategories(ctx, accessUser, q, 20); err != nil {
+		if res.Categories, err = s.store.SearchCategories(ctx, q, 20); err != nil {
 			handleStoreError(w, err)
 			return
 		}
 	}
 	if searchAll || typ == "playlists" {
-		if res.Playlists, err = s.store.SearchPlaylists(ctx, userID, q, 20); err != nil {
+		if res.Playlists, err = s.store.SearchPlaylists(ctx, userIDOf(ctx), q, 20); err != nil {
 			handleStoreError(w, err)
 			return
 		}
 	}
 	if searchAll || typ == "albums" {
-		if res.Albums, err = s.store.SearchAlbums(ctx, accessUser, q, 20); err != nil {
+		if res.Albums, err = s.store.SearchAlbums(ctx, q, 20); err != nil {
 			handleStoreError(w, err)
 			return
 		}
 	}
-	// Artist results are included with the combined search for compatibility.
+	// Artists are only returned by the combined search, for compatibility with
+	// clients that expect them in the "all" payload.
 	if searchAll {
-		if res.Artists, err = s.store.SearchArtists(ctx, accessUser, q, 20); err != nil {
+		if res.Artists, err = s.store.SearchArtists(ctx, q, 20); err != nil {
+			handleStoreError(w, err)
+			return
+		}
+		if err = s.store.ApplyArtistLikes(ctx, userIDOf(ctx), res.Artists); err != nil {
 			handleStoreError(w, err)
 			return
 		}
 	}
-	if err = s.store.ApplyAlbumLikes(ctx, userID, res.Albums); err != nil {
+	if err = s.store.ApplyAlbumLikes(ctx, userIDOf(ctx), res.Albums); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -128,8 +134,6 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, res)
 }
-
-// ---------- categories (client view) ----------
 
 func (s *Server) handleCategories(w http.ResponseWriter, r *http.Request) {
 	cats, err := s.store.GetCategories(r.Context())
@@ -140,22 +144,9 @@ func (s *Server) handleCategories(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, cats)
 }
 
-// handleCategory returns one category with its songs. Clients may only open
-// categories granted to them (403 otherwise).
 func (s *Server) handleCategory(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	id := parseID(r)
-	if userID := s.filterUser(r); userID != "" {
-		ok, err := s.store.CanAccessCategory(ctx, userID, id)
-		if err != nil {
-			handleStoreError(w, err)
-			return
-		}
-		if !ok {
-			writeError(w, http.StatusForbidden, "Sem permissão")
-			return
-		}
-	}
+	id := r.PathValue("id")
 	cat, err := s.store.GetCategory(ctx, id)
 	if err != nil {
 		handleStoreError(w, err)
@@ -173,15 +164,14 @@ func (s *Server) handleCategory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, cat)
 }
 
-// ---------- albums ----------
-
 func (s *Server) handleAlbums(w http.ResponseWriter, r *http.Request) {
-	albums, err := s.store.GetAlbums(r.Context(), s.filterUser(r))
+	ctx := r.Context()
+	albums, err := s.store.GetAlbums(ctx)
 	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
-	if err = s.store.ApplyAlbumLikes(r.Context(), userIDOf(r.Context()), albums); err != nil {
+	if err = s.store.ApplyAlbumLikes(ctx, userIDOf(ctx), albums); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -190,17 +180,7 @@ func (s *Server) handleAlbums(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAlbum(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	id := parseID(r)
-	ok, err := s.store.CanAccessAlbum(ctx, s.filterUser(r), id)
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	if !ok {
-		writeError(w, http.StatusForbidden, "Sem permissão")
-		return
-	}
-	album, err := s.store.GetAlbum(ctx, id)
+	album, err := s.store.GetAlbum(ctx, r.PathValue("id"))
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -214,39 +194,50 @@ func (s *Server) handleAlbum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	album.Songs = songs
-	liked := []model.Album{*album}
-	if err = s.store.ApplyAlbumLikes(ctx, userIDOf(ctx), liked); err != nil {
+	liked, err := s.store.LikedSet(ctx, userIDOf(ctx), store.EntityAlbum, album.ID)
+	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
-	album.Liked = liked[0].Liked
+	album.Liked = liked
 	writeJSON(w, http.StatusOK, album)
 }
 
-// ---------- artists ----------
-
 func (s *Server) handleArtists(w http.ResponseWriter, r *http.Request) {
-	artists, err := s.store.GetArtists(r.Context(), s.filterUser(r))
+	ctx := r.Context()
+	artists, err := s.store.GetArtists(ctx)
 	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	if err = s.store.ApplyArtistLikes(ctx, userIDOf(ctx), artists); err != nil {
 		handleStoreError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, artists)
 }
 
+// artistDetail embeds Artist, so albumCount comes from model.Artist and is the
+// SQL count for the artist, not len(Albums).
+type artistDetail struct {
+	model.Artist
+	TopSongs []model.Song  `json:"topSongs"`
+	Albums   []model.Album `json:"albums"`
+}
+
 func (s *Server) handleArtist(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	artist, err := s.store.GetArtist(ctx, parseID(r))
+	artist, err := s.store.GetArtist(ctx, r.PathValue("id"))
 	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
-	albums, err := s.store.AlbumsByArtist(ctx, s.filterUser(r), artist.ID)
+	albums, err := s.store.AlbumsByArtist(ctx, artist.ID)
 	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
-	top, err := s.store.TopSongsByArtist(ctx, s.filterUser(r), artist.ID, 10)
+	top, err := s.store.TopSongsByArtist(ctx, artist.ID, 10)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -254,22 +245,21 @@ func (s *Server) handleArtist(w http.ResponseWriter, r *http.Request) {
 	if !s.addLikes(w, r, top) {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"id":         artist.ID,
-		"name":       artist.Name,
-		"albumCount": len(albums),
-		"songCount":  artist.SongCount,
-		"liked":      artist.Liked,
-		"topSongs":   top,
-		"albums":     albums,
+	liked, err := s.store.LikedSet(ctx, userIDOf(ctx), store.EntityArtist, artist.ID)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	artist.Liked = liked
+	writeJSON(w, http.StatusOK, artistDetail{
+		Artist:   *artist,
+		TopSongs: top,
+		Albums:   albums,
 	})
 }
 
-// ---------- songs ----------
-
-// handleSongs lists every song accessible to the user (Library page).
 func (s *Server) handleSongs(w http.ResponseWriter, r *http.Request) {
-	songs, err := s.store.AllSongs(r.Context(), s.filterUser(r))
+	songs, err := s.store.AllSongs(r.Context())
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -282,29 +272,17 @@ func (s *Server) handleSongs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSong(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	id := parseID(r)
-	ok, err := s.store.CanAccessSong(ctx, s.filterUser(r), id)
+	song, err := s.store.GetSong(ctx, r.PathValue("id"))
 	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
-	if !ok {
-		writeError(w, http.StatusForbidden, "Sem permissão")
+	songs := []model.Song{*song}
+	if !s.addLikes(w, r, songs) {
 		return
 	}
-	song, err := s.store.GetSong(ctx, id)
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	decorated := []model.Song{*song}
-	if !s.addLikes(w, r, decorated) {
-		return
-	}
-	writeJSON(w, http.StatusOK, decorated[0])
+	writeJSON(w, http.StatusOK, songs[0])
 }
-
-// ---------- playlists (owner-scoped) ----------
 
 func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
 	playlists, err := s.store.GetPlaylists(r.Context(), userIDOf(r.Context()))
@@ -316,7 +294,7 @@ func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePlaylist(w http.ResponseWriter, r *http.Request) {
-	pl, err := s.store.GetPlaylist(r.Context(), userIDOf(r.Context()), s.filterUser(r), parseID(r))
+	pl, err := s.store.GetPlaylist(r.Context(), userIDOf(r.Context()), r.PathValue("id"))
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -340,20 +318,15 @@ func (s *Server) handleCreatePlaylist(w http.ResponseWriter, r *http.Request) {
 		Comment string   `json:"comment"`
 		SongIDs []string `json:"songIds"`
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "Requisição inválida")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if err := json.Unmarshal(body, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "Requisição inválida")
-		return
-	}
-	if strings.TrimSpace(req.Name) == "" {
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
 		writeError(w, http.StatusBadRequest, "Nome da playlist é obrigatório")
 		return
 	}
-	pl, err := s.store.CreatePlaylist(r.Context(), userIDOf(r.Context()), s.filterUser(r), strings.TrimSpace(req.Name), req.Comment, req.SongIDs)
+	pl, err := s.store.CreatePlaylist(r.Context(), userIDOf(r.Context()), name, req.Comment, req.SongIDs)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -366,12 +339,11 @@ func (s *Server) handleUpdatePlaylist(w http.ResponseWriter, r *http.Request) {
 		Name    string `json:"name"`
 		Comment string `json:"comment"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Requisição inválida")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	patch := &model.Playlist{Name: req.Name, Comment: req.Comment}
-	if err := s.store.UpdatePlaylist(r.Context(), userIDOf(r.Context()), parseID(r), patch); err != nil {
+	if err := s.store.UpdatePlaylist(r.Context(), userIDOf(r.Context()), r.PathValue("id"), patch); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -379,7 +351,7 @@ func (s *Server) handleUpdatePlaylist(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeletePlaylist(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeletePlaylist(r.Context(), userIDOf(r.Context()), parseID(r)); err != nil {
+	if err := s.store.DeletePlaylist(r.Context(), userIDOf(r.Context()), r.PathValue("id")); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -390,11 +362,10 @@ func (s *Server) handleAddPlaylistTracks(w http.ResponseWriter, r *http.Request)
 	var req struct {
 		SongIDs []string `json:"songIds"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Requisição inválida")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if err := s.store.AddPlaylistTracks(r.Context(), userIDOf(r.Context()), s.filterUser(r), parseID(r), req.SongIDs); err != nil {
+	if err := s.store.AddPlaylistTracks(r.Context(), userIDOf(r.Context()), r.PathValue("id"), req.SongIDs); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -402,8 +373,7 @@ func (s *Server) handleAddPlaylistTracks(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleRemovePlaylistTrack(w http.ResponseWriter, r *http.Request) {
-	entryID := r.PathValue("entryId")
-	if err := s.store.RemovePlaylistTrack(r.Context(), userIDOf(r.Context()), parseID(r), entryID); err != nil {
+	if err := s.store.RemovePlaylistTrack(r.Context(), userIDOf(r.Context()), r.PathValue("id"), r.PathValue("entryId")); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -415,23 +385,18 @@ func (s *Server) handleReorderPlaylistTracks(w http.ResponseWriter, r *http.Requ
 		From int `json:"from"`
 		To   int `json:"to"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Requisição inválida")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if err := s.store.ReorderPlaylistTracks(r.Context(), userIDOf(r.Context()), parseID(r), req.From, req.To); err != nil {
+	if err := s.store.ReorderPlaylistTracks(r.Context(), userIDOf(r.Context()), r.PathValue("id"), req.From, req.To); err != nil {
 		handleStoreError(w, err)
 		return
 	}
 	writeNoContent(w)
 }
 
-// ---------- liked ----------
-
 func (s *Server) handleLiked(w http.ResponseWriter, r *http.Request) {
-	// Likes are owner-scoped: the real user id is the owner; the access
-	// filter uses filterUser so admins ("" ) see everything they liked.
-	songs, err := s.store.LikedSongs(r.Context(), userIDOf(r.Context()), s.filterUser(r), 100)
+	songs, err := s.store.LikedSongs(r.Context(), userIDOf(r.Context()), 100)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -443,99 +408,60 @@ func (s *Server) handleLiked(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLikedAlbums(w http.ResponseWriter, r *http.Request) {
-	albums, err := s.store.LikedAlbums(r.Context(), userIDOf(r.Context()), s.filterUser(r), 100)
+	ctx := r.Context()
+	albums, err := s.store.LikedAlbums(ctx, userIDOf(ctx), 100)
 	if err != nil {
 		handleStoreError(w, err)
 		return
+	}
+	// LikedAlbums selects through user_likes, so every row is liked by
+	// definition; albumCols carries no liked column.
+	for i := range albums {
+		albums[i].Liked = true
 	}
 	writeJSON(w, http.StatusOK, albums)
 }
 
-func (s *Server) setAlbumLike(w http.ResponseWriter, r *http.Request, liked bool) {
+// setLike marks an entity liked or unliked. The not-found text and the existence
+// probe both follow from the entity type, so callers pass only that.
+func (s *Server) setLike(w http.ResponseWriter, r *http.Request, entityType string, liked bool) {
 	ctx := r.Context()
-	id := parseID(r)
-	ok, err := s.store.AlbumExists(ctx, id)
+	id := r.PathValue("id")
+	probe := s.probeFor(entityType)
+	ok, err := probe.exists(ctx, id)
 	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
 	if !ok {
-		writeError(w, http.StatusNotFound, "Álbum não encontrado")
+		writeError(w, http.StatusNotFound, probe.notFound)
 		return
 	}
-	ok, err = s.store.CanAccessAlbum(ctx, s.filterUser(r), id)
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	if !ok {
-		writeError(w, http.StatusForbidden, "Sem permissão")
-		return
-	}
-	if err = s.store.SetLike(ctx, userIDOf(ctx), "album", id, liked); err != nil {
+	if err = s.store.SetLike(ctx, userIDOf(ctx), entityType, id, liked); err != nil {
 		handleStoreError(w, err)
 		return
 	}
 	writeNoContent(w)
+}
+
+func (s *Server) handleLikeSong(w http.ResponseWriter, r *http.Request) {
+	s.setLike(w, r, store.EntitySong, true)
+}
+
+func (s *Server) handleUnlikeSong(w http.ResponseWriter, r *http.Request) {
+	s.setLike(w, r, store.EntitySong, false)
 }
 
 func (s *Server) handleLikeAlbum(w http.ResponseWriter, r *http.Request) {
-	s.setAlbumLike(w, r, true)
+	s.setLike(w, r, store.EntityAlbum, true)
 }
 
 func (s *Server) handleUnlikeAlbum(w http.ResponseWriter, r *http.Request) {
-	s.setAlbumLike(w, r, false)
+	s.setLike(w, r, store.EntityAlbum, false)
 }
-
-func (s *Server) handleLike(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	id := parseID(r)
-	// Validate the song exists before recording the like; a silent 204 for
-	// an unknown id desyncs the client state (B-NEW-3).
-	ok, err := s.store.SongExists(ctx, id)
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	if !ok {
-		writeError(w, http.StatusNotFound, "Música não encontrada")
-		return
-	}
-	if err := s.store.SetLike(ctx, userIDOf(ctx), "song", id, true); err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	writeNoContent(w)
-}
-
-func (s *Server) handleUnlike(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	id := parseID(r)
-	// Unlike of an unknown song is a client error too: report 404 instead
-	// of silently succeeding (B-NEW-3).
-	ok, err := s.store.SongExists(ctx, id)
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	if !ok {
-		writeError(w, http.StatusNotFound, "Música não encontrada")
-		return
-	}
-	if err := s.store.SetLike(ctx, userIDOf(ctx), "song", id, false); err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	writeNoContent(w)
-}
-
-// ---------- history ----------
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
-	// History is owner-scoped (like likes/playlists): the real user id owns
-	// the history rows; the access filter uses filterUser so admins ("")
-	// see their whole history.
-	songs, err := s.store.HistorySongs(r.Context(), userIDOf(r.Context()), s.filterUser(r), 50)
+	songs, err := s.store.HistorySongs(r.Context(), userIDOf(r.Context()), 50)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -547,16 +473,12 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRegisterPlay(w http.ResponseWriter, r *http.Request) {
-	// History is owner-scoped (like likes/playlists): must use the real user
-	// id even for admins, otherwise plays get recorded under "".
-	if err := s.store.RegisterPlay(r.Context(), userIDOf(r.Context()), s.filterUser(r), parseID(r)); err != nil {
+	if err := s.store.RegisterPlay(r.Context(), userIDOf(r.Context()), r.PathValue("id")); err != nil {
 		handleStoreError(w, err)
 		return
 	}
 	writeNoContent(w)
 }
-
-// ---------- queue ----------
 
 func (s *Server) handleGetQueue(w http.ResponseWriter, r *http.Request) {
 	data, err := s.store.GetPlayQueue(r.Context(), userIDOf(r.Context()))
@@ -564,7 +486,7 @@ func (s *Server) handleGetQueue(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Type", jsonContentType)
 	w.Write(data)
 }
 
@@ -581,14 +503,10 @@ func (s *Server) handleSaveQueue(w http.ResponseWriter, r *http.Request) {
 	writeNoContent(w)
 }
 
-// ---------- scan (manual trigger, admin) ----------
-
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	go s.scanner.Run(context.Background())
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "scan iniciado"})
 }
-
-// ---------- admin: users ----------
 
 func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := s.store.ListUsers(r.Context())
@@ -597,7 +515,7 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for i := range users {
-		users[i].Phone = phone.Format(users[i].Phone)
+		formatPhone(&users[i])
 	}
 	writeJSON(w, http.StatusOK, users)
 }
@@ -614,17 +532,14 @@ type adminUserRequest struct {
 
 func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	var req adminUserRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Requisição inválida")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
-	ctx := r.Context()
 	u := &model.User{Name: strings.TrimSpace(req.Name), IsAdmin: req.IsAdmin}
 	var hash string
 	var err error
 
 	if req.IsAdmin {
-		// Administrador: usuário + senha + e-mail obrigatórios (sem telefone).
 		u.Username = strings.TrimSpace(req.Username)
 		u.Email = strings.TrimSpace(req.Email)
 		if u.Username == "" || u.Email == "" {
@@ -635,56 +550,48 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "Senha é obrigatória")
 			return
 		}
-		hash, err = bcryptPassword(req.Password)
-		if err != nil {
+		if hash, err = bcryptPassword(req.Password); err != nil {
 			handleStoreError(w, err)
 			return
 		}
 	} else {
-		// Cliente: somente telefone (acesso liberado pelas categorias).
 		if strings.TrimSpace(req.Phone) == "" {
 			writeError(w, http.StatusBadRequest, "Telefone é obrigatório")
 			return
 		}
-		normalized, err := phone.Normalize(req.Phone)
-		if err != nil {
+		normalized, nerr := phone.Normalize(req.Phone)
+		if nerr != nil {
 			writeError(w, http.StatusBadRequest, phone.ErrInvalid.Error())
 			return
 		}
 		u.Phone = normalized
-		hash, err = bcryptPassword(randomSecret())
-		if err != nil {
+		if hash, err = bcryptPassword(randomSecret()); err != nil {
 			handleStoreError(w, err)
 			return
 		}
 	}
 	if u.Name == "" {
-		if u.Username != "" {
-			u.Name = u.Username
-		} else {
+		u.Name = u.Username
+		if u.Name == "" {
 			u.Name = u.Phone
 		}
 	}
 	u.ID = store.NewID()
-	if err := s.store.CreateUser(ctx, u, hash, req.CategoryIDs); err != nil {
+	if err = s.store.CreateUser(r.Context(), u, hash, req.CategoryIDs); err != nil {
 		handleStoreError(w, err)
 		return
 	}
-	if u.Phone != "" {
-		u.Phone = phone.Format(u.Phone)
-	}
+	formatPhone(u)
 	writeJSON(w, http.StatusCreated, u)
 }
 
 func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	var req adminUserRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Requisição inválida")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	id := r.PathValue("id")
 	ctx := r.Context()
-	// Cannot edit yourself (avoid removing the only admin).
 	if id == userIDOf(ctx) {
 		writeError(w, http.StatusBadRequest, "Não é possível editar a própria conta aqui")
 		return
@@ -697,15 +604,14 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 
 	patch := store.UserPatch{
 		Name:          strings.TrimSpace(req.Name),
-		PasswordHash:  "",
 		SetCategories: req.CategoryIDs != nil,
 		CategoryIDs:   req.CategoryIDs,
 	}
 
 	// Guard: never demote the last admin (would lock the app out).
 	if current.IsAdmin && !req.IsAdmin {
-		adminCount := 0
-		if err := s.store.Pool().QueryRow(ctx, "SELECT count(*) FROM users WHERE is_admin").Scan(&adminCount); err != nil {
+		adminCount, err := s.store.CountAdmins(ctx)
+		if err != nil {
 			handleStoreError(w, err)
 			return
 		}
@@ -716,7 +622,6 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.IsAdmin {
-		// Vira/continua admin: usuário + e-mail (senha opcional na edição).
 		username := strings.TrimSpace(req.Username)
 		email := strings.TrimSpace(req.Email)
 		if username == "" {
@@ -731,19 +636,18 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		}
 		patch.Username = &username
 		patch.Email = &email
-		phone := ""
-		patch.Phone = &phone // limpa o telefone ao virar admin
+		empty := ""
+		patch.Phone = &empty // becoming an admin clears the phone
 	} else {
-		// Cliente: telefone obrigatório; limpa usuário/e-mail.
-		normalized, err := phone.Normalize(strings.TrimSpace(req.Phone))
-		if err != nil {
+		normalized, nerr := phone.Normalize(strings.TrimSpace(req.Phone))
+		if nerr != nil {
 			writeError(w, http.StatusBadRequest, phone.ErrInvalid.Error())
 			return
 		}
 		patch.Phone = &normalized
-		clear := ""
-		patch.Username = &clear
-		patch.Email = &clear
+		empty := ""
+		patch.Username = &empty
+		patch.Email = &empty
 	}
 	isAdmin := req.IsAdmin
 	patch.IsAdmin = &isAdmin
@@ -755,7 +659,7 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		}
 		patch.PasswordHash = hash
 	}
-	if err := s.store.UpdateUser(ctx, id, patch); err != nil {
+	if err = s.store.UpdateUser(ctx, id, patch); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -764,38 +668,27 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if id == userIDOf(r.Context()) {
+	ctx := r.Context()
+	if id == userIDOf(ctx) {
 		writeError(w, http.StatusBadRequest, "Não é possível excluir a própria conta")
 		return
 	}
-	if err := s.removeUserPushSubscriptions(r.Context(), id); err != nil {
+	if err := s.store.DeactivateUserPushSubscriptions(ctx, id); err != nil {
 		writeError(w, http.StatusBadGateway, "Não foi possível remover as notificações deste usuário; tente novamente")
 		return
 	}
-	if err := s.store.DeleteUser(r.Context(), id); err != nil {
+	if err := s.store.DeleteUser(ctx, id); err != nil {
 		handleStoreError(w, err)
 		return
 	}
 	writeNoContent(w)
 }
 
-// ---------- admin: categories ----------
-
-func (s *Server) handleAdminListCategories(w http.ResponseWriter, r *http.Request) {
-	cats, err := s.store.GetCategories(r.Context())
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, cats)
-}
-
 func (s *Server) handleAdminCreateCategory(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Requisição inválida")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	name := strings.TrimSpace(req.Name)
@@ -818,20 +711,15 @@ func (s *Server) handleAdminCategoryDetail(w http.ResponseWriter, r *http.Reques
 		handleStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"id":      id,
-		"songIds": songIDs,
-	})
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "songIds": songIDs})
 }
 
 func (s *Server) handleAdminUpdateCategory(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name string `json:"name"`
-
+		Name    string   `json:"name"`
 		SongIDs []string `json:"songIds"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Requisição inválida")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if err := s.store.UpdateCategory(r.Context(), r.PathValue("id"),
@@ -844,46 +732,31 @@ func (s *Server) handleAdminUpdateCategory(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleAdminDeleteCategory(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	// Remove a capa da categoria (MinIO + Postgres) para não deixar órfã.
-	if err := s.artwork.DeleteCategoryPhoto(ctx, r.PathValue("id")); err != nil {
-		s.log.Warn("category cover cleanup failed", "id", r.PathValue("id"), "err", err)
+	id := r.PathValue("id")
+	// Drop the cover too, so a recreated category cannot inherit the old one.
+	if err := s.artwork.Delete(ctx, store.EntityCategory, id); err != nil {
+		s.log.Warn("category cover cleanup failed", "id", id, "err", err)
 	}
-	if err := s.store.DeleteCategory(ctx, r.PathValue("id")); err != nil {
+	if err := s.store.DeleteCategory(ctx, id); err != nil {
 		handleStoreError(w, err)
 		return
 	}
 	writeNoContent(w)
 }
 
-// ---------- admin: albums / artists (assignment) ----------
-
-func (s *Server) handleAdminAlbums(w http.ResponseWriter, r *http.Request) {
-	albums, err := s.store.GetAlbums(r.Context(), "")
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, albums)
-}
-
-func (s *Server) handleAdminArtists(w http.ResponseWriter, r *http.Request) {
-	artists, err := s.store.GetArtists(r.Context(), "")
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, artists)
-}
-
-// handleAdminSongs lists every song plus the category ids each one belongs to
-// (admin song management screen).
 func (s *Server) handleAdminSongs(w http.ResponseWriter, r *http.Request) {
-	songs, err := s.store.AllSongs(r.Context(), "")
+	ctx := r.Context()
+	songs, err := s.store.AllSongs(ctx)
 	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
-	cats, err := s.store.CategorySongIDs(r.Context())
+	cats, err := s.store.CategorySongIDs(ctx)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	categories, err := s.store.GetCategories(ctx)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -891,192 +764,116 @@ func (s *Server) handleAdminSongs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"songs":        songs,
 		"categoryIds":  cats,
-		"categoryList": mustCategories(r.Context(), s),
+		"categoryList": categories,
 	})
 }
 
-func mustCategories(ctx context.Context, s *Server) []model.Category {
-	cats, err := s.store.GetCategories(ctx)
-	if err != nil {
-		return []model.Category{}
-	}
-	return cats
+const maxPhotoBytes = 15 << 20
+
+// tooLargeMessage names a multipart limit, derived from it, so the wording
+// cannot drift from the number it warns about.
+func tooLargeMessage(limit int64) string {
+	return "Arquivo muito grande (máx " + strconv.FormatInt(limit>>20, 10) + "MB) ou inválido"
 }
 
-// ---------- admin: album photo ----------
-
-const maxPhotoBytes = 15 << 20 // 15MB
-
-func (s *Server) handleAdminUploadPhoto(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxPhotoBytes)
-	if err := r.ParseMultipartForm(maxPhotoBytes); err != nil {
-		writeError(w, http.StatusBadRequest, "Arquivo muito grande (máx 15MB) ou inválido")
-		return
-	}
+// photoField reads the "photo" part of an already-parsed multipart form. A
+// missing part yields (nil, nil); the 15 MB cap is the one every cover upload
+// shares, whether the photo is required or optional.
+func photoField(r *http.Request) ([]byte, error) {
 	file, _, err := r.FormFile("photo")
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Campo 'photo' obrigatório")
-		return
+		return nil, nil
 	}
 	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, maxPhotoBytes))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "Falha ao ler arquivo")
-		return
-	}
-	albumID := r.PathValue("id")
-	if ok, err := s.store.AlbumExists(r.Context(), albumID); err != nil || !ok {
-		writeError(w, http.StatusNotFound, "Álbum não encontrado")
-		return
-	}
-	if err := s.artwork.UploadAlbumPhoto(r.Context(), albumID, data); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeNoContent(w)
+	return io.ReadAll(io.LimitReader(file, maxPhotoBytes))
 }
 
-func (s *Server) handleAdminDeletePhoto(w http.ResponseWriter, r *http.Request) {
-	if err := s.artwork.DeleteAlbumPhoto(r.Context(), r.PathValue("id")); err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	writeNoContent(w)
-}
-
-// ---------- admin: song photo ----------
-
-func (s *Server) handleAdminUploadSongPhoto(w http.ResponseWriter, r *http.Request) {
+func readPhoto(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxPhotoBytes)
 	if err := r.ParseMultipartForm(maxPhotoBytes); err != nil {
-		writeError(w, http.StatusBadRequest, "Arquivo muito grande (máx 15MB) ou inválido")
-		return
+		writeError(w, http.StatusBadRequest, tooLargeMessage(maxPhotoBytes))
+		return nil, false
 	}
-	file, _, err := r.FormFile("photo")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "Campo 'photo' obrigatório")
-		return
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, maxPhotoBytes))
+	data, err := photoField(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "Falha ao ler arquivo")
-		return
+		return nil, false
 	}
-	songID := r.PathValue("id")
-	if ok, err := s.store.SongExists(r.Context(), songID); err != nil || !ok {
-		writeError(w, http.StatusNotFound, "Música não encontrada")
-		return
-	}
-	if err := s.artwork.UploadSongPhoto(r.Context(), songID, data); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeNoContent(w)
-}
-
-func (s *Server) handleAdminDeleteSongPhoto(w http.ResponseWriter, r *http.Request) {
-	if err := s.artwork.DeleteSongPhoto(r.Context(), r.PathValue("id")); err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	writeNoContent(w)
-}
-
-// ---------- admin: category photo ----------
-
-func (s *Server) handleAdminUploadCategoryPhoto(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxPhotoBytes)
-	if err := r.ParseMultipartForm(maxPhotoBytes); err != nil {
-		writeError(w, http.StatusBadRequest, "Arquivo muito grande (máx 15MB) ou inválido")
-		return
-	}
-	file, _, err := r.FormFile("photo")
-	if err != nil {
+	if data == nil {
 		writeError(w, http.StatusBadRequest, "Campo 'photo' obrigatório")
-		return
+		return nil, false
 	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, maxPhotoBytes))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "Falha ao ler arquivo")
-		return
-	}
-	categoryID := r.PathValue("id")
-	if _, err := s.store.GetCategory(r.Context(), categoryID); err != nil {
-		writeError(w, http.StatusNotFound, "Categoria não encontrada")
-		return
-	}
-	if err := s.artwork.UploadCategoryPhoto(r.Context(), categoryID, data); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeNoContent(w)
+	return data, true
 }
 
-func (s *Server) handleAdminDeleteCategoryPhoto(w http.ResponseWriter, r *http.Request) {
-	if err := s.artwork.DeleteCategoryPhoto(r.Context(), r.PathValue("id")); err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	writeNoContent(w)
+// entityProbe is the single table of per-entity-type facts the like and artwork
+// routes need: how to tell the row exists, and the not-found wording. An
+// unknown type is a programming error, not a runtime case.
+type entityProbe struct {
+	exists   func(context.Context, string) (bool, error)
+	notFound string
 }
 
-// ---------- admin: song upload ----------
+func (s *Server) probeFor(entityType string) entityProbe {
+	switch entityType {
+	case store.EntitySong:
+		return entityProbe{exists: s.store.SongExists, notFound: "Música não encontrada"}
+	case store.EntityAlbum:
+		return entityProbe{exists: s.store.AlbumExists, notFound: "Álbum não encontrado"}
+	case store.EntityCategory:
+		return entityProbe{exists: func(ctx context.Context, id string) (bool, error) {
+			_, err := s.store.GetCategory(ctx, id)
+			if errors.Is(err, store.ErrNotFound) {
+				return false, nil
+			}
+			return err == nil, err
+		}, notFound: "Categoria não encontrada"}
+	default:
+		panic("probeFor: unsupported entity type " + entityType)
+	}
+}
 
-// maxUploadBytes is the song upload limit (512MB). Note: the 15MB cap
-// (maxPhotoBytes) applies ONLY to photos — the audio upload is 512MB by
-// design (lossless FLAC/WAV libraries). Keep the message in sync.
-const maxUploadBytes = 512 << 20 // 512MB
-
-// waitForObject polls the storage until a freshly uploaded object is readable.
-// The MinIO endpoint sits behind a caching proxy that can take a few seconds
-// to expose a newly written object (observed ~6s); without this, the
-// immediate index fails with "Access Denied".
-func (s *Server) waitForObject(ctx context.Context, key string) {
-	deadline := time.Now().Add(60 * time.Second)
-	for {
-		ok, err := s.storage.ObjectExists(ctx, key)
-		if err == nil && ok {
+func (s *Server) uploadPhoto(entityType string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		probe := s.probeFor(entityType)
+		ok, err := probe.exists(r.Context(), id)
+		if err != nil {
+			handleStoreError(w, err)
 			return
 		}
-		if ctx.Err() != nil || time.Now().After(deadline) {
+		if !ok {
+			writeError(w, http.StatusNotFound, probe.notFound)
 			return
 		}
-		select {
-		case <-time.After(2 * time.Second):
-		case <-ctx.Done():
+		data, ok := readPhoto(w, r)
+		if !ok {
 			return
 		}
+		if err = s.artwork.Upload(r.Context(), entityType, id, data); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeNoContent(w)
 	}
 }
 
-var audioMimeByExt = map[string]string{
-	".mp3":  "audio/mpeg",
-	".m4a":  "audio/mp4",
-	".aac":  "audio/aac",
-	".ogg":  "audio/ogg",
-	".opus": "audio/ogg",
-	".wav":  "audio/wav",
-	".flac": "audio/flac",
-	".wma":  "audio/x-ms-wma",
-	".aiff": "audio/aiff",
-	".aif":  "audio/aiff",
-	".wv":   "audio/wavpack",
-	".ape":  "audio/x-ape",
+func (s *Server) deletePhoto(entityType string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := s.artwork.Delete(r.Context(), entityType, r.PathValue("id")); err != nil {
+			handleStoreError(w, err)
+			return
+		}
+		writeNoContent(w)
+	}
 }
 
-// handleAdminUploadSong accepts a multipart form with:
-//   - "song" (file, required) — audio file to add to the library
-//   - "title"/"artist" (optional) — metadata overrides
-//   - "categoryId" (optional) — category the song is assigned to
-//   - "photo" (optional) — song photo (jpg/png/webp)
-//
-// The file is stored under uploads/ in the bucket and indexed immediately.
+const maxUploadBytes = 512 << 20
+
 func (s *Server) handleAdminUploadSong(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
 	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
-		writeError(w, http.StatusBadRequest, "Arquivo muito grande (máx 512MB) ou inválido")
+		writeError(w, http.StatusBadRequest, tooLargeMessage(maxUploadBytes))
 		return
 	}
 	file, header, err := r.FormFile("song")
@@ -1087,13 +884,12 @@ func (s *Server) handleAdminUploadSong(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
-	contentType := audioMimeByExt[ext]
-	if contentType == "" {
+	contentType, ok := stream.MIMEForExt(ext)
+	if !ok {
 		writeError(w, http.StatusBadRequest, "Formato de áudio não suportado: "+ext)
 		return
 	}
 
-	// Buffer to a temp file so we know the size before Put.
 	tmp, err := os.CreateTemp("", "pm-upload-*"+ext)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Falha ao processar arquivo")
@@ -1101,9 +897,14 @@ func (s *Server) handleAdminUploadSong(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.Remove(tmp.Name())
 	size, err := io.Copy(tmp, file)
-	if err != nil || size == 0 {
+	if err != nil {
 		tmp.Close()
 		writeError(w, http.StatusBadRequest, "Falha ao ler arquivo")
+		return
+	}
+	if size == 0 {
+		tmp.Close()
+		writeError(w, http.StatusBadRequest, "Arquivo vazio")
 		return
 	}
 	if err := tmp.Close(); err != nil {
@@ -1111,13 +912,10 @@ func (s *Server) handleAdminUploadSong(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate the payload is actually decodable audio BEFORE it hits the
-	// bucket: a file renamed to .mp3 with junk bytes used to be accepted and
-	// indexed with duration 0 (the metadata read error was only Debug-logged
-	// and the upsert proceeded with empty tags). Files with no readable
-	// metadata or no detected duration are rejected without touching storage.
-	if tags, err := metadata.Read(tmp.Name(), size); err != nil || tags.Duration <= 0 {
-		writeError(w, http.StatusBadRequest, "Arquivo de áudio inválido ou corrompido")
+	// Rejected before it reaches the bucket: a duration-0 song must never enter
+	// the catalog.
+	if _, err := metadata.ReadAudio(tmp.Name(), size, s.cfg.FfmpegPath); err != nil {
+		writeError(w, http.StatusBadRequest, metadata.ErrInvalidAudio.Error())
 		return
 	}
 
@@ -1137,21 +935,16 @@ func (s *Server) handleAdminUploadSong(w http.ResponseWriter, r *http.Request) {
 	song, err := s.scanner.IndexFile(r.Context(), key, header.Filename)
 	if err != nil {
 		s.log.Warn("upload index (retry)", "key", key, "err", err)
-		s.waitForObject(r.Context(), key)
+		s.storage.WaitForObject(r.Context(), key)
 		song, err = s.scanner.IndexFile(r.Context(), key, header.Filename)
 	}
 	if err != nil {
 		s.log.Error("upload index", "key", key, "err", err)
-		// The object was already Put into the bucket: remove it so a failed
-		// upload does not leave an orphaned object behind (B-NEW-4). This is
-		// best-effort — the client still gets an error either way.
 		if rerr := s.storage.Remove(r.Context(), key); rerr != nil {
 			s.log.Warn("upload cleanup", "key", key, "err", rerr)
 		}
-		// Invalid audio (reached via a scan/race, since the pre-Put check
-		// above already rejects it): 400, not 500.
-		if errors.Is(err, scanner.ErrInvalidAudio) {
-			writeError(w, http.StatusBadRequest, "Arquivo de áudio inválido ou corrompido")
+		if errors.Is(err, metadata.ErrInvalidAudio) {
+			writeError(w, http.StatusBadRequest, metadata.ErrInvalidAudio.Error())
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "Falha ao indexar a música")
@@ -1166,28 +959,38 @@ func (s *Server) handleAdminUploadSong(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// An unknown category is a client mistake, not a warning: the upload would
+	// otherwise succeed silently without the file landing where asked.
 	if categoryID := strings.TrimSpace(r.FormValue("categoryId")); categoryID != "" {
+		category := s.probeFor(store.EntityCategory)
+		ok, err := category.exists(r.Context(), categoryID)
+		if err != nil {
+			handleStoreError(w, err)
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusBadRequest, category.notFound)
+			return
+		}
 		if err := s.store.AddSongToCategory(r.Context(), categoryID, song.ID); err != nil {
 			s.log.Warn("upload category assign", "err", err)
 		}
 	}
 
-	if photo, _, err := r.FormFile("photo"); err == nil {
-		data, err := io.ReadAll(io.LimitReader(photo, maxPhotoBytes))
-		photo.Close()
-		if err == nil && len(data) > 0 {
-			if err := s.artwork.UploadSongPhoto(r.Context(), song.ID, data); err != nil {
-				s.log.Warn("upload photo", "err", err)
-			}
+	if data, err := photoField(r); err != nil {
+		s.log.Warn("upload photo read", "err", err)
+	} else if len(data) > 0 {
+		if err := s.artwork.Upload(r.Context(), store.EntitySong, song.ID, data); err != nil {
+			s.log.Warn("upload photo", "err", err)
 		}
 	}
 
-	// Re-read the persisted row so the 201 echoes the real created_at /
-	// updated_at. The struct returned by the scanner never carries
-	// CreatedAt (the upsert only RETURNING id) — same zero-value pattern as
-	// the B2 user fix; time.Time zero is NOT omitted by omitempty.
+	// The response must carry the metadata the caller just set, so re-read it.
+	// A failed re-read is not worth failing the upload: the song exists.
 	if fresh, err := s.store.GetSong(r.Context(), song.ID); err == nil {
 		song = fresh
+	} else {
+		s.log.Warn("upload reload", "id", song.ID, "err", err)
 	}
 
 	writeJSON(w, http.StatusCreated, song)
