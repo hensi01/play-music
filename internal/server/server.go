@@ -1,4 +1,4 @@
-package server
+﻿package server
 
 import (
 	"context"
@@ -58,6 +58,7 @@ func (s *Server) routes() []route {
 
 		// Push.
 		{"POST /api/push/status", requireAuth(s.handlePushStatus)},
+		{"GET /api/notifications", requireAuth(s.handleNotificationInbox)},
 		{"GET /api/push/config", requireAuth(s.handlePushConfig)},
 		{"POST /api/push/subscriptions", requireAuth(s.handlePushSubscribe)},
 		{"DELETE /api/push/subscriptions", requireAuth(s.handlePushUnsubscribe)},
@@ -165,16 +166,16 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, adminOnly bool) (*auth.Claims, bool) {
 	token := s.auth.TokenFromRequest(r)
 	if token == "" {
-		writeError(w, http.StatusUnauthorized, "Não autenticado")
+		writeError(w, http.StatusUnauthorized, "NÃ£o autenticado")
 		return nil, false
 	}
 	claims, err := s.auth.Parse(token)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "Não autenticado")
+		writeError(w, http.StatusUnauthorized, "NÃ£o autenticado")
 		return nil, false
 	}
 	if adminOnly && !claims.IsAdmin {
-		writeError(w, http.StatusForbidden, "Sem permissão")
+		writeError(w, http.StatusForbidden, "Sem permissÃ£o")
 		return nil, false
 	}
 	if s.auth.NeedsRefresh(claims) {

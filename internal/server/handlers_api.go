@@ -673,11 +673,7 @@ func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Não é possível excluir a própria conta")
 		return
 	}
-	if err := s.store.DeactivateUserPushSubscriptions(ctx, id); err != nil {
-		writeError(w, http.StatusBadGateway, "Não foi possível remover as notificações deste usuário; tente novamente")
-		return
-	}
-	if err := s.store.DeleteUser(ctx, id); err != nil {
+	if err := s.store.DeleteUserWithPushSubscriptions(ctx, id); err != nil {
 		handleStoreError(w, err)
 		return
 	}

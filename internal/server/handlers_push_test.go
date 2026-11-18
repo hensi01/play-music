@@ -3,6 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -89,6 +92,36 @@ func TestChatGPTModeCanUsePlayerWithoutSubscription(t *testing.T) {
 			w := httptest.NewRecorder()
 			if !s.pushAccessAllowed(w, req, "user") || w.Code != http.StatusOK {
 				t.Fatalf("unsupported client was blocked: status=%d body=%s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestRelayValidationErrorIsCategorizedWithoutLeakingDetails(t *testing.T) {
+	for _, tc := range []struct{ name, response, want string }{
+		{"unsupported", `{"code":"VALIDATION_ERROR","error":"The push endpoint is not a supported browser Web Push provider"}`, "unsupported_provider"},
+		{"other", `{"code":"VALIDATION_ERROR","error":"private subscription data"}`, "invalid_subscription"},
+		{"malformed", `private subscription data`, "invalid_subscription"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = w.Write([]byte(tc.response))
+			}))
+			defer h.Close()
+			old := pushHTTP
+			pushHTTP = h.Client()
+			defer func() { pushHTTP = old }()
+			s := &Server{cfg: &config.Config{RelayBaseURL: h.URL}, log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+			status, err := s.relay(context.Background(), "POST", "/test", "", nil, nil)
+			var relayErr *relayRequestError
+			if status != 422 || !errors.As(err, &relayErr) || relayErr.category != tc.want || strings.Contains(err.Error(), "private") {
+				t.Fatalf("status=%d err=%v", status, err)
+			}
+			w := httptest.NewRecorder()
+			s.pushRelayError(w, "enrollment_ticket", status, relayErr)
+			if w.Code != 422 || strings.Contains(w.Body.String(), "private") {
+				t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 			}
 		})
 	}

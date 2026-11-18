@@ -1026,26 +1026,8 @@ img {
   text-decoration: underline;
 }
 
-.login-screen.admin-login-screen {
-  background:
-    radial-gradient(ellipse 70% 55% at 50% -5%, rgba(176, 136, 75, 0.16), transparent 70%),
-    linear-gradient(to bottom, rgba(26, 26, 31, 0.6), var(--bg));
-}
-
 .admin-login-box { max-width: 420px; }
 .admin-login-box .login-brand { margin-bottom: 26px; }
-.admin-login-box .login-brand svg {
-  color: #f1c77b;
-  background: linear-gradient(135deg, #775a2c, #b0884b);
-}
-.admin-login-form { border-color: color-mix(in srgb, #b0884b 55%, var(--outline, #6d6d75)); }
-.admin-login-form:focus-within { box-shadow: var(--shadow-3), 0 0 0 1px #b0884b; }
-.admin-login-form .login-submit {
-  background: linear-gradient(135deg, #8d6935, #b0884b);
-  color: #fff;
-  box-shadow: 0 8px 20px rgba(176, 136, 75, 0.22);
-}
-.admin-login-form .login-submit:hover:not(:disabled) { box-shadow: 0 10px 24px rgba(176, 136, 75, 0.32); }
 .admin-login-back { margin-top: 22px; }
 
 @media (max-width: 480px) {
@@ -1845,7 +1827,7 @@ select:disabled { cursor: not-allowed; opacity: 0.6; }
 .login-toggle-btn:hover:not(.active) { color: var(--text, #f0f0f4); }
 
 .track-add {
-  display: none;
+  display: inline-flex;
   border: none;
   background: transparent;
   color: var(--subtext, #9a9aa5);
@@ -2501,6 +2483,7 @@ select:disabled { cursor: not-allowed; opacity: 0.6; }
 .download-button:disabled { opacity: .5; cursor: wait; }
 
 /* Desktop keeps row actions inline; phones group secondary actions in a thumb-sized menu. */
+.track-mobile-add { display: none; }
 .track-more { display: contents; }
 .track-more-toggle { display: none; }
 .track-more-menu { display: contents; }
@@ -2538,7 +2521,9 @@ select:disabled { cursor: not-allowed; opacity: 0.6; }
   .track-art { width: 44px; height: 44px; }
   .track-actions { min-width: 0; gap: 4px; }
   .track-actions .track-like { display: inline-flex; align-items: center; justify-content: center; width: 48px; min-width: 48px; height: 48px; padding: 0; }
-  .track-duration { width: 38px; }
+  .track-actions .track-mobile-add { display: inline-flex; align-items: center; justify-content: center; width: 48px; min-width: 48px; height: 48px; border-radius: 999px; color: var(--subtext); }
+  .track-actions .track-mobile-add:focus-visible { background: var(--surface-3); color: var(--text); }
+  .track-duration { display: none; }
   .track-more { position: relative; display: block; flex: 0 0 48px; width: 48px; height: 48px; }
   .track-more-toggle { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 999px; color: var(--subtext); font-size: 13px; font-weight: 700; }
   .track-more-toggle:focus-visible, .track-more.open .track-more-toggle { background: var(--surface-3); color: var(--text); }
@@ -3443,3 +3428,40 @@ button:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   button { transition: none; }
 }
+
+@media (max-width: 400px) {
+  .track-row, .album-track-list .track-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .track-row .track-number, .track-row .track-art { display: none; }
+}
+
+/* Administrative forms share the app's spacing and color tokens. */
+.admin-section { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.admin-section > h2, .admin-section > h3, .admin-section > p { margin: 0; }
+.admin-section > form { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.admin-section > form > h2, .admin-section > form > p { margin: 0; }
+.admin-section .form-input { width: 100%; box-sizing: border-box; }
+.admin-section textarea.form-input { min-height: 110px; resize: vertical; }
+.admin-section > button, .admin-section > form > button { align-self: flex-start; }
+.admin-section [role="status"]:empty { display: none; }
+.admin-section .settings-card:not([hidden]) { display: flex; flex-direction: column; gap: 12px; }
+.admin-section .admin-table { min-width: 0; }
+@media (max-width: 480px) {
+  .admin-section > button, .admin-section > form > button { align-self: stretch; }
+  .admin-section .admin-row { flex-wrap: wrap; }
+}
+
+/* Notification inbox */
+.notification-inbox-wrap { flex: none; }
+.notification-bell { width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; }
+.notification-inbox { position: fixed; z-index: 60; top: calc(56px + env(safe-area-inset-top)); right: 8px; width: min(400px, calc(100vw - 16px)); max-height: min(70vh, 600px); overflow: auto; background: var(--surface, #202124); color: var(--text, #fff); border: 1px solid var(--border-soft, #555); border-radius: 12px; box-shadow: 0 12px 32px #0008; padding: 16px; }
+.notification-inbox[hidden] { display: none; }
+.notification-inbox-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.notification-inbox-heading h2 { margin: 0; font-size: 18px; }
+.notification-inbox-heading button { width: 48px; height: 48px; }
+.notification-inbox-item { padding: 14px 0; border-top: 1px solid var(--border-soft, #555); overflow-wrap: anywhere; }
+.notification-inbox-item p { white-space: pre-wrap; margin: 8px 0; }
+.notification-inbox-item time { display: block; color: var(--text-muted, #aaa); font-size: 12px; }
+.notification-inbox-item a { display: inline-block; padding: 12px 0; color: var(--accent); }
+@media (max-width: 400px) { .mobile-topbar { gap: 4px; } .mobile-topbar > span { font-size: 12px; gap: 4px; } }
+
+@media (max-width: 400px) { .mobile-topbar .install-app-btn { font-size: 11px; padding: 7px 6px; } .notification-bell { width: 44px; } }

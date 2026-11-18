@@ -153,4 +153,15 @@ type PushCampaign struct {
 	Selected    int       `json:"selected"`
 	Queued      int       `json:"queued"`
 	Detail      string    `json:"detail"`
+	RepeatHours int       `json:"repeatHours"`
+}
+
+// Notification is one published inbox entry. It is written when a campaign is
+// claimed, so the inbox holds only notifications that were actually sent.
+type Notification struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Body        string    `json:"body"`
+	URL         string    `json:"url"`
+	PublishedAt time.Time `json:"publishedAt"`
 }

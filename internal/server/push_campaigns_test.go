@@ -31,6 +31,27 @@ func TestPushMessageValidation(t *testing.T) {
 	}
 }
 
+func TestCampaignRepeatHoursValidation(t *testing.T) {
+	cases := []struct {
+		name  string
+		hours int
+		ok    bool
+	}{
+		{"does not repeat", 0, true},
+		{"two hours", 2, true},
+		{"one year", 8760, true},
+		{"negative", -1, false},
+		{"too large", 8761, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := validateRepeatHours(tc.hours); (err == nil) != tc.ok {
+				t.Fatalf("ok=%v err=%v", tc.ok, err)
+			}
+		})
+	}
+}
+
 // The relay rejects payloads above 3000 bytes, so the bound is ours to enforce.
 func TestPushMessagePayloadSizeLimit(t *testing.T) {
 	msg := pushMessage{

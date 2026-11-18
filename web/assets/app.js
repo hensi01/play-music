@@ -45,6 +45,7 @@ function showToast(message) {
 }
 
 const icons = {
+  bell: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>',
   home: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
   search: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
   library: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg>',
@@ -212,9 +213,11 @@ function trackRow(song, index, opts = {}) {
 
   const addBtn = compactActions ? null : el(
     'button',
-    { class: 'track-add', 'aria-label': 'Adicionar à playlist', onclick: (e) => { e.stopPropagation(); openPlaylistPicker(song) } },
+    { class: 'track-add', 'aria-label': 'Adicionar à playlist', title: 'Adicionar à playlist', onclick: (e) => { e.stopPropagation(); openPlaylistPicker(song) } },
     icon('plus'),
   )
+
+  const mobileAddBtn = el('button', { class: 'track-mobile-add', type: 'button', 'aria-label': 'Adicionar à playlist', title: 'Adicionar à playlist', onclick: (e) => { e.stopPropagation(); openPlaylistPicker(song) } }, icon('plus'))
 
   const queueBtn = onQueue
     ? el(
@@ -275,7 +278,7 @@ function trackRow(song, index, opts = {}) {
         el('p', { class: 'track-artist' }, song.artist || 'Desconhecido'),
       ),
     ),
-    el('div', { class: 'track-actions' }, likeBtn, moreActions, el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
+    el('div', { class: 'track-actions' }, likeBtn, mobileAddBtn, moreActions, el('span', { class: 'track-duration' }, fmtDuration(song.duration))),
   )
 }
 
@@ -1247,8 +1250,6 @@ async function removePushEndpoints(userId, ...endpoints) {
 async function reconcilePushSubscription(userId) {
   return queuePushOperation(async () => {
     let state = readPushState(userId)
-    const owner = localStorage.getItem(PUSH_OWNER_KEY)
-    if (owner !== userId) return
     if (!navigator.locks && state.enabled) return
     if (!('serviceWorker' in navigator) || !('Notification' in window)) return
     try {
@@ -1257,12 +1258,9 @@ async function reconcilePushSubscription(userId) {
       ensurePushAccount(userId)
       state = readPushState(userId)
       if (!state.enabled) {
-        if (localStorage.getItem(PUSH_OWNER_KEY) !== userId) return
         await removePushEndpoints(userId, state.endpoint, state.pendingEndpoint)
-        if (current) await current.unsubscribe()
         ensurePushAccount(userId)
         writePushState(userId, { enabled: false })
-        localStorage.removeItem(PUSH_OWNER_KEY)
         return
       }
       if (Notification.permission !== 'granted' || !current) {
@@ -1271,7 +1269,6 @@ async function reconcilePushSubscription(userId) {
         state = readPushState(userId)
         if (state.enabled) {
           writePushState(userId, { enabled: false })
-          if (localStorage.getItem(PUSH_OWNER_KEY) === userId) localStorage.removeItem(PUSH_OWNER_KEY)
         }
         return
       }
@@ -1308,7 +1305,7 @@ async function verifyNotificationGate(userId) {
     ensurePushAccount(userId)
     if (!supportsPushNotifications() || Notification.permission !== 'granted') throw new Error('Permissão necessária')
     const state = readPushState(userId)
-    if (!state.enabled || !state.endpoint || state.pendingEndpoint || localStorage.getItem(PUSH_OWNER_KEY) !== userId) throw new Error('Inscrição necessária')
+    if (!state.enabled || !state.endpoint || state.pendingEndpoint) throw new Error('Inscrição necessária')
     const registration = await pushServiceWorker()
     const subscription = await registration.pushManager.getSubscription()
     ensurePushAccount(userId)
@@ -1355,7 +1352,7 @@ window.addEventListener('appinstalled', () => render())
 function notificationSettingsCard(required = false) {
   const userId = auth.user?.id
   const pushState = readPushState(userId)
-  const active = !required && notificationGate.userId === userId && notificationGate.status === 'allowed' && supportsPushNotifications() && Notification.permission === 'granted' && localStorage.getItem(PUSH_OWNER_KEY) === userId && pushState.enabled === true && !!pushState.endpoint && !pushState.pendingEndpoint
+  const active = !required && notificationGate.userId === userId && notificationGate.status === 'allowed' && supportsPushNotifications() && Notification.permission === 'granted' && pushState.enabled === true && !!pushState.endpoint && !pushState.pendingEndpoint
   const status = el('p', { class: required ? 'notification-gate-status' : 'settings-text', role: 'status', 'aria-live': 'polite' }, required ? '' : active ? 'As notificações já estão ativadas neste dispositivo.' : 'Ative para receber avisos e promoções neste dispositivo.')
   const enable = el('button', { class: 'btn-accent', type: 'button' }, 'Ativar notificações')
   const disable = el('button', { class: 'btn-secondary', type: 'button' }, 'Desativar notificações')
@@ -1391,9 +1388,6 @@ function notificationSettingsCard(required = false) {
       await queuePushOperation(async () => {
         ensurePushAccount(userId)
         if (!readPushState(userId).enabled || readPushState(userId).intent !== intent) return
-        const owner = localStorage.getItem(PUSH_OWNER_KEY)
-        if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela e desative as notificações primeiro.')
-        localStorage.setItem(PUSH_OWNER_KEY, userId)
         const reg = await pushServiceWorker()
         const applicationServerKey = decodeBase64URL(config.publicKey)
         let sub = await reg.pushManager.getSubscription()
@@ -1436,7 +1430,7 @@ function notificationSettingsCard(required = false) {
           const state = readPushState(userId)
           if (state.intent !== intent) return
           writePushState(userId, { ...state, enabled: false, intent: '' })
-          if (!state.endpoint && !state.pendingEndpoint && localStorage.getItem(PUSH_OWNER_KEY) === userId) localStorage.removeItem(PUSH_OWNER_KEY)
+          if (!state.endpoint && !state.pendingEndpoint) localStorage.removeItem(PUSH_OWNER_KEY)
         }).catch(() => undefined)
         status.textContent = 'O navegador não conseguiu se conectar ao serviço de notificações. Verifique sua conexão e tente novamente mais tarde.'
       } else {
@@ -1447,25 +1441,18 @@ function notificationSettingsCard(required = false) {
   disable.addEventListener('click', async () => {
     try {
       ensurePushAccount(userId)
-      const owner = localStorage.getItem(PUSH_OWNER_KEY)
-      if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela para desativar as notificações.')
       // Record opt-out synchronously, before waiting for any earlier network call.
       writePushState(userId, { ...readPushState(userId), enabled: false, intent: '' })
       void verifyNotificationGate(userId)
       await queuePushOperation(async () => {
         ensurePushAccount(userId)
-        const owner = localStorage.getItem(PUSH_OWNER_KEY)
-        if (owner && owner !== userId) throw new Error('Este dispositivo está vinculado a outra conta. Entre nela para desativar as notificações.')
         const state = readPushState(userId)
-        if (owner !== userId && !state.endpoint && !state.pendingEndpoint) throw new Error('Não foi possível confirmar a conta desta inscrição. Entre na conta que ativou as notificações.')
         const reg = await pushServiceWorker()
         const sub = await reg.pushManager.getSubscription()
         ensurePushAccount(userId)
         await removePushEndpoints(userId, state.endpoint, state.pendingEndpoint, sub?.endpoint)
-        if (sub) await sub.unsubscribe()
         ensurePushAccount(userId)
         writePushState(userId, { enabled: false })
-        if (localStorage.getItem(PUSH_OWNER_KEY) === userId) localStorage.removeItem(PUSH_OWNER_KEY)
       })
       status.textContent = 'Notificações desativadas neste dispositivo.'
     } catch (err) { status.textContent = err.message || 'Não foi possível desativar notificações. Tente novamente.' }
@@ -2055,6 +2042,46 @@ function fullscreenPlayer(refs) {
   )
 }
 
+// ---------- Notification inbox ----------
+function notificationInbox() {
+  let requestSeq = 0
+  const panel = el('section', { class: 'notification-inbox', 'aria-label': 'Notificações', hidden: true })
+  const content = el('div', { class: 'notification-inbox-list', 'aria-live': 'polite' })
+  const button = el('button', { class: 'icon-btn notification-bell', type: 'button', 'aria-label': 'Notificações', 'aria-expanded': 'false' }, icon('bell'))
+  button.addEventListener('click', async () => {
+    const sequence = ++requestSeq
+    const opening = panel.hidden
+    panel.hidden = !opening
+    button.setAttribute('aria-expanded', String(opening))
+    if (!opening) return
+    const owner = auth.user?.id
+    content.replaceChildren(el('p', { class: 'settings-text' }, 'Carregando notificações…'))
+    try {
+      const items = await api.get('/api/notifications')
+      if (sequence !== requestSeq || !panel.isConnected || auth.user?.id !== owner || panel.hidden) return
+      content.replaceChildren()
+      if (!items.length) content.append(el('p', { class: 'settings-text' }, 'Nenhuma notificação por enquanto.'))
+      for (const item of items) {
+        const card = el('article', { class: 'notification-inbox-item' }, el('strong', {}, item.title), el('p', {}, item.body), el('time', { datetime: item.publishedAt }, new Date(item.publishedAt).toLocaleString()))
+        try {
+          const target = new URL(item.url, window.location.origin)
+          const safeLocal = item.url.startsWith('/') && !item.url.startsWith('//') && !item.url.includes('\\') && target.origin === window.location.origin
+          const safeExternal = target.protocol === 'https:' && !target.username && !target.password
+          if (item.url !== '/' && (safeLocal || (safeExternal && /^https:\/\//i.test(item.url)))) card.append(el('a', { href: target.href, target: '_blank', rel: 'noopener noreferrer' }, 'Abrir link'))
+        } catch { /* Invalid links are not displayed. */ }
+        content.append(card)
+      }
+    } catch (error) {
+      if (sequence === requestSeq && panel.isConnected && auth.user?.id === owner && !panel.hidden) content.replaceChildren(el('p', { class: 'settings-text' }, error.message || 'Não foi possível carregar as notificações.'))
+    }
+  })
+  panel.append(el('div', { class: 'notification-inbox-heading' }, el('h2', {}, 'Notificações'), el('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Fechar notificações', onclick: () => { requestSeq++; panel.hidden = true; button.setAttribute('aria-expanded', 'false'); button.focus() } }, icon('x'))), content)
+  panel.addEventListener('keydown', event => { if (event.key === 'Escape') { requestSeq++; panel.hidden = true; button.setAttribute('aria-expanded', 'false'); button.focus() } })
+  return el('div', { class: 'notification-inbox-wrap' }, button, panel)
+}
+
+// ---------- Render ----------
+
 function render() {
   // pwa.js checks this instead of querying app.js's markup.
   window.__pmPlatform.gateVisible = false
@@ -2102,6 +2129,7 @@ function render() {
           el('button', { class: 'icon-btn topbar-menu', 'aria-label': 'Abrir menu', onclick: () => { menuOpen = true; render() } }, icon('menu')),
           el('span', {}, icon('music'), 'Mi Ritmo'),
           installButton(),
+          notificationInbox(),
         ),
         pageEl,
       ),

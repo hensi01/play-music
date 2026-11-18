@@ -17,6 +17,12 @@ import (
 	"play-music/internal/store"
 )
 
+// relayRequestError marks a failure the relay itself reported, so callers can
+// tell a rejected request from an unreachable relay.
+type relayRequestError struct{ category string }
+
+func (e *relayRequestError) Error() string { return "relay rejected request" }
+
 var pushHTTP = &http.Client{
 	Timeout:       12 * time.Second,
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -60,7 +66,18 @@ func (s *Server) relay(ctx context.Context, method, path, auth string, body, res
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return resp.StatusCode, errors.New("relay rejected request")
+		category := "request_failed"
+		if resp.StatusCode == http.StatusUnprocessableEntity {
+			category = "invalid_subscription"
+			var failure struct {
+				Error string `json:"error"`
+				Code  string `json:"code"`
+			}
+			if json.NewDecoder(io.LimitReader(resp.Body, 16384)).Decode(&failure) == nil && failure.Code == "VALIDATION_ERROR" && failure.Error == "The push endpoint is not a supported browser Web Push provider" {
+				category = "unsupported_provider"
+			}
+		}
+		return resp.StatusCode, &relayRequestError{category: category}
 	}
 	if result != nil {
 		err = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(result)
@@ -121,8 +138,7 @@ func (m *pushMessage) validate() error {
 	return nil
 }
 
-// payload is the object the relay hands to the service worker. The relay
-// rejects payloads above 3000 bytes, so the bound is checked before sending.
+// payload is the object the relay hands to the service worker. The relay// rejects payloads above 3000 bytes, so the bound is checked before sending.
 // The service worker supplies its own icon and badge, so the payload carries
 // only the fields it reads.
 func (m pushMessage) payload() (map[string]any, error) {
@@ -132,6 +148,15 @@ func (m pushMessage) payload() (map[string]any, error) {
 		return nil, errors.New("Mensagem e link excedem o limite de tamanho")
 	}
 	return p, nil
+}
+
+// validateRepeatHours bounds how often a campaign may repeat. A zero value means
+// it does not repeat.
+func validateRepeatHours(hours int) error {
+	if hours < 0 || hours > 8760 {
+		return errors.New("Intervalo deve estar entre 1 e 8760 horas")
+	}
+	return nil
 }
 
 // relayFailure reports how far a batched send got before the relay failed, so
@@ -217,6 +242,12 @@ func (sub pushSubscription) marshal() []byte {
 	return b
 }
 
+// keys reports the browser encryption keys, which are what identify a device
+// across accounts.
+func (sub pushSubscription) keys() store.SubscriptionKeys {
+	return store.SubscriptionKeys{P256dh: sub.Keys.P256dh, Auth: sub.Keys.Auth}
+}
+
 func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 	if !s.pushEnabled() {
 		writeError(w, http.StatusServiceUnavailable, "Notificações indisponíveis")
@@ -237,8 +268,13 @@ func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 
 	// An inactive row is persisted before the relay is contacted so a lost
 	// response can still be recovered by the cleanup loop.
-	if err := s.store.ReservePushEnrollment(ctx, sub.Endpoint, uid, operationID, sub.marshal()); err != nil {
+	linked, err := s.store.ReservePushEnrollment(ctx, sub.Endpoint, uid, operationID, sub.marshal(), sub.keys())
+	if err != nil {
 		handleStoreError(w, err)
+		return
+	}
+	if linked {
+		writeJSON(w, http.StatusOK, map[string]bool{"enabled": true})
 		return
 	}
 
@@ -285,7 +321,20 @@ type managementCredentials struct {
 }
 
 func (s *Server) pushRelayError(w http.ResponseWriter, stage string, status int, cause error) {
-	s.log.Warn("push relay request failed", "stage", stage, "upstream_status", status, "err", cause)
+	category := ""
+	var relayErr *relayRequestError
+	if errors.As(cause, &relayErr) {
+		category = relayErr.category
+	}
+	s.log.Warn("push relay request failed", "stage", stage, "upstream_status", status, "category", category, "err", cause)
+	if stage == "enrollment_ticket" && status == http.StatusUnprocessableEntity {
+		if category == "unsupported_provider" {
+			writeError(w, http.StatusUnprocessableEntity, "Este navegador usa um serviço de notificações não aceito. Abra o aplicativo no Chrome, Firefox, Safari ou Edge atualizado e tente novamente.")
+		} else {
+			writeError(w, http.StatusUnprocessableEntity, "Não foi possível validar a inscrição deste dispositivo. Atualize o navegador e tente ativar as notificações novamente.")
+		}
+		return
+	}
 	if status == http.StatusTooManyRequests {
 		writeError(w, http.StatusTooManyRequests, "Limite de inscrições ou de envios atingido; tente novamente mais tarde")
 		return
@@ -317,6 +366,7 @@ func (s *Server) handleCreateCampaign(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		pushMessage
 		ScheduledAt time.Time `json:"scheduledAt"`
+		RepeatHours int       `json:"repeatHours"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -327,6 +377,10 @@ func (s *Server) handleCreateCampaign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := msg.payload(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := validateRepeatHours(req.RepeatHours); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -344,6 +398,7 @@ func (s *Server) handleCreateCampaign(w http.ResponseWriter, r *http.Request) {
 		URL:         msg.URL,
 		ScheduledAt: req.ScheduledAt,
 		Status:      store.CampaignPending,
+		RepeatHours: req.RepeatHours,
 	}
 	if err := s.store.CreatePushCampaign(r.Context(), &campaign, userIDOf(r.Context())); err != nil {
 		writeError(w, http.StatusInternalServerError, "Não foi possível agendar")
